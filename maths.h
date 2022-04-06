@@ -212,6 +212,33 @@ inline void orthonormal_basis(const vec3 &N, vec3 &X, vec3 &Y)
     Y = vec3(b, sign + N.y() * N.y() * a, -N.y());
 }
 
+struct Frame
+{
+    Frame()
+    {
+        t = vec3::UnitX();
+        b = vec3::UnitY();
+        n = vec3::UnitZ();
+    }
+
+    Frame(const vec3 &t, const vec3 &b, const vec3 &n) : t(t), b(b), n(n) {}
+
+    explicit Frame(const vec3 &n) : n(n) { orthonormal_basis(n, t, b); }
+
+    bool valid() const
+    {
+        return (std::abs(t.squaredNorm() - 1.0f) <= 1e-4f) && (std::abs(b.squaredNorm() - 1.0f) <= 1e-4f) &&
+               (std::abs(n.squaredNorm() - 1.0f) <= 1e-4f) && (t.isOrthogonal(b, 1e-4f)) &&
+               (b.isOrthogonal(n, 1e-4f)) && (n.isOrthogonal(t, 1e-4f));
+    }
+
+    vec3 to_local(const vec3 &w) const { return vec3(t.dot(w), b.dot(w), n.dot(w)); }
+
+    vec3 to_world(const vec3 &w) const { return t * w.x() + b * w.y() + n * w.z(); }
+
+    vec3 t, b, n;
+};
+
 inline mat4 scale_rotate_translate(const vec3 &scale, const quat &rototation, const vec3 &translatation)
 {
     mat4 S = mat4::Identity();
