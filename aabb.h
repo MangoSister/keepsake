@@ -57,6 +57,17 @@ struct AABB2
         return (point[dim] - min[dim]) / ext;
     }
 
+    vec2 offset(const vec2 &point) const
+    {
+        vec2 ext = extents();
+        vec2 o = (point - min).cwiseQuotient(ext);
+        for (int i = 0; i < 2; ++i) {
+            if (ext[i] == 0.0f)
+                o[i] = 0.0f;
+        }
+        return o;
+    }
+
     uint32_t largestAxis() const
     {
         vec2 exts = extents();
