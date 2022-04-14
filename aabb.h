@@ -68,6 +68,11 @@ struct AABB2
         return o;
     }
 
+    vec2 lerp(const vec2 &t) const
+    {
+        return vec2(std::lerp(min.x(), max.x(), t.x()), std::lerp(min.y(), max.y(), t.y()));
+    }
+
     uint32_t largestAxis() const
     {
         vec2 exts = extents();
