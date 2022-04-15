@@ -27,9 +27,13 @@ inline int num_system_cores() { return std::max(1u, std::thread::hardware_concur
 void init_parallel(int nthreads = 0);
 
 template <typename Index, typename Func>
-void parallel_for(const Index N, const Func &func)
+void parallel_for(const Index N, const Func &func, Index grainsize = 1)
 {
-    tbb::parallel_for(Index(0), N, Index(1), [&](Index i) { func(i); });
+    auto body = [&](const tbb::blocked_range<Index> &r) {
+        for (Index i = r.begin(); i != r.end(); ++i)
+            func(i);
+    };
+    tbb::parallel_for(tbb::blocked_range<Index>(0, N, grainsize), body);
 }
 
 template <typename T>
