@@ -341,6 +341,14 @@ inline void lerp_helper(float u, int res, WrapMode wrap, TickMode tick, int &u0,
 }
 
 template <int N>
+inline void lerp_helper(const float *u, const int *res, WrapMode wrap, TickMode tick, int *u0, int *u1, float *t)
+{
+    for (int i = 0; i < N; ++i) {
+        lerp_helper(u[i], res[i], wrap, tick, u0[i], u1[i], t[i]);
+    }
+}
+
+template <int N>
 inline void lerp_helper(const float *u, const int *res, const WrapMode *wrap, const TickMode *tick, int *u0, int *u1,
                         float *t)
 {
