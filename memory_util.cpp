@@ -18,6 +18,25 @@ BlockAllocator::~BlockAllocator()
     }
 }
 
+BlockAllocator::BlockAllocator(BlockAllocator &&other) : BlockAllocator() { swap(other); }
+
+BlockAllocator &BlockAllocator::operator=(BlockAllocator &&other)
+{
+    swap(other);
+    return *this;
+}
+
+void BlockAllocator::swap(BlockAllocator &other)
+{
+    std::swap(default_block_size, other.default_block_size);
+    std::swap(curr_block_pos, other.curr_block_pos);
+    std::swap(curr_alloc_size, other.curr_alloc_size);
+    std::swap(curr_block, other.curr_block);
+    std::swap(used_blocks, other.used_blocks);
+    std::swap(free_blocks, other.free_blocks);
+    std::swap(max_num_blocks, other.max_num_blocks);
+}
+
 void *BlockAllocator::allocate(size_t byteCount)
 {
     constexpr size_t alignment = alignof(std::max_align_t);
@@ -29,7 +48,8 @@ void *BlockAllocator::allocate(size_t byteCount)
             used_blocks.push_back(std::make_pair(curr_alloc_size, curr_block));
             ASSERT(used_blocks.size() + free_blocks.size() <= max_num_blocks,
                    "BlockAllocator: total allocated blocks exceeds maximum (%lu). Consider relaxing the threshold or "
-                   "debugging leaks!", max_num_blocks);
+                   "debugging leaks!",
+                   max_num_blocks);
             curr_block = nullptr;
             curr_alloc_size = 0;
         }

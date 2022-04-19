@@ -90,6 +90,13 @@ class BlockAllocator final : public Allocator
     explicit BlockAllocator(size_t default_block_size = 1024, size_t max_num_blocks = 1024);
     ~BlockAllocator();
 
+    BlockAllocator(const BlockAllocator &other) = delete;
+    BlockAllocator &operator=(const BlockAllocator &other) = delete;
+
+    BlockAllocator(BlockAllocator &&other);
+    BlockAllocator &operator=(BlockAllocator &&other);
+    void swap(BlockAllocator &other);
+
     void *allocate(size_t byte_count) final;
     void free(void *bytes) final;
 
