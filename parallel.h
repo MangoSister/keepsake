@@ -20,6 +20,7 @@
 #endif
 #endif
 #include <tbb/parallel_for.h>
+#include <tbb/parallel_sort.h>
 #include <thread>
 
 inline int num_system_cores() { return std::max(1u, std::thread::hardware_concurrency()); }
@@ -34,6 +35,18 @@ void parallel_for(const Index N, const Func &func, Index grainsize = 1)
             func(i);
     };
     tbb::parallel_for(tbb::blocked_range<Index>(0, N, grainsize), body);
+}
+
+template <typename RandomAccessIterator>
+void parallel_sort(RandomAccessIterator begin, RandomAccessIterator end)
+{
+    tbb::parallel_sort(begin, end);
+}
+
+template <typename RandomAccessIterator, typename Compare>
+void parallel_sort(RandomAccessIterator begin, RandomAccessIterator end, const Compare &comp)
+{
+    tbb::parallel_sort(begin, end, comp);
 }
 
 template <typename T>

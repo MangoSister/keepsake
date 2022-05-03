@@ -458,7 +458,7 @@ constexpr void decode_morton_2(uint32_t code, uint32_t &x, uint32_t &y)
     y = compact_1_by_1(code >> 1);
 }
 
-inline void decode_morton_3(uint32_t code, uint32_t &x, uint32_t &y, uint32_t &z)
+constexpr void decode_morton_3(uint32_t code, uint32_t &x, uint32_t &y, uint32_t &z)
 {
     x = compact_1_by_2(code >> 0);
     y = compact_1_by_2(code >> 1);
