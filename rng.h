@@ -155,12 +155,9 @@ inline bool russian_roulette(color3 &beta, float u)
 
 inline vec3 sample_triangle(const vec3 &v0, const vec3 &v1, const vec3 &v2, const vec2 &u)
 {
-    float alpha = u[0];
-    float beta = u[1];
-    if (alpha + beta > 1.0f) {
-        alpha = 1.0f - alpha;
-        beta = 1.0f - beta;
-    }
-    float gamma = 1.0f - beta - alpha;
+    float su0 = std::sqrt(u[0]);
+    float alpha = 1.0f - su0;
+    float beta = u[1] * su0;
+    float gamma = 1.0f - alpha - beta;
     return alpha * v0 + beta * v1 + gamma * v2;
 }
