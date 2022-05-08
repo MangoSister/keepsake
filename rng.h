@@ -1,5 +1,6 @@
 #pragma once
 
+#include "assertion.h"
 #include "maths.h"
 #include <array>
 #include <pcg_random.hpp>
@@ -34,7 +35,25 @@ struct RNG
     pcg32 pcg;
 };
 
-constexpr float radical_inverse(uint32_t bits)
+template <int base>
+constexpr float radical_inverse(uint32_t a)
+{
+    constexpr float inv_base = 1.0f / (float)base;
+    uint32_t reversed_digits = 0;
+    float inv_base_n = 1;
+    while (a) {
+        uint32_t next = a / base;
+        uint32_t digit = a - next * base;
+        reversed_digits = reversed_digits * base + digit;
+        inv_base_n *= inv_base;
+        a = next;
+    }
+    ASSERT(reversed_digits * inv_base_n < 1.00001);
+    return std::min(reversed_digits * inv_base_n, before_one);
+}
+
+template <>
+constexpr float radical_inverse<2>(uint32_t bits)
 {
     bits = (bits << 16u) | (bits >> 16u);
     bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
@@ -44,7 +63,11 @@ constexpr float radical_inverse(uint32_t bits)
     return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
 
-inline vec2 hammersley_2d(uint32_t i, uint32_t N) { return vec2(float(i) / float(N), radical_inverse(i)); }
+inline vec2 hammersley_2d(uint32_t i, uint32_t N) { return vec2(float(i) / float(N), radical_inverse<2>(i)); }
+inline vec3 hammersley_3d(uint32_t i, uint32_t N)
+{
+    return vec3(float(i) / float(N), radical_inverse<2>(i), radical_inverse<3>(i));
+}
 
 // http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
 // https://www.shadertoy.com/view/4dtBWH
