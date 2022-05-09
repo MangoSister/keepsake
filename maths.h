@@ -43,7 +43,7 @@ constexpr T square(const T &x)
 }
 
 template <typename T>
-constexpr T sign(const T &x)
+constexpr T sgn(const T &x)
 {
     return T((T(0) < x) - (x < T(0)));
 }
