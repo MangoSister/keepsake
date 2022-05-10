@@ -142,7 +142,7 @@ inline vec3 sample_uniform_sphere_vol(const vec3 &u)
 {
     float phi = u.x() * two_pi;
     float cos_theta = u.y() * 2.0f - 1.0f;
-    float sin_theta = std::sqrt(std::max(0.0f, 1.0f - square(cos_theta)));
+    float sin_theta = std::sqrt(std::max(0.0f, 1.0f - sqr(cos_theta)));
     float r = std::cbrt(u.z()); // cube root
     return r * vec3(std::cos(phi) * sin_theta, std::sin(phi) * sin_theta, cos_theta);
 }

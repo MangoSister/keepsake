@@ -37,7 +37,7 @@ inline const float before_one = std::nextafter(1.0f, -std::numeric_limits<float>
 inline constexpr int int_max = std::numeric_limits<int>::max();
 
 template <typename T>
-constexpr T square(const T &x)
+constexpr T sqr(const T &x)
 {
     return x * x;
 }
