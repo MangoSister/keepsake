@@ -278,7 +278,8 @@ inline T sinc(T x)
 enum class WrapMode
 {
     Repeat,
-    Clamp
+    Clamp,
+    Natural,
 };
 
 enum class TickMode
@@ -304,18 +305,18 @@ inline void bilinear_helper(const vec2 &uv, const vec2i &res, int &u0, int &u1, 
     if constexpr (wrap_x == WrapMode::Repeat) {
         u0 = (u0 + res.x()) % res.x();
         u1 = (u1 + res.x()) % res.x();
-    } else { // Clamp
+    } else if (wrap_x == WrapMode::Clamp) { // Clamp
         u0 = std::clamp(u0, 0, res.x() - 1);
         u1 = std::clamp(u1, 0, res.x() - 1);
-    }
+    } // else Natural
 
     if constexpr (wrap_y == WrapMode::Repeat) {
         v0 = (v0 + res.y()) % res.y();
         v1 = (v1 + res.y()) % res.y();
-    } else { // Clamp
+    } else if (wrap_y == WrapMode::Clamp) {
         v0 = std::clamp(v0, 0, res.y() - 1);
         v1 = std::clamp(v1, 0, res.y() - 1);
-    }
+    } // else Natural
 }
 
 inline void lerp_helper(float u, int res, WrapMode wrap, TickMode tick, int &u0, int &u1, float &t)
@@ -334,10 +335,10 @@ inline void lerp_helper(float u, int res, WrapMode wrap, TickMode tick, int &u0,
     if (wrap == WrapMode::Repeat) {
         u0 = (u0 + res) % res;
         u1 = (u1 + res) % res;
-    } else { // Clamp
+    } else if (wrap == WrapMode::Clamp) {
         u0 = std::clamp(u0, 0, res - 1);
         u1 = std::clamp(u1, 0, res - 1);
-    }
+    } // else Natural
 }
 
 template <int N>
