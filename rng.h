@@ -184,3 +184,25 @@ inline vec3 sample_triangle(const vec3 &v0, const vec3 &v1, const vec3 &v2, cons
     float gamma = 1.0f - alpha - beta;
     return alpha * v0 + beta * v1 + gamma * v2;
 }
+
+inline int sample_small_distrib(const float *data, int N, float u)
+{
+    float sum_w = 0.0f;
+    for (int i = 0; i < N; ++i) {
+        sum_w += data[i];
+    }
+    ASSERT(sum_w > 0.0f);
+    float inv_sum_w = 1.0f / sum_w;
+
+    float cdf = 0.0f;
+    int selected = N - 1;
+    for (int i = 0; i < N; ++i) {
+        cdf += data[i] * inv_sum_w;
+        if (u < cdf) {
+            selected = i;
+            break;
+        }
+    }
+    ASSERT(data[selected] > 0.0f);
+    return selected;
+}
