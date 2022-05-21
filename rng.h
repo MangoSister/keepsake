@@ -185,6 +185,30 @@ inline vec3 sample_triangle(const vec3 &v0, const vec3 &v1, const vec3 &v2, cons
     return alpha * v0 + beta * v1 + gamma * v2;
 }
 
+// Sample a tetrahedron: http://vcg.isti.cnr.it/jgt/tetra.htm
+inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, const vec3 &v3, const vec3 &xi)
+{
+    float s = xi[0];
+    float t = xi[1];
+    float u = xi[2];
+
+    if (s + t > 1.0f) { // cut'n fold the cube into a prism
+        s = 1.0f - s;
+        t = 1.0f - t;
+    }
+    if (t + u > 1.0f) { // cut'n fold the prism into a tetrahedron
+        float tmp = u;
+        u = 1.0f - s - t;
+        t = 1.0f - tmp;
+    } else if (s + t + u > 1.0f) {
+        float tmp = u;
+        u = s + t + u - 1.0f;
+        s = 1.0f - t - tmp;
+    }
+    float a = 1.0f - s - t - u; // a,s,t,u are the barycentric coordinates of the random point.
+    return v0 * a + v1 * s + v2 * t + v3 * u;
+}
+
 inline int sample_small_distrib(const float *data, int N, float u)
 {
     float sum_w = 0.0f;
