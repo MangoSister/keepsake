@@ -169,6 +169,25 @@ inline vec3 to_cartesian(float phi, float theta)
     return vec3(cos_phi * sin_theta, sin_phi * sin_theta, cos_theta);
 }
 
+// Sometimes I want the up axis to be +y
+inline void to_spherical_yup(const vec3 &dir, float &phi, float &theta)
+{
+    theta = std::acos(std::clamp(dir.y(), -1.0f, 1.0f));
+    phi = std::atan2(dir.z(), dir.x());
+    if (phi < 0.0f) {
+        phi += two_pi;
+    }
+}
+
+inline vec3 to_cartesian_yup(float phi, float theta)
+{
+    float cos_theta = std::cos(theta);
+    float sin_theta = std::sin(theta);
+    float cos_phi = std::cos(phi);
+    float sin_phi = std::sin(phi);
+    return vec3(cos_phi * sin_theta, cos_theta, sin_phi * sin_theta);
+}
+
 inline bool solve_linear_system_2x2(const float A[2][2], const float B[2], float &x0, float &x1)
 {
     float det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
