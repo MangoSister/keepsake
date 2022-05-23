@@ -209,7 +209,7 @@ inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, c
     return v0 * a + v1 * s + v2 * t + v3 * u;
 }
 
-inline int sample_small_distrib(const float *data, int N, float u)
+inline int sample_small_distrib(const float *data, int N, float u, float *u_remap = nullptr)
 {
     float sum_w = 0.0f;
     for (int i = 0; i < N; ++i) {
@@ -221,11 +221,16 @@ inline int sample_small_distrib(const float *data, int N, float u)
     float cdf = 0.0f;
     int selected = N - 1;
     for (int i = 0; i < N; ++i) {
-        cdf += data[i] * inv_sum_w;
-        if (u < cdf) {
+        float dcdf = data[i] * inv_sum_w;
+        float cdf_next = cdf + dcdf;
+        if (u < cdf_next) {
             selected = i;
+            if (u_remap) {
+                *u_remap = (u - cdf) / (cdf_next - cdf);
+            }
             break;
         }
+        cdf = cdf_next;
     }
     ASSERT(data[selected] > 0.0f);
     return selected;
