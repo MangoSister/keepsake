@@ -484,3 +484,15 @@ constexpr void decode_morton_3(uint32_t code, uint32_t &x, uint32_t &y, uint32_t
     y = compact_1_by_2(code >> 1);
     z = compact_1_by_2(code >> 2);
 }
+
+inline vec3 reflect(const vec3 &w, const vec3 &n) { return 2.0f * n.dot(w) * n - w; }
+
+inline bool refract(const vec3 &wi, const vec3 &n, float eta, vec3 &wt)
+{
+    float NdotI = n.dot(wi);
+    float k = 1.0f - eta * eta * (1.0f - sqr(NdotI));
+    if (k < 0.0f)
+        return false;
+    wt = -eta * wi + (eta * NdotI - sqrt(k)) * n;
+    return true;
+}
