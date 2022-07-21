@@ -19,12 +19,19 @@ template <int N>
 using color = Eigen::Array<float, N, 1>;
 using color3 = color<3>;
 using color4 = color<4>;
-using array3 = color<3>;
-using array4 = color<4>;
 template <int N>
 using colord = Eigen::Array<double, N, 1>;
 using color3d = colord<3>;
 using color4d = colord<4>;
+using array2 = Eigen::Array<float, 2, 1>;
+using array3 = Eigen::Array<float, 3, 1>;
+using array4 = Eigen::Array<float, 4, 1>;
+using array2i = Eigen::Array<int, 2, 1>;
+using array3i = Eigen::Array<int, 3, 1>;
+using array4i = Eigen::Array<int, 4, 1>;
+using array2u = Eigen::Array<uint32_t, 2, 1>;
+using array3u = Eigen::Array<uint32_t, 3, 1>;
+using array4u = Eigen::Array<uint32_t, 4, 1>;
 
 inline constexpr float pi = 3.14159265359f;
 inline constexpr float two_pi = 6.28318530718f;
@@ -494,8 +501,18 @@ constexpr void decode_morton_3(uint32_t code, uint32_t &x, uint32_t &y, uint32_t
     z = compact_1_by_2(code >> 2);
 }
 
+inline vec2 demux_float(float f)
+{
+    // ASSERT(f >= 0 && f < 1);
+    uint64_t v = f * (1ull << 32);
+    // ASSERT(v < 0x100000000);
+    uint32_t bits[2] = {compact_1_by_1(v), compact_1_by_1(v >> 1)};
+    return {bits[0] / float(1 << 16), bits[1] / float(1 << 16)};
+}
+
 inline vec3 reflect(const vec3 &w, const vec3 &n) { return 2.0f * n.dot(w) * n - w; }
 
+// eta = eta_i / eta_t
 inline bool refract(const vec3 &wi, const vec3 &n, float eta, vec3 &wt)
 {
     float NdotI = n.dot(wi);
