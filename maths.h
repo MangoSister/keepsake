@@ -23,15 +23,21 @@ template <int N>
 using colord = Eigen::Array<double, N, 1>;
 using color3d = colord<3>;
 using color4d = colord<4>;
-using array2 = Eigen::Array<float, 2, 1>;
-using array3 = Eigen::Array<float, 3, 1>;
-using array4 = Eigen::Array<float, 4, 1>;
-using array2i = Eigen::Array<int, 2, 1>;
-using array3i = Eigen::Array<int, 3, 1>;
-using array4i = Eigen::Array<int, 4, 1>;
-using array2u = Eigen::Array<uint32_t, 2, 1>;
-using array3u = Eigen::Array<uint32_t, 3, 1>;
-using array4u = Eigen::Array<uint32_t, 4, 1>;
+template <int N>
+using arr = Eigen::Array<float, N, 1>;
+using arr2 = arr<2>;
+using arr3 = arr<3>;
+using arr4 = arr<4>;
+template <int N>
+using arri = Eigen::Array<int, N, 1>;
+using arr2i = arri<2>;
+using arr3i = arri<3>;
+using arr4i = arri<4>;
+template <int N>
+using arru = Eigen::Array<uint32_t, N, 1>;
+using arr2u = arru<2>;
+using arr3u = arru<3>;
+using arr4u = arru<4>;
 
 inline constexpr float pi = 3.14159265359f;
 inline constexpr float two_pi = 6.28318530718f;

@@ -4,7 +4,13 @@
 
 // https://www.shadertoy.com/view/XlGcRh
 
-inline array2u hash22u(array2u v)
+template <int N>
+inline arr<N> convert_u32_f01(arru<N> u32)
+{
+    return u32.cast<float>() / float(0xffffffffu);
+}
+
+inline arr2u hash22u(arr2u v)
 {
     // pcg2d
     v = v * 1664525u + 1013904223u;
@@ -25,6 +31,8 @@ inline array2u hash22u(array2u v)
 
     return v;
 }
+
+inline arr2 hash22f(arr2u v) { return convert_u32_f01<2>(hash22u(v)); }
 
 inline uint32_t xxhash32(uint32_t p)
 {
