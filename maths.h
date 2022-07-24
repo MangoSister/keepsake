@@ -79,10 +79,6 @@ T safe_acos(T x)
     return std::acos(std::clamp(x, T(-1.0), T(1.0)));
 }
 
-inline vec3 lerp(const vec3 &v1, const vec3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
-inline color3 lerp(const color3 &v1, const color3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
-inline color4 lerp(const color4 &v1, const color4 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
-
 template <typename T>
 inline T mod(T a, T b)
 {
@@ -94,12 +90,6 @@ template <typename T>
 inline T fract(T x)
 {
     return x - std::floor(x);
-}
-
-inline float luminance(const color3 &rgb)
-{
-    constexpr float lum_weight[3] = {0.212671f, 0.715160f, 0.072169f};
-    return lum_weight[0] * rgb[0] + lum_weight[1] * rgb[1] + lum_weight[2] * rgb[2];
 }
 
 template <typename DerivedV, typename DerivedB>
@@ -127,6 +117,17 @@ template <arithmetic T>
 inline T clamp_negative(const T &v)
 {
     return std::max(v, T(0));
+}
+
+// Is this stable?
+template <typename T>
+inline T sinc(T x)
+{
+    if (x == T(0)) {
+        return T(1);
+    }
+    using std::sin;
+    return sin(x) / x;
 }
 
 template <typename T>
@@ -159,6 +160,112 @@ inline int log2_int(uint32_t v)
 }
 
 inline int log2_int(int32_t v) { return log2_int((uint32_t)v); }
+
+inline float int_as_float(int i)
+{
+    float f;
+    std::memcpy(&f, &i, 4);
+    return f;
+}
+
+inline int float_as_int(float f)
+{
+    int i;
+    std::memcpy(&i, &f, 4);
+    return i;
+}
+
+inline float uint_as_float(uint32_t u)
+{
+    float f;
+    std::memcpy(&f, &u, 4);
+    return f;
+}
+
+inline uint32_t float_as_uint(float f)
+{
+    uint32_t u;
+    std::memcpy(&u, &f, 4);
+    return u;
+}
+
+// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+// Also pbrt hair doc
+// TODO: as of Haswell, the PEXT instruction could do all this in a
+// single instruction.
+
+// "Insert" a 0 bit after each of the 16 low bits of x
+constexpr uint32_t part_1_by_1(uint32_t x)
+{
+    x &= 0x0000ffff;                 // x = ---- ---- ---- ---- fedc ba98 7654 3210
+    x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+    x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+    x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+    return x;
+}
+
+// "Insert" two 0 bits after each of the 10 low bits of x
+constexpr uint32_t part_1_by_2(uint32_t x)
+{
+    x &= 0x000003ff;                  // x = ---- ---- ---- ---- ---- --98 7654 3210
+    x = (x ^ (x << 16)) & 0xff0000ff; // x = ---- --98 ---- ---- ---- ---- 7654 3210
+    x = (x ^ (x << 8)) & 0x0300f00f;  // x = ---- --98 ---- ---- 7654 ---- ---- 3210
+    x = (x ^ (x << 4)) & 0x030c30c3;  // x = ---- --98 ---- 76-- --54 ---- 32-- --10
+    x = (x ^ (x << 2)) & 0x09249249;  // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    return x;
+}
+
+// Inverse of part_1_by_1 - "delete" all odd-indexed bits
+constexpr uint32_t compact_1_by_1(uint32_t x)
+{
+    x &= 0x55555555;                 // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+    x = (x ^ (x >> 1)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+    x = (x ^ (x >> 2)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    x = (x ^ (x >> 4)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+    x = (x ^ (x >> 8)) & 0x0000ffff; // x = ---- ---- ---- ---- fedc ba98 7654 3210
+    return x;
+}
+
+// Inverse of part_1_by_2 - "delete" all bits not at positions divisible by 3
+constexpr uint32_t compact_1_by_2(uint32_t x)
+{
+    x &= 0x09249249;                  // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    x = (x ^ (x >> 2)) & 0x030c30c3;  // x = ---- --98 ---- 76-- --54 ---- 32-- --10
+    x = (x ^ (x >> 4)) & 0x0300f00f;  // x = ---- --98 ---- ---- 7654 ---- ---- 3210
+    x = (x ^ (x >> 8)) & 0xff0000ff;  // x = ---- --98 ---- ---- ---- ---- 7654 3210
+    x = (x ^ (x >> 16)) & 0x000003ff; // x = ---- ---- ---- ---- ---- --98 7654 3210
+    return x;
+}
+
+constexpr uint32_t encode_morton_2(uint32_t x, uint32_t y) { return (part_1_by_1(y) << 1) + part_1_by_1(x); }
+
+constexpr uint32_t encode_morton_3(uint32_t x, uint32_t y, uint32_t z)
+{
+    return (part_1_by_2(z) << 2) + (part_1_by_2(y) << 1) + part_1_by_2(x);
+}
+
+constexpr void decode_morton_2(uint32_t code, uint32_t &x, uint32_t &y)
+{
+    x = compact_1_by_1(code >> 0);
+    y = compact_1_by_1(code >> 1);
+}
+
+constexpr void decode_morton_3(uint32_t code, uint32_t &x, uint32_t &y, uint32_t &z)
+{
+    x = compact_1_by_2(code >> 0);
+    y = compact_1_by_2(code >> 1);
+    z = compact_1_by_2(code >> 2);
+}
+
+inline vec2 demux_float(float f)
+{
+    // ASSERT(f >= 0 && f < 1);
+    uint64_t v = f * (1ull << 32);
+    // ASSERT(v < 0x100000000);
+    uint32_t bits[2] = {compact_1_by_1(v), compact_1_by_1(v >> 1)};
+    return {bits[0] / float(1 << 16), bits[1] / float(1 << 16)};
+}
 
 constexpr float to_radian(float degree) { return degree / 180.0f * pi; }
 
@@ -201,6 +308,13 @@ inline vec3 to_cartesian_yup(float phi, float theta)
     return vec3(cos_phi * sin_theta, cos_theta, sin_phi * sin_theta);
 }
 
+inline float delta_angle(float alpha, float beta)
+{
+    float phi = std::fmod(std::abs(beta - alpha), two_pi);
+    float distance = phi > pi ? two_pi - phi : phi;
+    return distance;
+}
+
 inline bool solve_linear_system_2x2(const float A[2][2], const float B[2], float &x0, float &x1)
 {
     float det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
@@ -234,68 +348,6 @@ inline bool solve_quadratic(float a, float b, float c, float &t0, float &t1)
     return true;
 }
 
-// Duff, Tom, et al. "Building an orthonormal basis, revisited." Journal of Computer Graphics Techniques Vol 6.1 (2017).
-inline void orthonormal_basis(const vec3 &N, vec3 &X, vec3 &Y)
-{
-    float sign = copysignf(1.0f, N.z());
-    const float a = -1.0f / (sign + N.z());
-    const float b = N.x() * N.y() * a;
-    X = vec3(1.0f + sign * N.x() * N.x() * a, sign * b, -sign * N.x());
-    Y = vec3(b, sign + N.y() * N.y() * a, -N.y());
-}
-
-struct Frame
-{
-    Frame()
-    {
-        t = vec3::UnitX();
-        b = vec3::UnitY();
-        n = vec3::UnitZ();
-    }
-
-    Frame(const vec3 &t, const vec3 &b, const vec3 &n) : t(t), b(b), n(n) {}
-
-    explicit Frame(const vec3 &n) : n(n) { orthonormal_basis(n, t, b); }
-
-    bool valid() const
-    {
-        return (std::abs(t.squaredNorm() - 1.0f) <= 1e-4f) && (std::abs(b.squaredNorm() - 1.0f) <= 1e-4f) &&
-               (std::abs(n.squaredNorm() - 1.0f) <= 1e-4f) && (t.isOrthogonal(b, 1e-4f)) &&
-               (b.isOrthogonal(n, 1e-4f)) && (n.isOrthogonal(t, 1e-4f));
-    }
-
-    vec3 to_local(const vec3 &w) const { return vec3(t.dot(w), b.dot(w), n.dot(w)); }
-
-    vec3 to_world(const vec3 &w) const { return t * w.x() + b * w.y() + n * w.z(); }
-
-    vec3 t, b, n;
-};
-
-inline mat4 scale_rotate_translate(const vec3 &scale, const quat &rototation, const vec3 &translatation)
-{
-    mat4 S = mat4::Identity();
-    for (int i = 0; i < 3; ++i) {
-        S(i, i) = scale(i);
-    }
-    mat4 R = mat4::Identity();
-    R.block<3, 3>(0, 0) = rototation.matrix();
-
-    mat4 T = mat4::Identity();
-    for (int i = 0; i < 3; ++i) {
-        T(i, 3) = translatation(i);
-    }
-    return T * R * S;
-}
-
-inline mat4 affine_inverse(const mat4 &mat)
-{
-    mat4 inv;
-    inv.block(0, 0, 3, 3) = mat.block(0, 0, 3, 3).inverse();
-    inv.col(3) = mat.col(3).cwiseInverse();
-    inv.row(3) = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    return inv;
-}
-
 constexpr float srgb_to_linear(float x)
 {
     if (x < 0.04045f) {
@@ -305,16 +357,15 @@ constexpr float srgb_to_linear(float x)
     }
 }
 
-// Is this stable?
-template <typename T>
-inline T sinc(T x)
+inline float luminance(const color3 &rgb)
 {
-    if (x == T(0)) {
-        return T(1);
-    }
-    using std::sin;
-    return sin(x) / x;
+    constexpr float lum_weight[3] = {0.212671f, 0.715160f, 0.072169f};
+    return lum_weight[0] * rgb[0] + lum_weight[1] * rgb[1] + lum_weight[2] * rgb[2];
 }
+
+inline vec3 lerp(const vec3 &v1, const vec3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
+inline color3 lerp(const color3 &v1, const color3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
+inline color4 lerp(const color4 &v1, const color4 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
 
 enum class WrapMode
 {
@@ -399,122 +450,93 @@ inline void lerp_helper(const float *u, const int *res, const WrapMode *wrap, co
     }
 }
 
+// Duff, Tom, et al. "Building an orthonormal basis, revisited." Journal of Computer Graphics Techniques Vol 6.1 (2017).
+inline void orthonormal_basis(const vec3 &N, vec3 &X, vec3 &Y)
+{
+    float sign = copysignf(1.0f, N.z());
+    const float a = -1.0f / (sign + N.z());
+    const float b = N.x() * N.y() * a;
+    X = vec3(1.0f + sign * N.x() * N.x() * a, sign * b, -sign * N.x());
+    Y = vec3(b, sign + N.y() * N.y() * a, -N.y());
+}
+
+struct Frame
+{
+    Frame()
+    {
+        t = vec3::UnitX();
+        b = vec3::UnitY();
+        n = vec3::UnitZ();
+    }
+
+    Frame(const vec3 &t, const vec3 &b, const vec3 &n) : t(t), b(b), n(n) {}
+
+    explicit Frame(const vec3 &n) : n(n) { orthonormal_basis(n, t, b); }
+
+    bool valid() const
+    {
+        return (std::abs(t.squaredNorm() - 1.0f) <= 1e-4f) && (std::abs(b.squaredNorm() - 1.0f) <= 1e-4f) &&
+               (std::abs(n.squaredNorm() - 1.0f) <= 1e-4f) && (t.isOrthogonal(b, 1e-4f)) &&
+               (b.isOrthogonal(n, 1e-4f)) && (n.isOrthogonal(t, 1e-4f));
+    }
+
+    vec3 to_local(const vec3 &w) const { return vec3(t.dot(w), b.dot(w), n.dot(w)); }
+
+    vec3 to_world(const vec3 &w) const { return t * w.x() + b * w.y() + n * w.z(); }
+
+    vec3 t, b, n;
+};
+
+inline mat4 scale_rotate_translate(const vec3 &scale, const quat &rototation, const vec3 &translatation)
+{
+    mat4 S = mat4::Identity();
+    for (int i = 0; i < 3; ++i) {
+        S(i, i) = scale(i);
+    }
+    mat4 R = mat4::Identity();
+    R.block<3, 3>(0, 0) = rototation.matrix();
+
+    mat4 T = mat4::Identity();
+    for (int i = 0; i < 3; ++i) {
+        T(i, 3) = translatation(i);
+    }
+    return T * R * S;
+}
+
+inline mat4 affine_inverse(const mat4 &mat)
+{
+    mat4 inv;
+    inv.block(0, 0, 3, 3) = mat.block(0, 0, 3, 3).inverse();
+    inv.col(3) = mat.col(3).cwiseInverse();
+    inv.row(3) = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    return inv;
+}
+
 inline vec3 transform_dir(const mat4 &m, const vec3 &d) { return m.block<3, 3>(0, 0) * d; }
 
 inline vec3 transform_point(const mat4 &m, const vec3 &p) { return (m * p.homogeneous()).head(3); }
 
-inline float int_as_float(int i)
+struct Transform
 {
-    float f;
-    std::memcpy(&f, &i, 4);
-    return f;
-}
+    Transform() = default;
+    explicit Transform(const mat4 &m) : m(m), inv(m.inverse()) {}
+    Transform(const mat4 &m, const mat4 &inv) : m(m), inv(inv) {}
 
-inline int float_as_int(float f)
-{
-    int i;
-    std::memcpy(&i, &f, 4);
-    return i;
-}
+    Transform inverse() const { return {inv, m}; }
 
-inline float uint_as_float(uint32_t u)
-{
-    float f;
-    std::memcpy(&f, &u, 4);
-    return f;
-}
+    vec3 point(const vec3 &p) const { return (m * p.homogeneous()).head(3); }
 
-inline uint32_t float_as_uint(float f)
-{
-    uint32_t u;
-    std::memcpy(&u, &f, 4);
-    return u;
-}
+    vec4 hpoint(const vec3 &p) const { return m * p.homogeneous(); }
 
-inline float delta_angle(float alpha, float beta)
-{
-    float phi = std::fmod(std::abs(beta - alpha), two_pi);
-    float distance = phi > pi ? two_pi - phi : phi;
-    return distance;
-}
+    vec3 point_hdiv(const vec3 &p) const { return (m * p.homogeneous()).hnormalized(); }
 
-// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
-// Also pbrt hair doc
-// TODO: as of Haswell, the PEXT instruction could do all this in a
-// single instruction.
+    vec3 direction(const vec3 &v) const { return m.block<3, 3>(0, 0) * v; }
 
-// "Insert" a 0 bit after each of the 16 low bits of x
-constexpr uint32_t part_1_by_1(uint32_t x)
-{
-    x &= 0x0000ffff;                 // x = ---- ---- ---- ---- fedc ba98 7654 3210
-    x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-    x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-    x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-    x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-    return x;
-}
+    vec3 normal(const vec3 &n) const { return (inv.transpose().block<3, 3>(0, 0) * n).normalized(); }
 
-// "Insert" two 0 bits after each of the 10 low bits of x
-constexpr uint32_t part_1_by_2(uint32_t x)
-{
-    x &= 0x000003ff;                  // x = ---- ---- ---- ---- ---- --98 7654 3210
-    x = (x ^ (x << 16)) & 0xff0000ff; // x = ---- --98 ---- ---- ---- ---- 7654 3210
-    x = (x ^ (x << 8)) & 0x0300f00f;  // x = ---- --98 ---- ---- 7654 ---- ---- 3210
-    x = (x ^ (x << 4)) & 0x030c30c3;  // x = ---- --98 ---- 76-- --54 ---- 32-- --10
-    x = (x ^ (x << 2)) & 0x09249249;  // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-    return x;
-}
-
-// Inverse of part_1_by_1 - "delete" all odd-indexed bits
-constexpr uint32_t compact_1_by_1(uint32_t x)
-{
-    x &= 0x55555555;                 // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-    x = (x ^ (x >> 1)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-    x = (x ^ (x >> 2)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-    x = (x ^ (x >> 4)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-    x = (x ^ (x >> 8)) & 0x0000ffff; // x = ---- ---- ---- ---- fedc ba98 7654 3210
-    return x;
-}
-
-// Inverse of part_1_by_2 - "delete" all bits not at positions divisible by 3
-constexpr uint32_t compact_1_by_2(uint32_t x)
-{
-    x &= 0x09249249;                  // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-    x = (x ^ (x >> 2)) & 0x030c30c3;  // x = ---- --98 ---- 76-- --54 ---- 32-- --10
-    x = (x ^ (x >> 4)) & 0x0300f00f;  // x = ---- --98 ---- ---- 7654 ---- ---- 3210
-    x = (x ^ (x >> 8)) & 0xff0000ff;  // x = ---- --98 ---- ---- ---- ---- 7654 3210
-    x = (x ^ (x >> 16)) & 0x000003ff; // x = ---- ---- ---- ---- ---- --98 7654 3210
-    return x;
-}
-
-constexpr uint32_t encode_morton_2(uint32_t x, uint32_t y) { return (part_1_by_1(y) << 1) + part_1_by_1(x); }
-
-constexpr uint32_t encode_morton_3(uint32_t x, uint32_t y, uint32_t z)
-{
-    return (part_1_by_2(z) << 2) + (part_1_by_2(y) << 1) + part_1_by_2(x);
-}
-
-constexpr void decode_morton_2(uint32_t code, uint32_t &x, uint32_t &y)
-{
-    x = compact_1_by_1(code >> 0);
-    y = compact_1_by_1(code >> 1);
-}
-
-constexpr void decode_morton_3(uint32_t code, uint32_t &x, uint32_t &y, uint32_t &z)
-{
-    x = compact_1_by_2(code >> 0);
-    y = compact_1_by_2(code >> 1);
-    z = compact_1_by_2(code >> 2);
-}
-
-inline vec2 demux_float(float f)
-{
-    // ASSERT(f >= 0 && f < 1);
-    uint64_t v = f * (1ull << 32);
-    // ASSERT(v < 0x100000000);
-    uint32_t bits[2] = {compact_1_by_1(v), compact_1_by_1(v >> 1)};
-    return {bits[0] / float(1 << 16), bits[1] / float(1 << 16)};
-}
+    mat4 m = mat4::Identity();
+    mat4 inv = mat4::Identity();
+};
 
 inline vec3 reflect(const vec3 &w, const vec3 &n) { return 2.0f * n.dot(w) * n - w; }
 
