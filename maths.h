@@ -506,8 +506,9 @@ inline mat4 scale_rotate_translate(const vec3 &scale, const quat &rototation, co
 inline mat4 affine_inverse(const mat4 &mat)
 {
     mat4 inv;
-    inv.block(0, 0, 3, 3) = mat.block(0, 0, 3, 3).inverse();
-    inv.col(3) = mat.col(3).cwiseInverse();
+    mat3 Ainv = mat.block(0, 0, 3, 3).inverse();
+    inv.block(0, 0, 3, 3) = Ainv;
+    inv.col(3).head(3) = -Ainv * mat.col(3).head(3);
     inv.row(3) = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     return inv;
 }

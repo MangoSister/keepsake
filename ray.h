@@ -25,6 +25,16 @@ inline Ray transform_ray(const mat4 &m, const Ray &r)
     return r_out;
 }
 
+inline Ray transform_ray(const Transform &t, const Ray &r)
+{
+    Ray r_out;
+    r_out.origin = t.point(r.origin);
+    r_out.dir = t.direction(r.dir);
+    r_out.tmin = r.tmin;
+    r_out.tmax = r.tmax;
+    return r_out;
+}
+
 struct Ray2
 {
     Ray2() = default;
