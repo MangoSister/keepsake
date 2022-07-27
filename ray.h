@@ -53,3 +53,19 @@ struct Intersection
     vec3 normal;
     float thit;
 };
+
+inline Intersection transform_it(const mat4 &m, const Intersection &it)
+{
+    Intersection it_out;
+    it_out.thit = it.thit;
+    it_out.normal = transform_normal(m, it.normal);
+    return it_out;
+}
+
+inline Intersection transform_it(const Transform &t, const Intersection &it)
+{
+    Intersection it_out;
+    it_out.thit = it.thit;
+    it_out.normal = t.normal(it.normal);
+    return it_out;
+}

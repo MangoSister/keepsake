@@ -86,6 +86,11 @@ inline T mod(T a, T b)
     return (T)((result < 0) ? result + b : result);
 }
 
+// floor division: divide and round toward -inf
+// https://stackoverflow.com/questions/3041946/how-to-integer-divide-round-negative-numbers-down
+// works for any b != 0
+constexpr int divF(int a, int b) { return a / b - (sgn(a % b) == -sgn(b)); }
+
 template <typename T>
 inline T fract(T x)
 {
@@ -516,6 +521,12 @@ inline mat4 affine_inverse(const mat4 &mat)
 inline vec3 transform_dir(const mat4 &m, const vec3 &d) { return m.block<3, 3>(0, 0) * d; }
 
 inline vec3 transform_point(const mat4 &m, const vec3 &p) { return (m * p.homogeneous()).head(3); }
+
+inline vec3 transform_normal(const mat4 &m, const vec3 &n)
+{
+    // Consider use Transform which caches the inverse matrix.
+    return (m.inverse().transpose().block<3, 3>(0, 0) * n).normalized();
+}
 
 struct Transform
 {
