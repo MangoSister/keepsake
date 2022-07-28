@@ -12,6 +12,8 @@ struct Ray
     vec3 dir;
     float tmax;
 
+    void *extra = nullptr;
+
     vec3 operator()(float t) const { return origin + t * dir; }
 };
 
@@ -52,4 +54,39 @@ struct Intersection
 {
     vec3 normal;
     float thit;
+
+    void *extra = nullptr;
 };
+
+// Normal points outward for rays exiting the surface, else is flipped.
+inline vec3 offset_ray(const vec3 &p, const vec3 &n)
+{
+    constexpr float origin = 1.0f / 32.0f;
+    constexpr float float_scale = 1.0f / 65536.0f;
+    constexpr float int_scale = 256.0f;
+
+    vec3i of_i(int_scale * n.x(), int_scale * n.y(), int_scale * n.z());
+    vec3 p_i(int_as_float(float_as_int(p.x()) + ((p.x() < 0) ? -of_i.x() : of_i.x())),
+             int_as_float(float_as_int(p.y()) + ((p.y() < 0) ? -of_i.y() : of_i.y())),
+             int_as_float(float_as_int(p.z()) + ((p.z() < 0) ? -of_i.z() : of_i.z())));
+    return vec3(fabsf(p.x()) < origin ? p.x() + float_scale * n.x() : p_i.x(),
+                fabsf(p.y()) < origin ? p.y() + float_scale * n.y() : p_i.y(),
+                fabsf(p.z()) < origin ? p.z() + float_scale * n.z() : p_i.z());
+}
+
+enum class OffsetType
+{
+    Shadow,
+    NextBounce,
+};
+
+template <OffsetType type>
+inline Ray spawn_ray(vec3 origin, const vec3 &dir, const vec3 &ng, float tnear, float tfar)
+{
+    if constexpr (type == OffsetType::Shadow) {
+        origin = offset_ray(origin, ng);
+    } else {
+        origin = offset_ray(origin, dir.dot(ng) > 0.0f ? ng : -ng);
+    }
+    return Ray(origin, dir, tnear, tfar);
+}
