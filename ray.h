@@ -50,14 +50,6 @@ struct Ray2
     vec2 operator()(float t) const { return origin + t * dir; }
 };
 
-struct Intersection
-{
-    vec3 normal;
-    float thit;
-
-    void *extra = nullptr;
-};
-
 // Normal points outward for rays exiting the surface, else is flipped.
 inline vec3 offset_ray(const vec3 &p, const vec3 &n)
 {
@@ -89,4 +81,27 @@ inline Ray spawn_ray(vec3 origin, const vec3 &dir, const vec3 &ng, float tnear, 
         origin = offset_ray(origin, dir.dot(ng) > 0.0f ? ng : -ng);
     }
     return Ray(origin, dir, tnear, tfar);
+}
+
+struct Intersection
+{
+    vec3 normal;
+    float thit;
+    void *extra = nullptr;
+};
+
+inline Intersection transform_it(const mat4 &m, const Intersection &it)
+{
+    Intersection it_out;
+    it_out.thit = it.thit;
+    it_out.normal = transform_normal(m, it.normal);
+    return it_out;
+}
+
+inline Intersection transform_it(const Transform &t, const Intersection &it)
+{
+    Intersection it_out;
+    it_out.thit = it.thit;
+    it_out.normal = t.normal(it.normal);
+    return it_out;
 }
