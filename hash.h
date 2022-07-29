@@ -5,7 +5,7 @@
 // https://www.shadertoy.com/view/XlGcRh
 
 template <int N>
-inline arr<N> convert_u32_f01(arru<N> u32)
+inline arr<N> convert_u32_f01(const arru<N> &u32)
 {
     return u32.cast<float>() / float(0xffffffffu);
 }
@@ -26,7 +26,8 @@ inline arr2u hash12u(uint32_t p)
 {
     arr2u v;
     v.x() = hash11u(p);
-    v.y() = hash11u(p + 4200861443);
+    // some big primes
+    v.y() = hash11u(p + 3794833813);
     return v;
 }
 
@@ -53,3 +54,36 @@ inline arr2u hash22u(arr2u v)
 }
 
 inline arr2 hash22f(arr2u v) { return convert_u32_f01<2>(hash22u(v)); }
+
+inline arr3u hash13u(uint32_t p)
+{
+    arr3u v;
+    v.x() = hash11u(p);
+    // some big primes
+    v.y() = hash11u(p + 3794833813);
+    v.z() = hash11u(p + 4200861443);
+    return v;
+}
+
+inline arr3u hash33u(arr3u v)
+{
+    // pcg3d
+    v = v * 1664525u + 1013904223u;
+
+    v.x() += v.y() * v.z();
+    v.y() += v.z() * v.x();
+    v.z() += v.x() * v.y();
+
+    // v ^= v >> 16u;
+    v.x() ^= v.x() >> 16u;
+    v.y() ^= v.y() >> 16u;
+    v.z() ^= v.z() >> 16u;
+
+    v.x() += v.y() * v.z();
+    v.y() += v.z() * v.x();
+    v.z() += v.x() * v.y();
+
+    return v;
+}
+
+inline arr3 hash33f(arr3u v) { return convert_u32_f01<3>(hash33u(v)); }
