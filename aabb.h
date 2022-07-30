@@ -2,6 +2,7 @@
 
 #include "assertion.h"
 #include "maths.h"
+#include "ray.h"
 
 struct AABB2
 {
@@ -256,3 +257,52 @@ inline AABB3 intersect(const AABB3 &b0, const AABB3 &b1)
 }
 
 inline AABB3 join(const AABB3 &b0, const AABB3 &b1) { return AABB3(b0.min.cwiseMin(b1.min), b0.max.cwiseMax(b1.max)); }
+
+inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_dir, const int dir_is_neg[3],
+                           float thit[2] = nullptr)
+{
+    // Check for ray intersection against $x$ and $y$ slabs
+    float tmin = (bounds[dir_is_neg[0]].x() - ray.origin.x()) * inv_dir.x();
+    float tmax = (bounds[1 - dir_is_neg[0]].x() - ray.origin.x()) * inv_dir.x();
+    float tymin = (bounds[dir_is_neg[1]].y() - ray.origin.y()) * inv_dir.y();
+    float tymax = (bounds[1 - dir_is_neg[1]].y() - ray.origin.y()) * inv_dir.y();
+
+    if (tmin > tymax || tymin > tmax)
+        return false;
+    if (tymin > tmin)
+        tmin = tymin;
+    if (tymax < tmax)
+        tmax = tymax;
+
+    // Check for ray intersection against $z$ slab
+    float tzmin = (bounds[dir_is_neg[2]].z() - ray.origin.z()) * inv_dir.z();
+    float tzmax = (bounds[1 - dir_is_neg[2]].z() - ray.origin.z()) * inv_dir.z();
+
+    // Update _tzMax_ to ensure robust bounds intersection
+    if (tmin > tzmax || tzmin > tmax)
+        return false;
+    if (tzmin > tmin)
+        tmin = tzmin;
+    if (tzmax < tmax)
+        tmax = tzmax;
+
+    if ((tmin < ray.tmax) && (tmax > ray.tmin)) {
+        if (thit) {
+            thit[0] = std::max(tmin, ray.tmin);
+            thit[1] = std::min(tmax, ray.tmax);
+        }
+        return true;
+    }
+    return false;
+}
+
+inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, float thit[2] = nullptr)
+{
+    vec3 invDir = ray.dir.cwiseInverse();
+    int dirIsNeg[3];
+    for (int i = 0; i < 3; ++i) {
+        // Actually need to handle negative zeros?
+        dirIsNeg[i] = ray.dir[i] < 0.0f || (ray.dir[i] == 0.0f && std::signbit(ray.dir[i]));
+    }
+    return isect_ray_aabb(ray, bounds, invDir, dirIsNeg, thit);
+}
