@@ -550,6 +550,14 @@ struct Transform
     mat4 inv = mat4::Identity();
 };
 
+inline Transform operator*(const Transform &a, const Transform &b)
+{
+    Transform ret;
+    ret.m = a.m * b.m;
+    ret.inv = b.inv * a.inv;
+    return ret;
+}
+
 inline vec3 reflect(const vec3 &w, const vec3 &n) { return 2.0f * n.dot(w) * n - w; }
 
 // eta = eta_i / eta_t
