@@ -87,3 +87,6 @@ inline arr3u hash33u(arr3u v)
 }
 
 inline arr3 hash33f(arr3u v) { return convert_u32_f01<3>(hash33u(v)); }
+
+// One-liner linear congruential generator. Quick but low quality.
+constexpr uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
