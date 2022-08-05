@@ -48,7 +48,7 @@ constexpr float radical_inverse(uint32_t a)
         inv_base_n *= inv_base;
         a = next;
     }
-    ASSERT(reversed_digits * inv_base_n < 1.00001);
+    // ASSERT(reversed_digits * inv_base_n < 1.00001);
     return std::min(reversed_digits * inv_base_n, before_one);
 }
 

@@ -7,7 +7,7 @@
 template <int N>
 inline arr<N> convert_u32_f01(const arru<N> &u32)
 {
-    return u32.cast<float>() / float(0xffffffffu);
+    return u32.template cast<float>() / float(0xffffffffu);
 }
 
 inline uint32_t hash11u(uint32_t p)
