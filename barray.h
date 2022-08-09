@@ -3,12 +3,21 @@
 // Modified from pbrt.
 
 #include "memory_util.h"
+#include <utility>
 
 template <typename T, int log_block_size = 2>
 class BlockedArray
 {
   public:
-    // BlockedArray Public Methods
+    ~BlockedArray()
+    {
+        for (int i = 0; i < ures * vres; ++i)
+            data[i].~T();
+        free_aligned(data);
+    }
+
+    BlockedArray() = default;
+
     BlockedArray(int ures, int vres, const T *d = nullptr)
         : ures(ures), vres(vres), ublocks(round_up(ures) >> log_block_size)
     {
@@ -22,12 +31,36 @@ class BlockedArray
                 for (int u = 0; u < ures; ++u)
                     (*this)(u, v) = d[v * ures + u];
     }
-    ~BlockedArray()
+
+    BlockedArray(const BlockedArray &other) : ures(other.ures), vres(other.vres), ublocks(other.ublocks)
     {
-        for (int i = 0; i < ures * vres; ++i)
-            data[i].~T();
-        free_aligned(data);
+        int n_alloc = round_up(ures) * round_up(vres);
+        constexpr size_t kCacheLine = 64;
+        data = alloc_aligned<T>(n_alloc, kCacheLine);
+        for (int i = 0; i < n_alloc; ++i)
+            new (&data[i]) T();
+        for (int v = 0; v < vres; ++v)
+            for (int u = 0; u < ures; ++u)
+                (*this)(u, v) = other(u, v);
     }
+
+    friend void swap(BlockedArray &first, BlockedArray &second)
+    {
+        using std::swap;
+        swap(first.data, second.data);
+        swap(first.ures, second.ures);
+        swap(first.vres, second.vres);
+        swap(first.ublocks, second.ublocks);
+    }
+
+    BlockedArray(BlockedArray &&other) noexcept : BlockedArray() { swap(*this, other); }
+
+    BlockedArray &operator=(BlockedArray other)
+    {
+        swap(*this, other);
+        return *this;
+    }
+
     constexpr int block_size() const { return 1 << log_block_size; }
     int round_up(int x) const { return (x + block_size() - 1) & ~(block_size() - 1); }
     int usize() const { return ures; }
@@ -58,7 +91,6 @@ class BlockedArray
     }
 
   private:
-    // BlockedArray Private Data
-    T *data;
-    const int ures, vres, ublocks;
+    T *data = nullptr;
+    int ures = 0, vres = 0, ublocks = 0;
 };
