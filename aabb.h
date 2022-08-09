@@ -182,6 +182,12 @@ struct AABB3
         return o;
     }
 
+    vec3 corner(int i) const
+    {
+        const vec3 *c = (const vec3 *)this;
+        return vec3(c[i & 1].x(), c[i & 2].y(), c[i & 4].z());
+    }
+
     vec3 lerp(const vec3 &t) const
     {
         return vec3(std::lerp(min.x(), max.x(), t.x()), std::lerp(min.y(), max.y(), t.y()),
@@ -305,4 +311,15 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, float thit[2] = 
         dirIsNeg[i] = ray.dir[i] < 0.0f || (ray.dir[i] == 0.0f && std::signbit(ray.dir[i]));
     }
     return isect_ray_aabb(ray, bounds, invDir, dirIsNeg, thit);
+}
+
+inline AABB3 transform_aabb(const Transform &t, const AABB3 &b)
+{
+    const vec3 *c = (const vec3 *)&b;
+    AABB3 out;
+    for (int i = 0; i < 8; ++i) {
+        vec3 corner(c[i & 1].x(), c[i & 2].y(), c[i & 4].z());
+        out.expand(t.point(corner));
+    }
+    return out;
 }
