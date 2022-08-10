@@ -55,10 +55,18 @@ constexpr T sqr(const T &x)
     return x * x;
 }
 
+// NOTE: this returns {-1, 0, 1}.
 template <typename T>
 constexpr T sgn(const T &x)
 {
     return T((T(0) < x) - (x < T(0)));
+}
+
+// NOTE: this only returns {-1, 1}. For +/-0 it also returns the FP sign.
+template <typename T>
+T signum(const T &x)
+{
+    return std::copysign(T(1.0), x);
 }
 
 template <typename T>

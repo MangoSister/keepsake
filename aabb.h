@@ -185,7 +185,7 @@ struct AABB3
     vec3 corner(int i) const
     {
         const vec3 *c = (const vec3 *)this;
-        return vec3(c[i & 1].x(), c[i & 2].y(), c[i & 4].z());
+        return vec3(c[i & 1].x(), c[(i & 2) >> 1].y(), c[(i & 4) >> 2].z());
     }
 
     vec3 lerp(const vec3 &t) const
@@ -265,7 +265,7 @@ inline AABB3 intersect(const AABB3 &b0, const AABB3 &b1)
 inline AABB3 join(const AABB3 &b0, const AABB3 &b1) { return AABB3(b0.min.cwiseMin(b1.min), b0.max.cwiseMax(b1.max)); }
 
 inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_dir, const int dir_is_neg[3],
-                           float thit[2] = nullptr)
+                           float thit[2] = nullptr, vec3 phit[2] = nullptr)
 {
     // Check for ray intersection against $x$ and $y$ slabs
     float tmin = (bounds[dir_is_neg[0]].x() - ray.origin.x()) * inv_dir.x();
@@ -273,12 +273,19 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_
     float tymin = (bounds[dir_is_neg[1]].y() - ray.origin.y()) * inv_dir.y();
     float tymax = (bounds[1 - dir_is_neg[1]].y() - ray.origin.y()) * inv_dir.y();
 
+    int min_axis = dir_is_neg[0] * 3;
+    int max_axis = (1 - dir_is_neg[0]) * 3;
+
     if (tmin > tymax || tymin > tmax)
         return false;
-    if (tymin > tmin)
+    if (tymin > tmin) {
         tmin = tymin;
-    if (tymax < tmax)
+        min_axis = dir_is_neg[1] * 3 + 1;
+    }
+    if (tymax < tmax) {
         tmax = tymax;
+        max_axis = (1 - dir_is_neg[1]) * 3 + 1;
+    }
 
     // Check for ray intersection against $z$ slab
     float tzmin = (bounds[dir_is_neg[2]].z() - ray.origin.z()) * inv_dir.z();
@@ -287,22 +294,34 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_
     // Update _tzMax_ to ensure robust bounds intersection
     if (tmin > tzmax || tzmin > tmax)
         return false;
-    if (tzmin > tmin)
+    if (tzmin > tmin) {
         tmin = tzmin;
-    if (tzmax < tmax)
+        min_axis = dir_is_neg[2] * 3 + 2;
+    }
+    if (tzmax < tmax) {
         tmax = tzmax;
+        max_axis = (1 - dir_is_neg[2]) * 3 + 2;
+    }
 
     if ((tmin < ray.tmax) && (tmax > ray.tmin)) {
+        float t0 = std::max(tmin, ray.tmin);
+        float t1 = std::min(tmax, ray.tmax);
         if (thit) {
-            thit[0] = std::max(tmin, ray.tmin);
-            thit[1] = std::min(tmax, ray.tmax);
+            thit[0] = t0;
+            thit[1] = t1;
+        }
+        if (phit) {
+            phit[0] = ray(t0);
+            phit[0][min_axis % 3] = ((float *)&bounds)[min_axis];
+            phit[1] = ray(t1);
+            phit[1][max_axis % 3] = ((float *)&bounds)[max_axis];
         }
         return true;
     }
     return false;
 }
 
-inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, float thit[2] = nullptr)
+inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, float thit[2] = nullptr, vec3 phit[2] = nullptr)
 {
     vec3 invDir = ray.dir.cwiseInverse();
     int dirIsNeg[3];
@@ -310,7 +329,7 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, float thit[2] = 
         // Actually need to handle negative zeros?
         dirIsNeg[i] = ray.dir[i] < 0.0f || (ray.dir[i] == 0.0f && std::signbit(ray.dir[i]));
     }
-    return isect_ray_aabb(ray, bounds, invDir, dirIsNeg, thit);
+    return isect_ray_aabb(ray, bounds, invDir, dirIsNeg, thit, phit);
 }
 
 inline AABB3 transform_aabb(const Transform &t, const AABB3 &b)
@@ -318,7 +337,7 @@ inline AABB3 transform_aabb(const Transform &t, const AABB3 &b)
     const vec3 *c = (const vec3 *)&b;
     AABB3 out;
     for (int i = 0; i < 8; ++i) {
-        vec3 corner(c[i & 1].x(), c[i & 2].y(), c[i & 4].z());
+        vec3 corner(c[i & 1].x(), c[(i & 2) >> 1].y(), c[(i & 4) >> 2].z());
         out.expand(t.point(corner));
     }
     return out;
