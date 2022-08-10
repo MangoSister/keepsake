@@ -304,17 +304,25 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_
     }
 
     if ((tmin < ray.tmax) && (tmax > ray.tmin)) {
-        float t0 = std::max(tmin, ray.tmin);
-        float t1 = std::min(tmax, ray.tmax);
+        if (ray.tmin > tmin) {
+            tmin = ray.tmin;
+            min_axis = -1;
+        }
+        if (ray.tmax < tmax) {
+            tmax = ray.tmax;
+            max_axis = -1;
+        }
         if (thit) {
-            thit[0] = t0;
-            thit[1] = t1;
+            thit[0] = tmin;
+            thit[1] = tmax;
         }
         if (phit) {
-            phit[0] = ray(t0);
-            phit[0][min_axis % 3] = ((float *)&bounds)[min_axis];
-            phit[1] = ray(t1);
-            phit[1][max_axis % 3] = ((float *)&bounds)[max_axis];
+            phit[0] = ray(tmin);
+            if (min_axis >= 0)
+                phit[0][min_axis % 3] = ((float *)&bounds)[min_axis];
+            phit[1] = ray(tmax);
+            if (max_axis >= 0)
+                phit[1][max_axis % 3] = ((float *)&bounds)[max_axis];
         }
         return true;
     }
