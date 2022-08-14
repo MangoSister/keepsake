@@ -484,6 +484,8 @@ struct Frame
 
     Frame(const vec3 &t, const vec3 &b, const vec3 &n) : t(t), b(b), n(n) {}
 
+    Frame(const vec3 &t, const vec3 &b) : t(t), b(b) { n = t.cross(b).normalized(); }
+
     explicit Frame(const vec3 &n) : n(n) { orthonormal_basis(n, t, b); }
 
     bool valid() const

@@ -85,23 +85,26 @@ inline Ray spawn_ray(vec3 origin, const vec3 &dir, const vec3 &ng, float tnear, 
 
 struct Intersection
 {
-    vec3 normal;
     float thit;
+    vec3 p;
+    Frame frame;
     void *extra = nullptr;
 };
 
 inline Intersection transform_it(const mat4 &m, const Intersection &it)
 {
     Intersection it_out;
-    it_out.normal = transform_normal(m, it.normal);
     it_out.thit = it.thit;
+    it_out.p = transform_point(m, it.p);
+    it_out.frame = Frame(transform_dir(m, it.frame.t), transform_dir(m, it.frame.b));
     return it_out;
 }
 
 inline Intersection transform_it(const Transform &t, const Intersection &it)
 {
     Intersection it_out;
-    it_out.normal = t.normal(it.normal);
     it_out.thit = it.thit;
+    it_out.p = t.point(it.p);
+    it_out.frame = Frame(t.direction(it.frame.t), t.direction(it.frame.b));
     return it_out;
 }
