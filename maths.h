@@ -538,6 +538,13 @@ inline vec3 transform_normal(const mat4 &m, const vec3 &n)
     return (m.inverse().transpose().block<3, 3>(0, 0) * n).normalized();
 }
 
+inline Frame transform_frame(const mat4 &m, const Frame &f)
+{
+    vec3 t = transform_dir(m, f.t).normalized();
+    vec3 b = transform_dir(m, f.b).normalized();
+    return Frame(t, b);
+}
+
 struct Transform
 {
     Transform() = default;
@@ -555,6 +562,13 @@ struct Transform
     vec3 direction(const vec3 &v) const { return m.block<3, 3>(0, 0) * v; }
 
     vec3 normal(const vec3 &n) const { return (inv.transpose().block<3, 3>(0, 0) * n).normalized(); }
+
+    Frame frame(const Frame &f) const
+    {
+        vec3 t = direction(f.t).normalized();
+        vec3 b = direction(f.b).normalized();
+        return Frame(t, b);
+    }
 
     mat4 m = mat4::Identity();
     mat4 inv = mat4::Identity();

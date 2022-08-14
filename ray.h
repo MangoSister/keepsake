@@ -96,7 +96,7 @@ inline Intersection transform_it(const mat4 &m, const Intersection &it)
     Intersection it_out;
     it_out.thit = it.thit;
     it_out.p = transform_point(m, it.p);
-    it_out.frame = Frame(transform_dir(m, it.frame.t), transform_dir(m, it.frame.b));
+    it_out.frame = transform_frame(m, it.frame);
     return it_out;
 }
 
@@ -105,6 +105,6 @@ inline Intersection transform_it(const Transform &t, const Intersection &it)
     Intersection it_out;
     it_out.thit = it.thit;
     it_out.p = t.point(it.p);
-    it_out.frame = Frame(t.direction(it.frame.t), t.direction(it.frame.b));
+    it_out.frame = t.frame(it.frame);
     return it_out;
 }
