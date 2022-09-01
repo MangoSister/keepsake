@@ -34,3 +34,14 @@ std::unique_ptr<color<C>[]> load_from_hdr(const fs::path &path, int &w, int &h) 
 }
 
 void save_to_hdr(const float *data, int w, int h, int c, const fs::path &path);
+
+std::unique_ptr<float[]> load_from_exr(const fs::path &path, int c, int &w, int &h);
+
+template <int C>
+std::unique_ptr<color<C>[]> load_from_exr(const fs::path &path, int &w, int &h) {
+    static_assert(C > 0);
+    std::unique_ptr<float[]> float_data = load_from_exr(path, C, w, h);
+    float *float_ptr = float_data.release();
+    color<C> *color_ptr = reinterpret_cast<color<C> *>(float_ptr);
+    return std::unique_ptr<color<C>[]>(color_ptr);
+}
