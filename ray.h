@@ -85,9 +85,34 @@ inline Ray spawn_ray(vec3 origin, const vec3 &dir, const vec3 &ng, float tnear, 
 
 struct Intersection
 {
+    // Attempts to alleviate the usual shading normal / normal map problems
+    // by forcing the vector to stay in the same hemisphere before/after transform.
+    vec3 sh_vector_to_local(const vec3 &world) const
+    {
+        bool hw = frame.n.dot(world) >= 0.0f;
+        vec3 local = sh_frame.to_local(world);
+        bool hl = local.z() >= 0.0f;
+        if (hw != hl) {
+            local.z() *= -1.0f;
+        }
+        return local;
+    }
+
+    vec3 sh_vector_to_world(const vec3 &local) const
+    {
+        bool hl = local.z() >= 0.0f;
+        vec3 world = sh_frame.to_world(local);
+        bool hw = frame.n.dot(world) >= 0.0f;
+        if (hl != hw) {
+            world -= 2.0f * frame.n.dot(world) * frame.n;
+        }
+        return world;
+    }
+
     float thit;
     vec3 p;
     Frame frame;
+    Frame sh_frame;
     void *extra = nullptr;
 };
 
@@ -97,6 +122,7 @@ inline Intersection transform_it(const mat4 &m, const Intersection &it)
     it_out.thit = it.thit;
     it_out.p = transform_point(m, it.p);
     it_out.frame = transform_frame(m, it.frame);
+    it_out.sh_frame = transform_frame(m, it.sh_frame);
     return it_out;
 }
 
@@ -106,5 +132,6 @@ inline Intersection transform_it(const Transform &t, const Intersection &it)
     it_out.thit = it.thit;
     it_out.p = t.point(it.p);
     it_out.frame = t.frame(it.frame);
+    it_out.sh_frame = t.frame(it.sh_frame);
     return it_out;
 }
