@@ -24,15 +24,15 @@ std::unique_ptr<float[]> load_from_ldr(const fs::path &path, int c, int &w, int 
     return float_data;
 }
 
-std::vector<color3> load_from_hdr(const fs::path &path, int &w, int &h)
+std::unique_ptr<float[]> load_from_hdr(const fs::path &path, int c, int &w, int &h)
 {
     int comp;
-    float *loaded = stbi_loadf(path.string().c_str(), &w, &h, &comp, 3);
+    float *loaded = stbi_loadf(path.string().c_str(), &w, &h, &comp, c);
     ASSERT(loaded);
-    std::vector<color3> img(w * h);
-    memcpy(img.data(), loaded, sizeof(float) * w * h * 3);
+    std::unique_ptr<float[]> float_data = std::make_unique<float[]>(w * h * c);
+    memcpy(float_data.get(), loaded, sizeof(float) * w * h * c);
     stbi_image_free(loaded);
-    return img;
+    return float_data;
 }
 
 void save_to_hdr(const float *data, int w, int h, int c, const fs::path &path)
