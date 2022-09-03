@@ -50,11 +50,9 @@ std::unique_ptr<float[]> load_from_exr(const fs::path &path, int c, int &w, int 
 {
     // width * height * RGBA
     float *loaded;
-    int width;
-    int height;
     const char *err = nullptr;
 
-    int ret = LoadEXR(&loaded, &width, &height, path.string().c_str(), &err);
+    int ret = LoadEXR(&loaded, &w, &h, path.string().c_str(), &err);
     if (ret != TINYEXR_SUCCESS) {
         if (err) {
             fprintf(stderr, "load_from_exr error: %s\n", err);
