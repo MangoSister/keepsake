@@ -379,6 +379,14 @@ inline float luminance(const color3 &rgb)
 inline vec3 lerp(const vec3 &v1, const vec3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
 inline color3 lerp(const color3 &v1, const color3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
 inline color4 lerp(const color4 &v1, const color4 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
+inline vec3 slerp(const vec3 &v1, const vec3 &v2, float t)
+{
+    quat q1;
+    quat q2;
+    q1 = quat::Identity();
+    q2.setFromTwoVectors(v1, v2);
+    return (q1.slerp(t, q2)) * v1;
+}
 
 enum class WrapMode
 {
