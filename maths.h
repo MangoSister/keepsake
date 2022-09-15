@@ -549,7 +549,9 @@ inline vec3 transform_normal(const mat4 &m, const vec3 &n)
 inline Frame transform_frame(const mat4 &m, const Frame &f)
 {
     vec3 t = transform_dir(m, f.t).normalized();
-    vec3 b = transform_dir(m, f.b).normalized();
+    // Need to re-project if m is not rigid...when does this happen tho
+    vec3 b = transform_dir(m, f.b);
+    b = (b - b.dot(t) * t).normalized();
     return Frame(t, b);
 }
 
@@ -574,7 +576,9 @@ struct Transform
     Frame frame(const Frame &f) const
     {
         vec3 t = direction(f.t).normalized();
-        vec3 b = direction(f.b).normalized();
+        // Need to re-project if m is not rigid...when does this happen tho
+        vec3 b = transform_dir(m, f.b);
+        b = (b - b.dot(t) * t).normalized();
         return Frame(t, b);
     }
 

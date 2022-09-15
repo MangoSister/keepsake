@@ -7,14 +7,20 @@ struct Ray
     Ray() = default;
     Ray(const vec3 &o, const vec3 &d, float tmin, float tmax) : origin(o), dir(d), tmin(tmin), tmax(tmax) {}
 
-    vec3 origin;
-    float tmin;
-    vec3 dir;
-    float tmax;
+    bool has_ray_diffs() const { return !rx_dir.isZero(); };
+    vec3 operator()(float t) const { return origin + t * dir; }
+
+    vec3 origin = vec3::Zero();
+    float tmin = 0.0f;
+    vec3 dir = vec3::Zero();
+    float tmax = 0.0f;
+
+    vec3 rx_origin = vec3::Zero();
+    vec3 rx_dir = vec3::Zero();
+    vec3 ry_origin = vec3::Zero();
+    vec3 ry_dir = vec3::Zero();
 
     void *extra = nullptr;
-
-    vec3 operator()(float t) const { return origin + t * dir; }
 };
 
 inline Ray transform_ray(const mat4 &m, const Ray &r)
@@ -85,6 +91,8 @@ inline Ray spawn_ray(vec3 origin, const vec3 &dir, const vec3 &ng, float tnear, 
 
 struct Intersection
 {
+    void compute_partials(const Ray &ray);
+
     // Attempts to alleviate the usual shading normal / normal map problems
     // by forcing the vector to stay in the same hemisphere before/after transform.
     vec3 sh_vector_to_local(const vec3 &world) const
@@ -109,10 +117,19 @@ struct Intersection
         return world;
     }
 
-    float thit;
-    vec3 p;
+    float thit = 0.0f;
+    vec3 p = vec3::Zero();
+    // NOTE: dpdu and dpdv are not necessarily orthogonal
+    vec3 dpdu = vec3::Zero(), dpdv = vec3::Zero();
     Frame frame;
     Frame sh_frame;
+
+    // uv and partials
+    vec2 uv = vec2::Zero();
+    vec3 dpdx = vec3::Zero(), dpdy = vec3::Zero();
+    float dudx = 0.0f, dvdx = 0.0f;
+    float dudy = 0.0f, dvdy = 0.0f;
+
     void *extra = nullptr;
 };
 
@@ -121,8 +138,18 @@ inline Intersection transform_it(const mat4 &m, const Intersection &it)
     Intersection it_out;
     it_out.thit = it.thit;
     it_out.p = transform_point(m, it.p);
+    it_out.dpdu = transform_dir(m, it.dpdu);
+    it_out.dpdv = transform_dir(m, it.dpdv);
     it_out.frame = transform_frame(m, it.frame);
     it_out.sh_frame = transform_frame(m, it.sh_frame);
+    it_out.uv = it.uv;
+    it_out.dpdx = transform_dir(m, it.dpdx);
+    it_out.dpdy = transform_dir(m, it.dpdy);
+    it_out.dudx = it.dudx;
+    it_out.dvdx = it.dvdx;
+    it_out.dudy = it.dudy;
+    it_out.dvdy = it.dvdy;
+
     return it_out;
 }
 
@@ -131,7 +158,17 @@ inline Intersection transform_it(const Transform &t, const Intersection &it)
     Intersection it_out;
     it_out.thit = it.thit;
     it_out.p = t.point(it.p);
+    it_out.dpdu = t.direction(it.dpdu);
+    it_out.dpdv = t.direction(it.dpdv);
     it_out.frame = t.frame(it.frame);
     it_out.sh_frame = t.frame(it.sh_frame);
+    it_out.uv = it.uv;
+    it_out.dpdx = t.direction(it.dpdx);
+    it_out.dpdy = t.direction(it.dpdy);
+    it_out.dudx = it.dudx;
+    it_out.dvdx = it.dvdx;
+    it_out.dudy = it.dudy;
+    it_out.dvdy = it.dvdy;
+
     return it_out;
 }
