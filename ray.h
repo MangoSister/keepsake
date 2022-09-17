@@ -91,7 +91,11 @@ inline Ray spawn_ray(vec3 origin, const vec3 &dir, const vec3 &ng, float tnear, 
 
 struct Intersection
 {
-    void compute_partials(const Ray &ray);
+    bool has_uv_partials() const
+    {
+        return !(dudx == 0.0f && dvdx == 0.0f && dudy == 0.0f && dvdy == 0.0f && dpdx.isZero() && dpdy.isZero());
+    }
+    void compute_uv_partials(const Ray &ray);
 
     // Attempts to alleviate the usual shading normal / normal map problems
     // by forcing the vector to stay in the same hemisphere before/after transform.

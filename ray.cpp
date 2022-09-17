@@ -1,6 +1,6 @@
 #include "ray.h"
 
-void Intersection::compute_partials(const Ray &ray)
+void Intersection::compute_uv_partials(const Ray &ray)
 {
     if (ray.has_ray_diffs()) {
         float d = frame.n.dot(p);

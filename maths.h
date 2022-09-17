@@ -361,6 +361,39 @@ inline bool solve_quadratic(float a, float b, float c, float &t0, float &t1)
     return true;
 }
 
+inline float erfinv(float x)
+{
+    float w, p;
+    x = std::clamp(x, -.99999f, .99999f);
+    w = -std::log((1 - x) * (1 + x));
+    if (w < 5) {
+        w = w - 2.5f;
+        p = 2.81022636e-08f;
+        p = 3.43273939e-07f + p * w;
+        p = -3.5233877e-06f + p * w;
+        p = -4.39150654e-06f + p * w;
+        p = 0.00021858087f + p * w;
+        p = -0.00125372503f + p * w;
+        p = -0.00417768164f + p * w;
+        p = 0.246640727f + p * w;
+        p = 1.50140941f + p * w;
+    } else {
+        w = std::sqrt(w) - 3;
+        p = -0.000200214257f;
+        p = 0.000100950558f + p * w;
+        p = 0.00134934322f + p * w;
+        p = -0.00367342844f + p * w;
+        p = 0.00573950773f + p * w;
+        p = -0.0076224613f + p * w;
+        p = 0.00943887047f + p * w;
+        p = 1.00167406f + p * w;
+        p = 2.83297682f + p * w;
+    }
+    return p * x;
+}
+
+inline float cross2(const vec2 &a, const vec2 &b) { return a.x() * b.y() - a.y() * b.x(); }
+
 constexpr float srgb_to_linear(float x)
 {
     if (x < 0.04045f) {
@@ -376,6 +409,7 @@ inline float luminance(const color3 &rgb)
     return lum_weight[0] * rgb[0] + lum_weight[1] * rgb[1] + lum_weight[2] * rgb[2];
 }
 
+inline vec2 lerp(const vec2 &v1, const vec2 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
 inline vec3 lerp(const vec3 &v1, const vec3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
 inline color3 lerp(const color3 &v1, const color3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
 inline color4 lerp(const color4 &v1, const color4 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
