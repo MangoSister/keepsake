@@ -101,6 +101,12 @@ struct AABB2
         return (reinterpret_cast<vec2 *>(this))[index];
     }
 
+    vec2 corner(int i) const
+    {
+        const vec2 *c = (const vec2 *)this;
+        return vec2(c[i & 1].x(), c[(i >> 1) & 1].y());
+    }
+
     vec2 min = vec2::Constant(inf);
     vec2 max = vec2::Constant(-inf);
 };
