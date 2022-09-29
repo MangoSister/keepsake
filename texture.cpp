@@ -1,21 +1,34 @@
 #include "texture.h"
 #include "assertion.h"
 
+constexpr int byte_stride(TextureDataType data_type)
+{
+    switch (data_type) {
+    case TextureDataType::u8:
+        return 1;
+    case TextureDataType::f32:
+    default:
+        return 4;
+    }
+}
+
 Texture::Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
                  bool build_mipmaps)
     : width(width), height(height), num_channels(num_channels), data_type(data_type)
 {
+    int stride = byte_stride(data_type) * num_channels;
     pyramid.resize(1);
-    pyramid[0] = BlockedArray(width, height, num_channels, bytes);
+    pyramid[0] = BlockedArray(width, height, stride, bytes);
 }
 
 Texture::Texture(const std::byte **pyramid_bytes, int width, int height, int num_channels, TextureDataType data_type,
                  int levels)
     : width(width), height(height), num_channels(num_channels), data_type(data_type)
 {
+    int stride = byte_stride(data_type) * num_channels;
     pyramid.resize(levels);
     for (int i = 0; i < levels; ++i) {
-        pyramid[i] = BlockedArray(width, height, num_channels, pyramid_bytes[i]);
+        pyramid[i] = BlockedArray(width, height, stride, pyramid_bytes[i]);
     }
 }
 
@@ -116,11 +129,11 @@ void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, 
     VLA(out00, float, texture.num_channels);
     texture.fetch_as_float(u0, v0, level, out00);
     VLA(out10, float, texture.num_channels);
-    texture.fetch_as_float(level, u1, v0, out10);
+    texture.fetch_as_float(u1, v0, level, out10);
     VLA(out01, float, texture.num_channels);
-    texture.fetch_as_float(level, u0, v1, out01);
+    texture.fetch_as_float(u0, v1, level, out01);
     VLA(out11, float, texture.num_channels);
-    texture.fetch_as_float(level, u1, v1, out11);
+    texture.fetch_as_float(u1, v1, level, out11);
 
     for (int i = 0; i < texture.num_channels; ++i)
         out[i] = w00 * out00[i] + w10 * out10[i] + w01 * out01[i] + w11 * out11[i];

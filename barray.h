@@ -20,8 +20,9 @@ struct BlockedArray
     BlockedArray() = default;
 
     BlockedArray(int ures, int vres, int stride, const T *d = nullptr, int log_block_size = 2)
-        : ures(ures), vres(vres), stride(stride), ublocks(round_up(ures) >> log_block_size)
+        : ures(ures), vres(vres), stride(stride), log_block_size(log_block_size)
     {
+        ublocks = round_up(ures) >> log_block_size;
         int n_alloc = round_up(ures) * round_up(vres) * stride;
         constexpr size_t cache_line = 64;
         data = alloc_aligned<T>(n_alloc, cache_line);
