@@ -1,7 +1,10 @@
 #pragma once
 #include "maths.h"
+#include <cstddef>
 #include <filesystem>
 namespace fs = std::filesystem;
+
+std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, int &h);
 
 enum class ColorSpace
 {
@@ -9,14 +12,14 @@ enum class ColorSpace
     Linear,
 };
 
-std::unique_ptr<float[]> load_from_ldr(const fs::path &path, int c, int &w, int &h,
+std::unique_ptr<float[]> load_from_ldr_to_float(const fs::path &path, int c, int &w, int &h,
                                        ColorSpace color_space = ColorSpace::Linear);
 
 template <int C>
-std::unique_ptr<color<C>[]> load_from_ldr(const fs::path &path, int &w, int &h,
+std::unique_ptr<color<C>[]> load_from_ldr_to_float(const fs::path &path, int &w, int &h,
                                           ColorSpace color_space = ColorSpace::Linear) {
     static_assert(C > 0);
-    std::unique_ptr<float[]> float_data = load_from_ldr(path, C, w, h, color_space);
+    std::unique_ptr<float[]> float_data = load_from_ldr_to_float(path, C, w, h, color_space);
     float *float_ptr = float_data.release();
     color<C> *color_ptr = reinterpret_cast<color<C> *>(float_ptr);
     return std::unique_ptr<color<C>[]>(color_ptr);

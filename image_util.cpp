@@ -9,7 +9,19 @@
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
-std::unique_ptr<float[]> load_from_ldr(const fs::path &path, int c, int &w, int &h, ColorSpace color_space)
+std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, int &h)
+{
+    int comp;
+    stbi_uc *loaded = stbi_load(path.string().c_str(), &w, &h, &comp, c);
+    ASSERT(loaded);
+    std::unique_ptr<std::byte[]> copy = std::make_unique<std::byte[]>(w * h * c);
+    std::copy(reinterpret_cast<const std::byte *>(loaded), reinterpret_cast<const std::byte *>(loaded) + (w * h * c),
+              copy.get());
+    stbi_image_free(loaded);
+    return copy;
+}
+
+std::unique_ptr<float[]> load_from_ldr_to_float(const fs::path &path, int c, int &w, int &h, ColorSpace color_space)
 {
     int comp;
     stbi_uc *loaded = stbi_load(path.string().c_str(), &w, &h, &comp, c);
