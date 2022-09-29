@@ -34,6 +34,7 @@ struct RenderTarget
     }
 
     void save_to_hdr(const fs::path &path) const;
+    void save_to_exr(const fs::path &path) const;
 
     int width, height;
     std::vector<color3> pixels;

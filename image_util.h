@@ -48,3 +48,5 @@ std::unique_ptr<color<C>[]> load_from_exr(const fs::path &path, int &w, int &h) 
     color<C> *color_ptr = reinterpret_cast<color<C> *>(float_ptr);
     return std::unique_ptr<color<C>[]>(color_ptr);
 }
+
+void save_to_exr(const float *data, int w, int h, int c, const fs::path &path);

@@ -86,3 +86,75 @@ std::unique_ptr<float[]> load_from_exr(const fs::path &path, int c, int &w, int 
     free(loaded);
     return float_data;
 }
+
+void save_to_exr(const float *data, int w, int h, int c, const fs::path &path)
+{
+    ASSERT(c == 3 || c == 4, "save_to_exr only supports rgb or rgba");
+    EXRHeader header;
+    InitEXRHeader(&header);
+    header.num_channels = c;
+    header.channels = (EXRChannelInfo *)malloc(sizeof(EXRChannelInfo) * header.num_channels);
+
+    EXRImage image;
+    InitEXRImage(&image);
+    image.width = w;
+    image.height = h;
+    image.num_channels = c;
+
+    // Split channels
+    std::vector<float> images[4];
+    for (int i = 0; i < c; ++i)
+        images[i].resize(w * h);
+    for (int i = 0; i < w * h; i++)
+        for (int j = 0; j < c; ++j)
+            images[j][i] = data[c * i + j];
+
+    float *image_ptr[4];
+    // Must be (A)BGR order, since most of EXR viewers expect this channel order.
+    if (c == 4) {
+        image_ptr[0] = images[3].data(); // A
+        image_ptr[1] = images[2].data(); // B
+        image_ptr[2] = images[1].data(); // G
+        image_ptr[3] = images[0].data(); // R
+
+        strncpy(header.channels[0].name, "A", 255);
+        header.channels[0].name[strlen("A")] = '\0';
+        strncpy(header.channels[1].name, "B", 255);
+        header.channels[1].name[strlen("B")] = '\0';
+        strncpy(header.channels[2].name, "G", 255);
+        header.channels[2].name[strlen("G")] = '\0';
+        strncpy(header.channels[3].name, "R", 255);
+        header.channels[3].name[strlen("R")] = '\0';
+    } else {
+        image_ptr[0] = images[2].data(); // B
+        image_ptr[1] = images[1].data(); // G
+        image_ptr[2] = images[0].data(); // R
+
+        strncpy(header.channels[0].name, "B", 255);
+        header.channels[0].name[strlen("B")] = '\0';
+        strncpy(header.channels[1].name, "G", 255);
+        header.channels[1].name[strlen("G")] = '\0';
+        strncpy(header.channels[2].name, "R", 255);
+        header.channels[2].name[strlen("R")] = '\0';
+    }
+    image.images = (unsigned char **)image_ptr;
+
+    header.pixel_types = (int *)malloc(sizeof(int) * header.num_channels);
+    header.requested_pixel_types = (int *)malloc(sizeof(int) * header.num_channels);
+    for (int i = 0; i < header.num_channels; i++) {
+        header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;           // pixel type of input image
+        header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT; // pixel type of output image to be stored in .EXR
+        // TODO: maybe also support saving to half
+    }
+
+    const char *err = nullptr;
+    int ret = SaveEXRImageToFile(&image, &header, path.string().c_str(), &err);
+    if (ret != TINYEXR_SUCCESS) {
+        fprintf(stderr, "save_to_exr error: %s\n", err);
+        FreeEXRErrorMessage(err); // free's buffer for an error message
+    }
+
+    free(header.channels);
+    free(header.pixel_types);
+    free(header.requested_pixel_types);
+}
