@@ -54,15 +54,15 @@ static inline int wrap(int x, int dim, TextureWrapMode mode)
     }
 }
 
-color4 TextureSampler::sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy) const
+color4 TextureSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy) const
 {
     ASSERT(texture.num_channels <= 4, "Texture has more than 4 channels");
     color4 out = color4::Zero();
-    sample(texture, uv, duvdxy, out.data());
+    this->operator()(texture, uv, duvdxy, out.data());
     return out;
 }
 
-void NearestSampler::sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const
+void NearestSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const
 {
     float u = uv[0] * texture.pyramid[0].ures - 0.5f;
     float v = uv[1] * texture.pyramid[0].vres - 0.5f;
@@ -74,7 +74,7 @@ void NearestSampler::sample(const Texture &texture, const vec2 &uv, const mat2 &
     texture.fetch_as_float(u0, v0, 0, out);
 }
 
-void LinearSampler::sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const
+void LinearSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const
 {
     float width = duvdxy.cwiseAbs().maxCoeff();
     float level = texture.levels() - 1 + std::log2(std::max(width, (float)1e-8));

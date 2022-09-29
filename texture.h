@@ -41,8 +41,8 @@ struct Texture
 struct TextureSampler
 {
     virtual ~TextureSampler() = default;
-    virtual void sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const = 0;
-    color4 sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy) const;
+    virtual void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const = 0;
+    color4 operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy) const;
 
     TextureWrapMode wrap_mode_u = TextureWrapMode::Repeat;
     TextureWrapMode wrap_mode_v = TextureWrapMode::Repeat;
@@ -50,11 +50,13 @@ struct TextureSampler
 
 struct NearestSampler : public TextureSampler
 {
-    void sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
+    using TextureSampler::operator();
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
 };
 
 struct LinearSampler : public TextureSampler
 {
-    void sample(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
+    using TextureSampler::operator();
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
     void bilinear(const Texture &texture, int level, const vec2 &uv, float *out) const;
 };
