@@ -232,7 +232,7 @@ void ConfigServiceInternal::run_all_tasks() const
         ConfigArgs args(std::make_unique<ConfigArgsInternal>(const_cast<ConfigServiceInternal *>(this), view));
         task(args, task_dir, task_id);
 
-        printf("Saving output to [%s]\n", task_dir.string().c_str());
+        printf("Saving output to [%s]\n\n", task_dir.string().c_str());
     }
 }
 
