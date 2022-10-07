@@ -1,5 +1,6 @@
 #include "texture.h"
 #include "assertion.h"
+#include "image_util.h"
 
 constexpr int byte_stride(TextureDataType data_type)
 {
@@ -137,4 +138,29 @@ void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, 
 
     for (int i = 0; i < texture.num_channels; ++i)
         out[i] = w00 * out00[i] + w10 * out10[i] + w01 * out01[i] + w11 * out11[i];
+}
+
+std::unique_ptr<Texture> create_texture(const ConfigArgs &args)
+{
+    int ch = args.load_integer("channels");
+    bool build_mipmaps = args.load_bool("build_mipmaps");
+    fs::path path = args.load_path("path");
+    std::string ext = path.extension().string();
+    int width, height;
+    TextureDataType data_type;
+    std::unique_ptr<float[]> float_data;
+    std::unique_ptr<std::byte[]> byte_data;
+    const std::byte *ptr = nullptr;
+    if (ext == ".exr") {
+        float_data = load_from_exr(path, ch, width, height);
+        data_type = TextureDataType::f32;
+    } else if (ext == ".hdr") {
+        float_data = load_from_hdr(path, ch, width, height);
+        data_type = TextureDataType::f32;
+    } else {
+        byte_data = load_from_ldr(path, ch, width, height);
+        data_type = TextureDataType::u8;
+    }
+    ptr = float_data ? reinterpret_cast<const std::byte *>(float_data.get()) : byte_data.get();
+    return std::make_unique<Texture>(ptr, width, height, ch, data_type, build_mipmaps);
 }

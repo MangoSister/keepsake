@@ -61,3 +61,5 @@ struct LinearSampler : public TextureSampler
     void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
     void bilinear(const Texture &texture, int level, const vec2 &uv, float *out) const;
 };
+
+std::unique_ptr<Texture> create_texture(const ConfigArgs &args);
