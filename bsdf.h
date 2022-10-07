@@ -1,0 +1,33 @@
+#pragma once
+#include "config.h"
+#include "maths.h"
+
+struct Intersection;
+struct BSDF : public Configurable
+{
+    virtual ~BSDF() = default;
+    virtual bool delta() const = 0;
+    // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
+    virtual color3 eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const = 0;
+    // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
+    virtual color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const = 0;
+    virtual float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const = 0;
+};
+
+struct Lambertian : public BSDF
+{
+    Lambertian() = default;
+    Lambertian(const color3 &albedo) : albedo(albedo){};
+
+    bool delta() const { return false; }
+    // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
+    color3 eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
+    // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
+    color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const;
+    float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
+
+    color3 albedo = color3::Ones();
+};
+
+std::unique_ptr<Lambertian> create_lambertian(const ConfigArgs &args);
+std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args);
