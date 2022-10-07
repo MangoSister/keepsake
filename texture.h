@@ -1,5 +1,6 @@
 #pragma once
 #include "barray.h"
+#include "config.h"
 #include "maths.h"
 #include <cstddef>
 
@@ -19,7 +20,7 @@ enum class TextureWrapMode
     Clamp
 };
 
-struct Texture
+struct Texture : public Configurable
 {
     Texture() = default;
     Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
