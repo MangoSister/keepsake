@@ -40,6 +40,14 @@ std::unique_ptr<float[]> load_from_ldr_to_float(const fs::path &path, int c, int
     return float_data;
 }
 
+void save_to_png(const std::byte *data, int w, int h, int c, const fs::path &path)
+{
+    int stride_bytes = w * c;
+    if (!stbi_write_png(path.string().c_str(), w, h, c, data, stride_bytes)) {
+        printf("save_to_png failed (%s)\n", path.string().c_str());
+    }
+}
+
 std::unique_ptr<float[]> load_from_hdr(const fs::path &path, int c, int &w, int &h)
 {
     int comp;

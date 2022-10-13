@@ -33,6 +33,7 @@ struct RenderTarget
         return *this;
     }
 
+    void save_to_png(const fs::path &path) const;
     void save_to_hdr(const fs::path &path) const;
     void save_to_exr(const fs::path &path) const;
 
