@@ -422,6 +422,13 @@ inline vec3 slerp(const vec3 &v1, const vec3 &v2, float t)
     return (q1.slerp(t, q2)) * v1;
 }
 
+constexpr float smoothstep(float edge0, float edge1, float x)
+{
+    float t;
+    t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
 enum class WrapMode
 {
     Repeat,
