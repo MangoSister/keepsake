@@ -5,6 +5,7 @@
 #include <array>
 #include <pcg_random.hpp>
 #include <random>
+#include <span>
 
 struct RNG
 {
@@ -209,8 +210,9 @@ inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, c
     return v0 * a + v1 * s + v2 * t + v3 * u;
 }
 
-inline int sample_small_distrib(const float *data, int N, float u, float *u_remap = nullptr)
+inline int sample_small_distrib(const std::span<float> data, float u, float *u_remap = nullptr)
 {
+    int N = (int)data.size();
     float sum_w = 0.0f;
     for (int i = 0; i < N; ++i) {
         sum_w += data[i];
@@ -233,5 +235,36 @@ inline int sample_small_distrib(const float *data, int N, float u, float *u_rema
         cdf = cdf_next;
     }
     ASSERT(data[selected] > 0.0f);
+    return selected;
+}
+
+// Usually the data is not a float array, but an array of struct that includes other fields that the pdfs
+// (weights).
+template <typename T, auto member_ptr>
+inline int sample_small_distrib(const std::span<const T> data, float u, float *u_remap = nullptr)
+{
+    int N = (int)data.size();
+    float sum_w = 0.0f;
+    for (int i = 0; i < N; ++i) {
+        sum_w += data[i].*member_ptr;
+    }
+    ASSERT(sum_w > 0.0f);
+    float inv_sum_w = 1.0f / sum_w;
+
+    float cdf = 0.0f;
+    int selected = N - 1;
+    for (int i = 0; i < N; ++i) {
+        float dcdf = data[i].*member_ptr * inv_sum_w;
+        float cdf_next = cdf + dcdf;
+        if (u < cdf_next) {
+            selected = i;
+            if (u_remap) {
+                *u_remap = (u - cdf) / (cdf_next - cdf);
+            }
+            break;
+        }
+        cdf = cdf_next;
+    }
+    ASSERT(data[selected].*member_ptr > 0.0f);
     return selected;
 }
