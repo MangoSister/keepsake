@@ -70,7 +70,17 @@ struct GGX : public MicrofacetDistribution
 
     float G1(const vec3 &w) const { return 1.0f / (1.0f + lambda(w)); }
 
-    float G2(const vec3 &wo, const vec3 &wi) const { return 1.0f / (1.0f + lambda(wo) + lambda(wi)); }
+    float G2(const vec3 &wo, const vec3 &wi) const
+    {
+        // See Heitz et al. 16, Appendix A.
+        // lambda(w) = lambda(-w)
+        if (wo.z() * wi.z() >= 0.0f) {
+            return 1.0f / (1.0f + lambda(wo) + lambda(wi));
+        } else {
+            // beta function is symmetric
+            return (float)std::beta(1.0f + lambda(wo), 1.0f + lambda(wi));
+        }
+    }
 
     float pdf(const vec3 &wo, const vec3 &wm) const
     {
@@ -271,7 +281,17 @@ struct Beckmann : public MicrofacetDistribution
 
     float G1(const vec3 &w) const { return 1.0f / (1.0f + lambda(w)); }
 
-    float G2(const vec3 &wo, const vec3 &wi) const { return 1.0f / (1.0f + lambda(wo) + lambda(wi)); }
+    float G2(const vec3 &wo, const vec3 &wi) const
+    {
+        // See Heitz et al. 16, Appendix A.
+        // lambda(w) = lambda(-w)
+        if (wo.z() * wi.z() >= 0.0f) {
+            return 1.0f / (1.0f + lambda(wo) + lambda(wi));
+        } else {
+            // beta function is symmetric
+            return (float)std::beta(1.0f + lambda(wo), 1.0f + lambda(wi));
+        }
+    }
 
     float pdf(const vec3 &wo, const vec3 &wm) const
     {
