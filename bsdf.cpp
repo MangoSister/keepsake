@@ -1,6 +1,11 @@
 #include "bsdf.h"
 #include "rng.h"
 
+std::pair<color3, float> BSDF::eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
+{
+    return {eval(wo, wi, it), pdf(wo, wi, it)};
+}
+
 color3 Lambertian::eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const
 {
     if (wo.z() <= 0.0f || wi.z() <= 0.0f)

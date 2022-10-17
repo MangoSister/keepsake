@@ -638,6 +638,7 @@ inline Transform operator*(const Transform &a, const Transform &b)
 inline vec3 reflect(const vec3 &w, const vec3 &n) { return 2.0f * n.dot(w) * n - w; }
 
 // eta = eta_i / eta_t
+// Make sure wi and n are on the same side.
 inline bool refract(const vec3 &wi, const vec3 &n, float eta, vec3 &wt)
 {
     float NdotI = n.dot(wi);
