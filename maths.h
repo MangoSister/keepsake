@@ -409,10 +409,25 @@ inline float luminance(const color3 &rgb)
     return lum_weight[0] * rgb[0] + lum_weight[1] * rgb[1] + lum_weight[2] * rgb[2];
 }
 
-inline vec2 lerp(const vec2 &v1, const vec2 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
-inline vec3 lerp(const vec3 &v1, const vec3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
-inline color3 lerp(const color3 &v1, const color3 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
-inline color4 lerp(const color4 &v1, const color4 &v2, float t) { return (1.0f - t) * v1 + t * v2; }
+template <typename DerivedA, typename DerivedB>
+auto lerp(const Eigen::MatrixBase<DerivedA> &v1, const Eigen::MatrixBase<DerivedB> &v2, float t)
+{
+    return (1.0f - t) * v1 + t * v2;
+}
+
+template <typename DerivedA, typename DerivedB>
+auto lerp(const Eigen::ArrayBase<DerivedA> &v1, const Eigen::ArrayBase<DerivedB> &v2, float t)
+{
+    return (1.0f - t) * v1 + t * v2;
+}
+// We can have per-channel lerp for arrays
+template <typename DerivedA, typename DerivedB, typename DerivedC>
+auto lerp(const Eigen::ArrayBase<DerivedA> &v1, const Eigen::ArrayBase<DerivedB> &v2,
+          const Eigen::ArrayBase<DerivedB> &t)
+{
+    return (1.0f - t) * v1 + t * v2;
+}
+
 inline vec3 slerp(const vec3 &v1, const vec3 &v2, float t)
 {
     quat q1;
