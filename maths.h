@@ -423,7 +423,7 @@ auto lerp(const Eigen::ArrayBase<DerivedA> &v1, const Eigen::ArrayBase<DerivedB>
 // We can have per-channel lerp for arrays
 template <typename DerivedA, typename DerivedB, typename DerivedC>
 auto lerp(const Eigen::ArrayBase<DerivedA> &v1, const Eigen::ArrayBase<DerivedB> &v2,
-          const Eigen::ArrayBase<DerivedB> &t)
+          const Eigen::ArrayBase<DerivedC> &t)
 {
     return (1.0f - t) * v1 + t * v2;
 }
