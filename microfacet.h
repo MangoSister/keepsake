@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ks/assertion.h"
 #include "ks/maths.h"
 
 struct MicrofacetDistribution
