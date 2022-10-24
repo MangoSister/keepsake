@@ -73,7 +73,7 @@ struct ConfigurableTable
 {
     void register_parser(std::string_view prefix, const ConfigurableParser &parser)
     {
-        parsers.insert({std::string(prefix), parser});
+        parsers.push_back({std::string(prefix), parser});
     }
     template <typename T>
     void register_parser(std::string_view prefix,
@@ -98,7 +98,7 @@ struct ConfigurableTable
     }
 
     StringHashTable<std::unique_ptr<Configurable>> assets;
-    StringHashTable<ConfigurableParser> parsers;
+    std::vector<std::pair<std::string, ConfigurableParser>> parsers;
 };
 
 // (args, task_dir, task_id);
