@@ -650,6 +650,33 @@ inline Transform operator*(const Transform &a, const Transform &b)
     return ret;
 }
 
+inline Transform ortho_proj(float right, float left, float top, float bottom, float near, float far)
+{
+    mat4 m = mat4::Identity();
+    m(0, 0) = 2 / (right - left);
+    m(1, 1) = 2 / (top - bottom);
+    m(2, 2) = 2 / (near - far);
+    m(0, 3) = -(right + left) / (right - left);
+    m(1, 3) = -(top + bottom) / (top - bottom);
+    m(2, 3) = -(near + far) / (near - far);
+    m(3, 3) = 1;
+    return Transform(m);
+}
+
+// look at -Z axis, rotate up to Y axis, PS:use this function after normalization
+inline Transform view_proj(const vec3 &pos, const vec3 &lookat, const vec3 &up)
+{
+    vec3 right = lookat.cross(up);
+    mat4 trans = mat4::Identity();
+    trans(0, 3) = -pos.x();
+    trans(1, 3) = -pos.y();
+    trans(2, 3) = -pos.z();
+    mat4 rot;
+    rot << right.x(), right.y(), right.z(), 0, up.x(), up.y(), up.z(), 0, -lookat.x(), -lookat.y(), -lookat.z(), 0, 0,
+        -0, 0, 1;
+    return Transform(rot * trans);
+}
+
 inline vec3 reflect(const vec3 &w, const vec3 &n) { return 2.0f * n.dot(w) * n - w; }
 
 // eta = eta_i / eta_t
