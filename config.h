@@ -40,6 +40,7 @@ struct ConfigArgs
     float load_float(std::string_view name) const;
     vec2 load_vec2(std::string_view name, bool force_normalize = false) const;
     vec3 load_vec3(std::string_view name, bool force_normalize = false) const;
+    vec4 load_vec4(std::string_view name, bool force_normalize = false) const;
     Transform load_transform(std::string_view name) const;
     bool load_bool(std::string_view name) const;
     std::string load_string(std::string_view name) const;
@@ -49,6 +50,7 @@ struct ConfigArgs
     float load_float(int index) const;
     vec2 load_vec2(int index, bool force_normalize = false) const;
     vec3 load_vec3(int index, bool force_normalize = false) const;
+    vec4 load_vec4(int index, bool force_normalize = false) const;
     Transform load_transform(int index) const;
     bool load_bool(int index) const;
     std::string load_string(int index) const;

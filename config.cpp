@@ -13,6 +13,7 @@ struct ConfigServiceInternal
     float load_float_field(const toml::node_view<const toml::node> &args, float time = 0.0f);
     vec2 load_vec2_field(const toml::node_view<const toml::node> &args, bool force_normalize, float time = 0.0f);
     vec3 load_vec3_field(const toml::node_view<const toml::node> &args, bool force_normalize, float time = 0.0f);
+    vec4 load_vec4_field(const toml::node_view<const toml::node> &args, bool force_normalize, float time = 0.0f);
     Transform load_transform_field(const toml::node_view<const toml::node> &args, float time = 0.0f);
 
     fs::path output_directory() const;
@@ -25,6 +26,7 @@ struct ConfigServiceInternal
     std::unordered_map<const toml::node *, KeyframeFloat> float_fields;
     std::unordered_map<const toml::node *, KeyframeVec2> vec2_fields;
     std::unordered_map<const toml::node *, KeyframeVec3> vec3_fields;
+    std::unordered_map<const toml::node *, KeyframeVec4> vec4_fields;
 
     std::unordered_map<std::string, ConfigTask> task_factory;
 };
@@ -130,6 +132,39 @@ vec3 ConfigServiceInternal::load_vec3_field(const toml::node_view<const toml::no
                     field.values[i].normalize();
             }
             it = vec3_fields.insert({args.node(), std::move(field)}).first;
+        }
+        return it->second.eval(time);
+    }
+}
+
+vec4 ConfigServiceInternal::load_vec4_field(const toml::node_view<const toml::node> &args, bool force_normalize,
+                                            float time /*= 0.0f*/)
+{
+    if (args.is_array()) {
+        const toml::array &components = *args.as_array();
+        vec4 v;
+        for (int i = 0; i < 4; ++i)
+            v[i] = *components[i].value<float>();
+        if (force_normalize)
+            v.normalize();
+        return v;
+    } else {
+        auto it = vec4_fields.find(args.node());
+        if (it == vec4_fields.end()) {
+            const toml::array &times = *args["times"].as_array();
+            const toml::array &values = *args["values"].as_array();
+            KeyframeVec4 field;
+            field.times.resize(times.size());
+            field.values.resize(values.size());
+            for (int i = 0; i < times.size(); ++i) {
+                field.times[i] = *times[i].value<float>();
+                const toml::array &value = *values[i].as_array();
+                for (int j = 0; j < 4; ++j)
+                    field.values[i][j] = *value[j].value<float>();
+                if (force_normalize)
+                    field.values[i].normalize();
+            }
+            it = vec4_fields.insert({args.node(), std::move(field)}).first;
         }
         return it->second.eval(time);
     }
@@ -285,8 +320,9 @@ struct ConfigArgsInternal
 
     int load_integer(std::string_view name) const;
     float load_float(std::string_view name) const;
-    vec2 load_vec2(std::string_view name, bool force_normalize) const;
-    vec3 load_vec3(std::string_view name, bool force_normalize) const;
+    vec2 load_vec2(std::string_view name, bool force_normalize = false) const;
+    vec3 load_vec3(std::string_view name, bool force_normalize = false) const;
+    vec4 load_vec4(std::string_view name, bool force_normalize = false) const;
     Transform load_transform(std::string_view name) const;
     bool load_bool(std::string_view name) const;
     std::string load_string(std::string_view name) const;
@@ -295,6 +331,7 @@ struct ConfigArgsInternal
     float load_float(int index) const;
     vec2 load_vec2(int index, bool force_normalize = false) const;
     vec3 load_vec3(int index, bool force_normalize = false) const;
+    vec4 load_vec4(int index, bool force_normalize = false) const;
     Transform load_transform(int index) const;
     bool load_bool(int index) const;
     std::string load_string(int index) const;
@@ -333,6 +370,16 @@ vec3 ConfigArgsInternal::load_vec3(std::string_view name, bool force_normalize) 
 vec3 ConfigArgsInternal::load_vec3(int index, bool force_normalize) const
 {
     return service->load_vec3_field(args[index], force_normalize, time);
+}
+
+vec4 ConfigArgsInternal::load_vec4(std::string_view name, bool force_normalize) const
+{
+    return service->load_vec4_field(args[name], force_normalize, time);
+}
+
+vec4 ConfigArgsInternal::load_vec4(int index, bool force_normalize) const
+{
+    return service->load_vec4_field(args[index], force_normalize, time);
 }
 
 Transform ConfigArgsInternal::load_transform(std::string_view name) const
@@ -402,6 +449,13 @@ vec3 ConfigArgs::load_vec3(std::string_view name, bool force_normalize) const
 }
 
 vec3 ConfigArgs::load_vec3(int index, bool force_normalize) const { return args->load_vec3(index, force_normalize); }
+
+vec4 ConfigArgs::load_vec4(std::string_view name, bool force_normalize) const
+{
+    return args->load_vec4(name, force_normalize);
+}
+
+vec4 ConfigArgs::load_vec4(int index, bool force_normalize) const { return args->load_vec4(index, force_normalize); }
 
 Transform ConfigArgs::load_transform(std::string_view name) const { return args->load_transform(name); }
 

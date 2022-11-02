@@ -50,3 +50,10 @@ struct KeyframeVec3 : public KeyframeField<vec3>
 
     bool use_slerp = false;
 };
+
+struct KeyframeVec4 : public KeyframeField<vec4>
+{
+    vec4 eval(float t) const;
+
+    bool use_slerp = false;
+};
