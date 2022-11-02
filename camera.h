@@ -1,6 +1,6 @@
 #pragma once
-#include "ks/maths.h"
-#include "ks/ray.h"
+#include "maths.h"
+#include "ray.h"
 
 struct Camera
 {

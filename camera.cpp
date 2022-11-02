@@ -1,5 +1,5 @@
 #include "camera.h"
-#include "ks/config.h"
+#include "config.h"
 
 static inline mat4 look_at(const vec3 &position, const vec3 &target, vec3 up)
 {
