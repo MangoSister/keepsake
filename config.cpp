@@ -7,8 +7,8 @@
 
 struct ConfigServiceInternal
 {
-    ConfigServiceInternal(const fs::path &file_path);
-    ConfigServiceInternal(const std::string_view &str);
+    void parse_file(const fs::path &file_path);
+    void parse(std::string_view str);
 
     float load_float_field(const toml::node_view<const toml::node> &args, float time = 0.0f);
     vec2 load_vec2_field(const toml::node_view<const toml::node> &args, bool force_normalize, float time = 0.0f);
@@ -29,7 +29,7 @@ struct ConfigServiceInternal
     std::unordered_map<std::string, ConfigTask> task_factory;
 };
 
-ConfigServiceInternal::ConfigServiceInternal(const fs::path &file_path)
+void ConfigServiceInternal::parse_file(const fs::path &file_path)
 {
     try {
         cfg = toml::parse_file(file_path.string());
@@ -38,7 +38,7 @@ ConfigServiceInternal::ConfigServiceInternal(const fs::path &file_path)
     }
 }
 
-ConfigServiceInternal::ConfigServiceInternal(const std::string_view &str)
+void ConfigServiceInternal::parse(std::string_view str)
 {
     try {
         cfg = toml::parse(str);
@@ -253,10 +253,11 @@ void ConfigurableTable::load(ConfigServiceInternal &service)
 }
 
 ConfigService::~ConfigService() = default;
+ConfigService::ConfigService() : service(std::make_unique<ConfigServiceInternal>()) {}
 
-ConfigService::ConfigService(const fs::path &file_path) : service(std::make_unique<ConfigServiceInternal>(file_path)) {}
+void ConfigService::parse_file(const fs::path &file_path) { service->parse_file(file_path); }
 
-ConfigService::ConfigService(const std::string_view &str) : service(std::make_unique<ConfigServiceInternal>(str)) {}
+void ConfigService::parse(std::string_view str) { service->parse(str); }
 
 void ConfigService::register_asset(std::string_view prefix, const ConfigurableParser &parser)
 {
@@ -269,6 +270,8 @@ void ConfigService::register_task(std::string_view name, const ConfigTask &task)
 }
 
 void ConfigService::load_assets() { service->asset_table.load(*service); }
+
+const ConfigurableTable &ConfigService::asset_table() const { return service->asset_table; }
 
 fs::path ConfigService::output_directory() const { return service->output_directory(); }
 

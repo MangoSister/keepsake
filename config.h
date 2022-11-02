@@ -107,13 +107,16 @@ using ConfigTask = std::function<void(const ConfigArgs &args, const fs::path &, 
 struct ConfigService
 {
     ~ConfigService();
-    ConfigService(const fs::path &file_path);
-    ConfigService(const std::string_view &str);
+    ConfigService();
+
+    void parse_file(const fs::path &file_path);
+    void parse(std::string_view str);
 
     void register_asset(std::string_view prefix, const ConfigurableParser &parser);
     void register_task(std::string_view name, const ConfigTask &task);
 
     void load_assets();
+    const ConfigurableTable &asset_table() const;
 
     fs::path output_directory() const;
     void run_all_tasks() const;
