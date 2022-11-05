@@ -62,4 +62,40 @@ struct LinearSampler : public TextureSampler
     void bilinear(const Texture &texture, int level, const vec2 &uv, float *out) const;
 };
 
+struct CubicSampler : public TextureSampler
+{
+    enum class Kernel
+    {
+        MitchellNetravali,
+        BSpline,
+        CatmullRom,
+    };
+    CubicSampler(Kernel kernel = Kernel::MitchellNetravali)
+    {
+        switch (kernel) {
+        case Kernel::MitchellNetravali: {
+            ca = vec4(21.0, -36.0, 0.0, 16.0) / 18.0;
+            cb = vec4(-7.0, 36.0, -60.0, 32.0) / 18.0;
+            break;
+        }
+        case Kernel::BSpline: {
+            ca = vec4(3.0, -6.0, 0.0, 4.0) / 6.0;
+            cb = vec4(-1.0, 6.0, -12.0, 8.0) / 6.0;
+            break;
+        }
+        case Kernel::CatmullRom:
+        default: {
+            ca = vec4(3.0, -5.0, 0.0, 2.0) / 2.0;
+            cb = vec4(-1.0, 5.0, -8.0, 4.0) / 2.0;
+            break;
+        }
+        }
+    }
+    using TextureSampler::operator();
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
+    void bicubic(const Texture &texture, int level, const vec2 &uv, float *out) const;
+
+    vec4 ca, cb;
+};
+
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args);

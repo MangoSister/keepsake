@@ -110,17 +110,17 @@ void LinearSampler::operator()(const Texture &texture, const vec2 &uv, const mat
 
 void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, float *out) const
 {
-    float u = uv[0] * texture.pyramid[0].ures - 0.5f;
-    float v = uv[1] * texture.pyramid[0].vres - 0.5f;
+    float u = uv[0] * texture.pyramid[level].ures - 0.5f;
+    float v = uv[1] * texture.pyramid[level].vres - 0.5f;
     int u0 = (int)std::floor(u);
     int v0 = (int)std::floor(v);
     float du = u - u0;
     float dv = v - v0;
 
-    u0 = wrap(u0, texture.pyramid[0].ures, wrap_mode_u);
-    v0 = wrap(v0, texture.pyramid[0].vres, wrap_mode_v);
-    int u1 = wrap(u0 + 1, texture.pyramid[0].ures, wrap_mode_u);
-    int v1 = wrap(v0 + 1, texture.pyramid[0].vres, wrap_mode_v);
+    u0 = wrap(u0, texture.pyramid[level].ures, wrap_mode_u);
+    v0 = wrap(v0, texture.pyramid[level].vres, wrap_mode_v);
+    int u1 = wrap(u0 + 1, texture.pyramid[level].ures, wrap_mode_u);
+    int v1 = wrap(v0 + 1, texture.pyramid[level].vres, wrap_mode_v);
 
     float w00 = (1 - du) * (1 - dv);
     float w10 = du * (1 - dv);
@@ -138,6 +138,67 @@ void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, 
 
     for (int i = 0; i < texture.num_channels; ++i)
         out[i] = w00 * out00[i] + w10 * out10[i] + w01 * out01[i] + w11 * out11[i];
+}
+
+void CubicSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const
+{
+    float width = duvdxy.cwiseAbs().maxCoeff();
+    float level = texture.levels() - 1 + std::log2(std::max(width, (float)1e-8));
+    if (level < 0 || texture.levels() == 1) {
+        bicubic(texture, 0, uv, out);
+    } else if (level >= texture.levels() - 1) {
+        texture.fetch_as_float(0, 0, texture.levels() - 1, out);
+    } else {
+        int ilevel = (int)std::floor(level);
+        float delta = level - ilevel;
+        VLA(out0, float, texture.num_channels);
+        bicubic(texture, ilevel, uv, out0);
+        VLA(out1, float, texture.num_channels);
+        bicubic(texture, ilevel + 1, uv, out1);
+        for (int i = 0; i < texture.num_channels; ++i)
+            out[i] = std::lerp(out0[i], out1[i], delta);
+    }
+}
+
+inline vec4 powers(float x) { return vec4(x * x * x, x * x, x, 1.0f); }
+
+inline void spline(float x, int num_channels, const float *c0, const float *c1, const float *c2, const float *c3,
+                   const vec4 &ca, const vec4 &cb, float *out)
+{
+    float a0 = cb.dot(powers(x + 1.0));
+    float a1 = ca.dot(powers(x));
+    float a2 = ca.dot(powers(1.0 - x));
+    float a3 = cb.dot(powers(2.0 - x));
+    for (int i = 0; i < num_channels; ++i) {
+        out[i] = c0[i] * a0 + c1[i] * a1 + c2[i] * a2 + c3[i] * a3;
+    }
+}
+
+void CubicSampler::bicubic(const Texture &texture, int level, const vec2 &uv, float *out) const
+{
+    float u = uv[0] * texture.pyramid[level].ures - 0.5f;
+    float v = uv[1] * texture.pyramid[level].vres - 0.5f;
+    int u0 = (int)std::floor(u);
+    int v0 = (int)std::floor(v);
+    float du = u - u0;
+    float dv = v - v0;
+
+    vec4i us;
+    vec4i vs;
+    for (int i = 0; i < 4; ++i) {
+        us[i] = wrap(u0 + i - 1, texture.pyramid[level].ures, wrap_mode_u);
+        vs[i] = wrap(v0 + i - 1, texture.pyramid[level].vres, wrap_mode_v);
+    }
+
+    int c = texture.num_channels;
+    VLA(rows, float, c * 4);
+    VLA(cols, float, c * 4);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x)
+            texture.fetch_as_float(us[x], vs[y], level, &cols[x * c]);
+        spline(du, texture.num_channels, &cols[0], &cols[1 * c], &cols[2 * c], &cols[3 * c], ca, cb, &rows[y * c]);
+    }
+    spline(dv, c, &rows[0 * c], &rows[1 * c], &rows[2 * c], &rows[3 * c], ca, cb, out);
 }
 
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args)
