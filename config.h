@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,15 +37,18 @@ struct ConfigArgs
     ConfigArgs operator[](int idx) const;
     size_t array_size() const;
 
-    int load_integer(std::string_view name) const;
-    float load_float(std::string_view name) const;
-    vec2 load_vec2(std::string_view name, bool force_normalize = false) const;
-    vec3 load_vec3(std::string_view name, bool force_normalize = false) const;
-    vec4 load_vec4(std::string_view name, bool force_normalize = false) const;
-    Transform load_transform(std::string_view name) const;
-    bool load_bool(std::string_view name) const;
-    std::string load_string(std::string_view name) const;
-    fs::path load_path(std::string_view name) const;
+    int load_integer(std::string_view name, const std::optional<int> &default_value = {}) const;
+    float load_float(std::string_view name, const std::optional<float> &default_value = {}) const;
+    vec2 load_vec2(std::string_view name, bool force_normalize = false,
+                   const std::optional<vec2> &default_value = {}) const;
+    vec3 load_vec3(std::string_view name, bool force_normalize = false,
+                   const std::optional<vec3> &default_value = {}) const;
+    vec4 load_vec4(std::string_view name, bool force_normalize = false,
+                   const std::optional<vec4> &default_value = {}) const;
+    Transform load_transform(std::string_view name, const std::optional<Transform> &default_value = {}) const;
+    bool load_bool(std::string_view name, const std::optional<bool> &default_value = {}) const;
+    std::string load_string(std::string_view name, const std::optional<std::string> &default_value = {}) const;
+    fs::path load_path(std::string_view name, const std::optional<fs::path> &default_value = {}) const;
 
     int load_integer(int index) const;
     float load_float(int index) const;

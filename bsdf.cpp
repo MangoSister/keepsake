@@ -10,7 +10,7 @@ color3 Lambertian::eval(const vec3 &wo, const vec3 &wi, const Intersection &it) 
 {
     if (wo.z() <= 0.0f || wi.z() <= 0.0f)
         return color3::Zero();
-    return inv_pi * albedo * wi.z();
+    return inv_pi * (*albedo)(it) * wi.z();
 }
 
 color3 Lambertian::sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const
@@ -21,7 +21,7 @@ color3 Lambertian::sample(const vec3 &wo, vec3 &wi, const Intersection &it, cons
     }
     wi = sample_cosine_hemisphere(u);
     pdf = wi.z() * inv_pi;
-    return albedo;
+    return (*albedo)(it);
 }
 
 float Lambertian::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
@@ -33,8 +33,8 @@ float Lambertian::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) co
 
 std::unique_ptr<Lambertian> create_lambertian(const ConfigArgs &args)
 {
-    color3 albedo = args.load_vec3("albedo").array();
-    return std::make_unique<Lambertian>(albedo);
+    std::unique_ptr<ShaderField<color3>> albedo = create_shader_field_color<3>(args["albedo"]);
+    return std::make_unique<Lambertian>(std::move(albedo));
 }
 
 std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args)

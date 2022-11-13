@@ -318,14 +318,17 @@ struct ConfigArgsInternal
         : service(service), args(args)
     {}
 
-    int load_integer(std::string_view name) const;
-    float load_float(std::string_view name) const;
-    vec2 load_vec2(std::string_view name, bool force_normalize = false) const;
-    vec3 load_vec3(std::string_view name, bool force_normalize = false) const;
-    vec4 load_vec4(std::string_view name, bool force_normalize = false) const;
-    Transform load_transform(std::string_view name) const;
-    bool load_bool(std::string_view name) const;
-    std::string load_string(std::string_view name) const;
+    int load_integer(std::string_view name, const std::optional<int> &default_value = {}) const;
+    float load_float(std::string_view name, const std::optional<float> &default_value = {}) const;
+    vec2 load_vec2(std::string_view name, bool force_normalize = false,
+                   const std::optional<vec2> &default_value = {}) const;
+    vec3 load_vec3(std::string_view name, bool force_normalize = false,
+                   const std::optional<vec3> &default_value = {}) const;
+    vec4 load_vec4(std::string_view name, bool force_normalize = false,
+                   const std::optional<vec4> &default_value = {}) const;
+    Transform load_transform(std::string_view name, const std::optional<Transform> &default_value = {}) const;
+    bool load_bool(std::string_view name, const std::optional<bool> &default_value = {}) const;
+    std::string load_string(std::string_view name, const std::optional<std::string> &default_value = {}) const;
 
     int load_integer(int index) const;
     float load_float(int index) const;
@@ -341,64 +344,176 @@ struct ConfigArgsInternal
     mutable float time = 0.0f;
 };
 
-int ConfigArgsInternal::load_integer(std::string_view name) const { return *args[name].value<int>(); }
-
-int ConfigArgsInternal::load_integer(int index) const { return *args[index].value<int>(); }
-
-float ConfigArgsInternal::load_float(std::string_view name) const
+int ConfigArgsInternal::load_integer(std::string_view name, const std::optional<int> &default_value) const
 {
-    return service->load_float_field(args[name], time);
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    const auto &v = args[name].value<int>();
+    if (v)
+        return *v;
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No integer value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return 0;
+    }
 }
 
-float ConfigArgsInternal::load_float(int index) const { return service->load_float_field(args[index], time); }
-
-vec2 ConfigArgsInternal::load_vec2(std::string_view name, bool force_normalize) const
+int ConfigArgsInternal::load_integer(int index) const
 {
-    return service->load_vec2_field(args[name], force_normalize, time);
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
+    const auto &v = args[index].value<int>();
+    if (v)
+        return *v;
+    else {
+        ASSERT(false, "No integer value at [%d].", index);
+        return 0;
+    }
+}
+
+float ConfigArgsInternal::load_float(std::string_view name, const std::optional<float> &default_value) const
+{
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return service->load_float_field(args[name], time);
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No float value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return 0.0f;
+    }
+}
+
+float ConfigArgsInternal::load_float(int index) const
+{
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
+    return service->load_float_field(args[index], time);
+}
+
+vec2 ConfigArgsInternal::load_vec2(std::string_view name, bool force_normalize,
+                                   const std::optional<vec2> &default_value) const
+{
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return service->load_vec2_field(args[name], force_normalize, time);
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No vec2 value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return vec2::Zero();
+    }
 }
 
 vec2 ConfigArgsInternal::load_vec2(int index, bool force_normalize) const
 {
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
     return service->load_vec2_field(args[index], force_normalize, time);
 }
 
-vec3 ConfigArgsInternal::load_vec3(std::string_view name, bool force_normalize) const
+vec3 ConfigArgsInternal::load_vec3(std::string_view name, bool force_normalize,
+                                   const std::optional<vec3> &default_value) const
 {
-    return service->load_vec3_field(args[name], force_normalize, time);
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return service->load_vec3_field(args[name], force_normalize, time);
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No vec3 value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return vec3::Zero();
+    }
 }
 
 vec3 ConfigArgsInternal::load_vec3(int index, bool force_normalize) const
 {
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
     return service->load_vec3_field(args[index], force_normalize, time);
 }
 
-vec4 ConfigArgsInternal::load_vec4(std::string_view name, bool force_normalize) const
+vec4 ConfigArgsInternal::load_vec4(std::string_view name, bool force_normalize,
+                                   const std::optional<vec4> &default_value) const
 {
-    return service->load_vec4_field(args[name], force_normalize, time);
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return service->load_vec4_field(args[name], force_normalize, time);
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No vec4 value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return vec4::Zero();
+    }
 }
 
 vec4 ConfigArgsInternal::load_vec4(int index, bool force_normalize) const
 {
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
     return service->load_vec4_field(args[index], force_normalize, time);
 }
 
-Transform ConfigArgsInternal::load_transform(std::string_view name) const
+Transform ConfigArgsInternal::load_transform(std::string_view name, const std::optional<Transform> &default_value) const
 {
-    return service->load_transform_field(args[name], time);
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return service->load_transform_field(args[name], time);
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No transform value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return Transform();
+    }
 }
 
 Transform ConfigArgsInternal::load_transform(int index) const
 {
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
     return service->load_transform_field(args[index], time);
 }
 
-bool ConfigArgsInternal::load_bool(std::string_view name) const { return *args[name].value<bool>(); }
+bool ConfigArgsInternal::load_bool(std::string_view name, const std::optional<bool> &default_value) const
+{
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return *args[name].value<bool>();
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No bool value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return false;
+    }
+}
 
-bool ConfigArgsInternal::load_bool(int index) const { return *args[index].value<bool>(); }
+bool ConfigArgsInternal::load_bool(int index) const
+{
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
+    return *args[index].value<bool>();
+}
 
-std::string ConfigArgsInternal::load_string(std::string_view name) const { return *args[name].value<std::string>(); }
+std::string ConfigArgsInternal::load_string(std::string_view name,
+                                            const std::optional<std::string> &default_value) const
+{
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    if (args.as_table()->contains(name))
+        return *args[name].value<std::string>();
+    else if (default_value)
+        return *default_value;
+    else {
+        ASSERT(false, "No string value named [%.*s].", static_cast<int>(name.length()), name.data());
+        return std::string();
+    }
+}
 
-std::string ConfigArgsInternal::load_string(int index) const { return *args[index].value<std::string>(); }
+std::string ConfigArgsInternal::load_string(int index) const
+{
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
+    return *args[index].value<std::string>();
+}
 
 ConfigArgs::~ConfigArgs() = default;
 
@@ -408,6 +523,7 @@ ConfigArgs::ConfigArgs(const ConfigArgs &other) : args(std::make_unique<ConfigAr
 
 ConfigArgs ConfigArgs::operator[](std::string_view key) const
 {
+    ASSERT(args->args.is_table(), "This ConfigArgs is not a table.");
     toml::node_view<const toml::node> view = args->args[key];
 
     ConfigArgs child(std::make_unique<ConfigArgsInternal>(args->service, view));
@@ -417,6 +533,7 @@ ConfigArgs ConfigArgs::operator[](std::string_view key) const
 
 ConfigArgs ConfigArgs::operator[](int idx) const
 {
+    ASSERT(args->args.is_array() || args->args.is_array_of_tables(), "This ConfigArgs is not an array.");
     toml::node_view<const toml::node> view = args->args[idx];
 
     ConfigArgs child(std::make_unique<ConfigArgsInternal>(args->service, view));
@@ -424,52 +541,78 @@ ConfigArgs ConfigArgs::operator[](int idx) const
     return child;
 }
 
-size_t ConfigArgs::array_size() const { return args->args.as_array()->size(); }
+size_t ConfigArgs::array_size() const
+{
+    ASSERT(args->args.is_array() || args->args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    return args->args.as_array()->size();
+}
 
-bool ConfigArgs::contains(std::string_view key) const { return args->args.as_table()->contains(key); }
+bool ConfigArgs::contains(std::string_view key) const
+{
+    ASSERT(args->args.is_table(), "This ConfigArgs is not a table.");
+    return args->args.as_table()->contains(key);
+}
 
-int ConfigArgs::load_integer(std::string_view name) const { return args->load_integer(name); }
+int ConfigArgs::load_integer(std::string_view name, const std::optional<int> &default_value) const
+{
+    return args->load_integer(name, default_value);
+}
 
 int ConfigArgs::load_integer(int index) const { return args->load_integer(index); }
 
-float ConfigArgs::load_float(std::string_view name) const { return args->load_float(name); }
+float ConfigArgs::load_float(std::string_view name, const std::optional<float> &default_value) const
+{
+    return args->load_float(name, default_value);
+}
 
 float ConfigArgs::load_float(int index) const { return args->load_float(index); }
 
-vec2 ConfigArgs::load_vec2(std::string_view name, bool force_normalize) const
+vec2 ConfigArgs::load_vec2(std::string_view name, bool force_normalize, const std::optional<vec2> &default_value) const
 {
-    return args->load_vec2(name, force_normalize);
+    return args->load_vec2(name, force_normalize, default_value);
 }
 
 vec2 ConfigArgs::load_vec2(int index, bool force_normalize) const { return args->load_vec2(index, force_normalize); }
 
-vec3 ConfigArgs::load_vec3(std::string_view name, bool force_normalize) const
+vec3 ConfigArgs::load_vec3(std::string_view name, bool force_normalize, const std::optional<vec3> &default_value) const
 {
-    return args->load_vec3(name, force_normalize);
+    return args->load_vec3(name, force_normalize, default_value);
 }
 
 vec3 ConfigArgs::load_vec3(int index, bool force_normalize) const { return args->load_vec3(index, force_normalize); }
 
-vec4 ConfigArgs::load_vec4(std::string_view name, bool force_normalize) const
+vec4 ConfigArgs::load_vec4(std::string_view name, bool force_normalize, const std::optional<vec4> &default_value) const
 {
-    return args->load_vec4(name, force_normalize);
+    return args->load_vec4(name, force_normalize, default_value);
 }
 
 vec4 ConfigArgs::load_vec4(int index, bool force_normalize) const { return args->load_vec4(index, force_normalize); }
 
-Transform ConfigArgs::load_transform(std::string_view name) const { return args->load_transform(name); }
+Transform ConfigArgs::load_transform(std::string_view name, const std::optional<Transform> &default_value) const
+{
+    return args->load_transform(name, default_value);
+}
 
 Transform ConfigArgs::load_transform(int index) const { return args->load_transform(index); }
 
-bool ConfigArgs::load_bool(std::string_view name) const { return args->load_bool(name); }
+bool ConfigArgs::load_bool(std::string_view name, const std::optional<bool> &default_value) const
+{
+    return args->load_bool(name, default_value);
+}
 
 bool ConfigArgs::load_bool(int index) const { return args->load_bool(index); }
 
-std::string ConfigArgs::load_string(std::string_view name) const { return args->load_string(name); }
+std::string ConfigArgs::load_string(std::string_view name, const std::optional<std::string> &default_value) const
+{
+    return args->load_string(name, default_value);
+}
 
 std::string ConfigArgs::load_string(int index) const { return args->load_string(index); }
 
-fs::path ConfigArgs::load_path(std::string_view name) const { return fs::path(load_string(name)); }
+fs::path ConfigArgs::load_path(std::string_view name, const std::optional<fs::path> &default_value) const
+{
+    return fs::path(load_string(name, default_value.value_or(fs::path()).string()));
+}
 
 fs::path ConfigArgs::load_path(int index) const { return args->load_string(index); }
 

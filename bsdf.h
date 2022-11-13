@@ -1,8 +1,8 @@
 #pragma once
 #include "config.h"
 #include "maths.h"
+#include "shader_field.h"
 
-struct Intersection;
 struct BSDF : public Configurable
 {
     virtual ~BSDF() = default;
@@ -19,7 +19,8 @@ struct BSDF : public Configurable
 struct Lambertian : public BSDF
 {
     Lambertian() = default;
-    Lambertian(const color3 &albedo) : albedo(albedo){};
+    Lambertian(const color3 &albedo) { this->albedo = std::make_unique<ConstantField<color3>>(albedo); }
+    Lambertian(std::unique_ptr<ShaderField<color3>> &&albedo) : albedo(std::move(albedo)){};
 
     bool delta() const { return false; }
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
@@ -28,7 +29,7 @@ struct Lambertian : public BSDF
     color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const;
     float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
 
-    color3 albedo = color3::Ones();
+    std::unique_ptr<ShaderField<color3>> albedo;
 };
 
 std::unique_ptr<Lambertian> create_lambertian(const ConfigArgs &args);

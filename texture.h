@@ -3,6 +3,7 @@
 #include "config.h"
 #include "maths.h"
 #include <cstddef>
+#include <span>
 
 // TODO: building mipmaps
 // TODO: EWA filtering
@@ -29,7 +30,7 @@ struct Texture : public Configurable
             int levels);
 
     const std::byte *fetch_raw(int x, int y, int level) const { return pyramid[level].fetch_multi(x, y); }
-    void fetch_as_float(int x, int y, int level, float *out) const;
+    void fetch_as_float(int x, int y, int level, std::span<float> out) const;
     int levels() const { return (int)pyramid.size(); }
 
     std::vector<BlockedArray<std::byte>> pyramid;
@@ -42,7 +43,7 @@ struct Texture : public Configurable
 struct TextureSampler
 {
     virtual ~TextureSampler() = default;
-    virtual void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const = 0;
+    virtual void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const = 0;
     color4 operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy) const;
 
     TextureWrapMode wrap_mode_u = TextureWrapMode::Repeat;
@@ -52,14 +53,14 @@ struct TextureSampler
 struct NearestSampler : public TextureSampler
 {
     using TextureSampler::operator();
-    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const;
 };
 
 struct LinearSampler : public TextureSampler
 {
     using TextureSampler::operator();
-    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
-    void bilinear(const Texture &texture, int level, const vec2 &uv, float *out) const;
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const;
+    void bilinear(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const;
 };
 
 struct CubicSampler : public TextureSampler
@@ -92,10 +93,12 @@ struct CubicSampler : public TextureSampler
         }
     }
     using TextureSampler::operator();
-    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, float *out) const;
-    void bicubic(const Texture &texture, int level, const vec2 &uv, float *out) const;
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const;
+    void bicubic(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const;
 
     vec4 ca, cb;
 };
 
+std::unique_ptr<Texture> create_texture_from_file(int channels, bool build_mipmap, const fs::path &path);
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args);
+std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args);
