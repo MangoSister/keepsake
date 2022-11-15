@@ -10,7 +10,8 @@ namespace fs = std::filesystem;
 
 struct MeshAsset : public Configurable
 {
-    void load_from_obj(const fs::path &path, bool load_materials);
+    // TODO: a smarter way to specify twosided
+    void load_from_obj(const fs::path &path, bool load_materials, bool twosided);
 
     std::vector<std::unique_ptr<MeshData>> meshes;
     std::vector<std::unique_ptr<Material>> materials;

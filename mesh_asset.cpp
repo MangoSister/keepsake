@@ -50,7 +50,7 @@ struct IndexEqual
     }
 };
 
-void MeshAsset::load_from_obj(const fs::path &path, bool load_materials)
+void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool twosided)
 {
     fs::path base_path = path.parent_path();
     tinyobj::ObjReaderConfig reader_config;
@@ -78,6 +78,7 @@ void MeshAsset::load_from_obj(const fs::path &path, bool load_materials)
     for (int s = 0; s < (int)shapes.size(); s++) {
         const tinyobj::shape_t &shape = shapes[s];
         std::unique_ptr<MeshData> mesh = std::make_unique<MeshData>();
+        mesh->twosided = twosided;
         mesh->indices.reserve(shape.mesh.num_face_vertices.size() * 3);
         // Need to reconstruct index buffer per shape.
         std::unordered_map<tinyobj::index_t, uint32_t, IndexHash, IndexEqual> index_remap;
@@ -144,8 +145,9 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args)
 {
     fs::path path = args.load_path("path");
     bool load_materials = args.load_bool("load_materials");
+    bool twosided = args.load_bool("twosided", false);
     std::unique_ptr<MeshAsset> mesh_asset = std::make_unique<MeshAsset>();
-    mesh_asset->load_from_obj(path, load_materials);
+    mesh_asset->load_from_obj(path, load_materials, twosided);
     return mesh_asset;
 }
 
