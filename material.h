@@ -1,21 +1,14 @@
 #pragma once
-#include "bsdf.h"
 #include "config.h"
 
-// TODO: This is pretty much a placeholder for now
-
-struct SubsurfaceProfile : public Configurable
-{
-};
-
-struct NormalMap : public Configurable
-{
-};
+struct BSDF;
+struct BSSRDF;
+struct NormalMap;
 
 struct Material : public Configurable
 {
     const BSDF *bsdf = nullptr;
-    const SubsurfaceProfile *subsurface = nullptr;
+    const BSSRDF *subsurface = nullptr;
     const NormalMap *normal_map = nullptr;
 };
 

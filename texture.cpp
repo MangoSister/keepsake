@@ -265,13 +265,13 @@ std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args)
         sampler = std::make_unique<CubicSampler>(kernel);
     }
 
-    std::string wu = args.load_string("wrap_mode_u");
+    std::string wu = args.load_string("wrap_mode_u", "repeat");
     if (wu == "repeat") {
         sampler->wrap_mode_u = TextureWrapMode::Repeat;
     } else if (wu == "clamp") {
         sampler->wrap_mode_u = TextureWrapMode::Clamp;
     }
-    std::string wv = args.load_string("wrap_mode_v");
+    std::string wv = args.load_string("wrap_mode_v", "repeat");
     if (wv == "repeat") {
         sampler->wrap_mode_v = TextureWrapMode::Repeat;
     } else if (wv == "clamp") {

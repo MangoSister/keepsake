@@ -8,7 +8,16 @@ template <typename T>
 struct ShaderField
 {
     virtual ~ShaderField() = default;
-    virtual T operator()(const Intersection &it) const = 0;
+    virtual T operator()(const vec2 &uv, const mat2 &duvdxy) const = 0;
+    T operator()(const Intersection &it) const
+    {
+        mat2 duvdxy;
+        duvdxy(0, 0) = it.dudx;
+        duvdxy(0, 1) = it.dvdx;
+        duvdxy(1, 0) = it.dudy;
+        duvdxy(1, 1) = it.dvdy;
+        return (*this)(it.uv, duvdxy);
+    }
 };
 
 template <typename T>
@@ -16,7 +25,7 @@ struct ConstantField : public ShaderField<T>
 {
     ConstantField() = default;
     ConstantField(const T &value) : value(value) {}
-    T operator()(const Intersection &it) const { return value; }
+    T operator()(const vec2 &uv, const mat2 &duvdxy) const { return value; }
 
     T value;
 };
@@ -25,24 +34,29 @@ template <int N>
 struct TextureField : public ShaderField<color<N>>
 {
     TextureField() = default;
-    TextureField(const Texture &texture, std::unique_ptr<TextureSampler> &&sampler)
-        : texture(&texture), sampler(std::move(sampler))
+    TextureField(const Texture &texture, std::unique_ptr<TextureSampler> &&sampler, bool flip_v = true,
+                 const arri<N> *swizzle = nullptr)
+        : texture(&texture), sampler(std::move(sampler)), flip_v(flip_v)
     {
-        std::iota(swizzle.data(), swizzle.data() + N, 0);
+        if (!swizzle)
+            std::iota(this->swizzle.data(), this->swizzle.data() + N, 0);
+        else {
+            this->swizzle = *swizzle;
+        }
     }
-    TextureField(const Texture &texture, std::unique_ptr<TextureSampler> &&sampler, const arri<N> &swizzle)
-        : texture(&texture), sampler(std::move(sampler)), swizzle(swizzle)
-    {}
 
-    color<N> operator()(const Intersection &it) const
+    color<N> operator()(const vec2 &uv, const mat2 &duvdxy) const
     {
-        mat2 duvdxy;
-        duvdxy(0, 0) = it.dudx;
-        duvdxy(0, 1) = it.dvdx;
-        duvdxy(1, 0) = it.dudy;
-        duvdxy(1, 1) = it.dvdy;
+        vec2 flip_uv = uv;
+        mat2 flip_duvdxy = duvdxy;
+        if (flip_v) {
+            flip_uv[1] = 1.0f - flip_uv[1];
+            flip_duvdxy(0, 1) *= -1.0f;
+            flip_duvdxy(1, 1) *= -1.0f;
+        }
+
         VLA(out, float, texture->num_channels);
-        (*sampler)(*texture, it.uv, duvdxy, {out, (size_t)texture->num_channels});
+        (*sampler)(*texture, flip_uv, flip_duvdxy, {out, (size_t)texture->num_channels});
         color<N> c;
         for (int i = 0; i < N; ++i)
             c[i] = swizzle[i] >= 0 ? out[swizzle[i]] : 0.0f;
@@ -52,6 +66,7 @@ struct TextureField : public ShaderField<color<N>>
     const Texture *texture = nullptr;
     std::unique_ptr<TextureSampler> sampler;
     arri<N> swizzle;
+    bool flip_v = true; // This is very common for some reasons...
 };
 
 template <int N>
@@ -78,8 +93,10 @@ std::unique_ptr<ShaderField<color<N>>> create_shader_field_color(const ConfigArg
     } else if (field_type == "texture") {
         const Texture *map = args.asset_table().get<Texture>(args.load_string("map"));
         std::unique_ptr<TextureSampler> sampler = create_texture_sampler(args["sampler"]);
+        bool flip_v = args.load_bool("flip_v", true);
+        arri<N> swizzle;
+        std::iota(swizzle.data(), swizzle.data() + N, 0);
         if (args.contains("swizzle")) {
-            arri<N> swizzle;
             if constexpr (N == 1) {
                 swizzle = arri<N>(args.load_integer("swizzle"));
             } else if constexpr (N == 2) {
@@ -89,10 +106,8 @@ std::unique_ptr<ShaderField<color<N>>> create_shader_field_color(const ConfigArg
             } else {
                 swizzle = args.load_vec4("swizzle").cast<int>().array();
             }
-            field = std::make_unique<TextureField<N>>(*map, std::move(sampler), swizzle);
-        } else {
-            field = std::make_unique<TextureField<N>>(*map, std::move(sampler));
         }
+        field = std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, &swizzle);
     }
     return field;
 }

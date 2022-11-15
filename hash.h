@@ -1,6 +1,7 @@
 #pragma once
 
 #include "maths.h"
+#include <functional>
 
 // https://www.shadertoy.com/view/XlGcRh
 
@@ -90,3 +91,15 @@ inline arr3 hash33f(arr3u v) { return convert_u32_f01<3>(hash33u(v)); }
 
 // One-liner linear congruential generator. Quick but low quality.
 constexpr uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
+
+// Combine several hash values for hash tables. Based on the algorithm used in Boost.
+// https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
+inline void hash_combine(std::size_t &seed) {}
+
+template <typename T, typename... Rest>
+inline void hash_combine(std::size_t &seed, const T &v, Rest... rest)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    hash_combine(seed, rest...);
+}

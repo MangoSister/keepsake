@@ -4,7 +4,7 @@
 #include "ray.h"
 #include "rng.h"
 
-SkyLight::SkyLight(const fs::path &path, const Transform &l2w) : l2w(l2w)
+SkyLight::SkyLight(const fs::path &path, const Transform &l2w, float strength) : l2w(l2w), strength(strength)
 {
     int width, height;
     std::unique_ptr<color3[]> pixels = load_from_hdr<3>(path, width, height);
@@ -109,7 +109,8 @@ std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args)
     Transform to_world;
     if (args.contains("to_world"))
         to_world = args.load_transform("to_world");
-    return std::make_unique<SkyLight>(map, to_world);
+    float strength = args.load_float("strength", 1.0f);
+    return std::make_unique<SkyLight>(map, to_world, strength);
 }
 
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args)
