@@ -3,6 +3,8 @@
 #include <Eigen/Geometry>
 #include <concepts>
 
+template <int N>
+using vec = Eigen::Matrix<float, N, 1>;
 using vec2 = Eigen::Vector2f;
 using vec2i = Eigen::Vector2i;
 using vec3 = Eigen::Vector3f;
