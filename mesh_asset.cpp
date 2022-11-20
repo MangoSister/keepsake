@@ -25,7 +25,7 @@ static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::pat
         color3 albedo(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
         lambert = std::make_unique<Lambertian>(albedo);
     }
-    std::unique_ptr<Material> material = std::make_unique<Material>();
+    std::unique_ptr<BlendedMaterial> material = std::make_unique<BlendedMaterial>();
     material->bsdf = &*lambert;
     asset.materials.push_back(std::move(material));
     asset.bsdfs.push_back(std::move(lambert));

@@ -45,8 +45,6 @@ struct BSSRDF : Configurable
     float anisotropy;
     float ior; // Should keep consistent with the surface BSDF?
     float rfr_entry_prob;
-
-    LambertianSubsurfaceExitAdapter exit_adapter;
 };
 
 std::unique_ptr<BSSRDF> create_bssrdf(const ConfigArgs &args);

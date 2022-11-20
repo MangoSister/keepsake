@@ -10,8 +10,7 @@ struct Material;
 struct SceneHit
 {
     Intersection it;
-    const BSDF *bsdf = nullptr;
-    const BSSRDF *subsurface = nullptr;
+    const Material *material = nullptr;
     uint32_t geom_id = 0; //
 };
 

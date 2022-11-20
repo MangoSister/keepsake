@@ -563,7 +563,6 @@ bool BSSRDF::sample(const LocalGeometry &local_geometry, const Intersection &ent
     if (!subsurface_random_walk(profile, local_geometry, entry, D, rng, throughput, exit, wi))
         return false;
 
-    exit.bsdf = &exit_adapter;
     return true;
 }
 
@@ -575,6 +574,5 @@ std::unique_ptr<BSSRDF> create_bssrdf(const ConfigArgs &args)
     bssrdf->anisotropy = args.load_float("anisotropy");
     bssrdf->ior = args.load_float("ior");
     bssrdf->rfr_entry_prob = args.load_float("rfr_entry_prob");
-    bssrdf->exit_adapter = LambertianSubsurfaceExitAdapter(bssrdf->ior);
     return bssrdf;
 }

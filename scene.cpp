@@ -53,12 +53,11 @@ bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ct
 
     hit.it = geometries[rayhit.hit.geomID]->compute_intersection(rayhit);
     hit.it.compute_uv_partials(ray);
-    hit.bsdf = materials[rayhit.hit.geomID]->bsdf;
-    hit.subsurface = materials[rayhit.hit.geomID]->subsurface;
+    hit.material = materials[rayhit.hit.geomID];
     hit.geom_id = rayhit.hit.geomID;
 
-    if (materials[rayhit.hit.geomID]->normal_map) {
-        materials[rayhit.hit.geomID]->normal_map->apply(hit.it);
+    if (hit.material->normal_map) {
+        hit.material->normal_map->apply(hit.it);
     }
 
     return true;
