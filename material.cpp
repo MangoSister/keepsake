@@ -45,13 +45,20 @@ MaterialSample BlendedMaterial::sample_with_direct(vec3 wo, const Intersection &
 {
     MaterialSample s;
 
+    // Heuristic loosely from Blender (Monaco)
+    // float bsdf_sample_weight = 1.0f;
+    // color3 fc = interpolate_fresnel_color(wo, entry.sh_frame.n, 1.5f, 0.04f, color3::Constant(0.04f));
+    // bsdf_sample_weight *= fc.x();
+    // float bssrdf_sample_weight = 3.0f;
+    // float sum = bssrdf_sample_weight + bsdf_sample_weight;
+    // bsdf_sample_weight = std::max(bsdf_sample_weight, 0.125f * sum);
+    // sum = bssrdf_sample_weight + bsdf_sample_weight;
+
+    // TODO: currently select between BSDF and BSSRDF uniformly...
+    float bssrdf_sample_weight = 1.0f;
     float bsdf_sample_weight = 1.0f;
-    color3 fc = interpolate_fresnel_color(wo, entry.sh_frame.n, 1.5f, 0.04f, color3::Constant(0.04f));
-    bsdf_sample_weight *= fc.x();
-    float bssrdf_sample_weight = 3.0f;
-    float sum = bssrdf_sample_weight + bsdf_sample_weight;
-    bsdf_sample_weight = std::max(bsdf_sample_weight, 0.125f * sum);
-    sum = bssrdf_sample_weight + bsdf_sample_weight;
+    float sum = 2.0f;
+    //
 
     bool sample_subsurface = false;
     if (subsurface) {
