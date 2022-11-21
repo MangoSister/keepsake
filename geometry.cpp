@@ -57,14 +57,6 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     // All input buffers and output arrays must be padded to 16 bytes,
     // as the implementation uses 16-byte SSE instructions to read and write into these buffers.
 
-    // TODO: refactor hard-coded buffer slot.
-    if (data->has_texcoord()) {
-        vec4 tc;
-        rtcInterpolate0(rtcgeom, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0,
-                        tc.data(), 2);
-        it.uv = tc.head(2);
-    }
-
     // Numerically, calculating intersection point based on surface parameterization
     // is much better than based on ray equation.
     vec4 P;
@@ -75,7 +67,35 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     it.dpdu = dPdu.head(3);
     it.dpdv = dPdv.head(3);
 
-    // re-normalize for geometry frame.
+    // TODO: refactor hard-coded buffer slot.
+    if (data->has_texcoord()) {
+        vec4 tc;
+        rtcInterpolate0(rtcgeom, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0,
+                        tc.data(), 2);
+        it.uv = tc.head(2);
+
+        // Need to manually re-calculate dpdu/dpdv due to based on supplied texture coordinates.
+        vec3 p[3];
+        vec2 uv[3];
+        for (int v = 0; v < 3; ++v) {
+            int idx = data->indices[3 * rayhit.hit.primID + v];
+            p[v] = data->get_pos(idx);
+            uv[v] = data->get_texcoord(idx);
+        }
+        vec2 duv02 = uv[0] - uv[2];
+        vec2 duv12 = uv[1] - uv[2];
+        vec3 dp02 = p[0] - p[2];
+        vec3 dp12 = p[1] - p[2];
+        float determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0];
+        bool uv_degenerate = std::abs(determinant) < 1e-8f;
+        if (!uv_degenerate) {
+            float inv_det = 1.0f / determinant;
+            it.dpdu = (duv12[1] * dp02 - duv02[1] * dp12) * inv_det;
+            it.dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * inv_det;
+        }
+    }
+
+    // re-normalize for geometry frame (ng is respected).
     vec3 b = ng.cross(it.dpdu).normalized();
     vec3 t = b.cross(ng).normalized();
 
