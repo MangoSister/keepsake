@@ -256,7 +256,7 @@ std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args)
         sampler = std::make_unique<LinearSampler>();
     } else if (type == "cubic") {
         CubicSampler::Kernel kernel = CubicSampler::Kernel::MitchellNetravali;
-        std::string k = args.load_string("kernel");
+        std::string k = args.load_string("kernel", "mitchell");
         if (k == "bspline") {
             kernel = CubicSampler::Kernel::BSpline;
         } else if (k == "catmull_rom") {
