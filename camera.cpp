@@ -104,11 +104,13 @@ Ray Camera::spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) cons
     Ray ray;
     vec3 ndc_pos(film_pos.x() * 2.0f - 1.0f, film_pos.y() * 2.0f - 1.0f, 1.0f);
 
-    vec3 mid = proj_to_world.point_hdiv(vec3(0.0f, 0.0f, 1.0f));
-    vec3 right = proj_to_world.point_hdiv(vec3(2.0f / film_res.x(), 0.0f, 1.0f));
-    vec3 up = proj_to_world.point_hdiv(vec3(0.0f, 2.0f / film_res.y(), 1.0f));
+    vec3 mid = proj_to_camera.point_hdiv(vec3(0.0f, 0.0f, 1.0f));
+    vec3 right = proj_to_camera.point_hdiv(vec3(2.0f / film_res.x(), 0.0f, 1.0f));
+    vec3 up = proj_to_camera.point_hdiv(vec3(0.0f, 2.0f / film_res.y(), 1.0f));
     vec3 camera_dx = right - mid;
+    camera_dx = camera_to_world.direction(camera_dx);
     vec3 camera_dy = up - mid;
+    camera_dy = camera_to_world.direction(camera_dy);
 
     if (ortho_dir == vec3::Zero()) {
         vec3 world_pos = proj_to_world.point_hdiv(ndc_pos);
