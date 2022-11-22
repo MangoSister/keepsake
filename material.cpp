@@ -38,6 +38,62 @@ BlendedMaterial::BlendedMaterial() = default;
 
 BlendedMaterial::~BlendedMaterial() = default;
 
+color3 BlendedMaterial::sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom,
+                               RNG &rng, vec3 &wi, Intersection &exit) const
+{
+    color3 beta = color3::Ones();
+
+    // TODO: currently select between BSDF and BSSRDF uniformly...
+    float bssrdf_sample_weight = 1.0f;
+    float bsdf_sample_weight = 1.0f;
+    float sum = 2.0f;
+    //
+
+    bool sample_subsurface = false;
+    if (subsurface) {
+        if (rng.next() < (bsdf_sample_weight / sum)) {
+            beta *= (sum / bsdf_sample_weight);
+        } else {
+            sample_subsurface = true;
+            beta *= (sum / bssrdf_sample_weight);
+            // NOTE: need to adjust radiance scaling since the ray gets "refracted" in
+            // The exit bsdf must also revert this when the ray exiting.
+            beta /= sqr(subsurface->ior);
+        }
+    }
+
+    const BSDF *exit_bsdf = nullptr;
+    if (sample_subsurface) {
+        vec3 D = vec3::Zero();
+        vec3 ss_wi;
+        SceneHit exit_hit;
+        if (!subsurface->sample(local_geom, entry, D, rng, beta, exit_hit, ss_wi)) {
+            return color3::Zero();
+        }
+        wo = -ss_wi;
+        exit = exit_hit.it;
+        if (lambert_exit) {
+            exit_bsdf = lambert_exit.get();
+        } else
+            exit_bsdf = exit_hit.material->bsdf;
+    } else {
+        exit = entry;
+        exit_bsdf = bsdf;
+    }
+
+    vec3 wo_local = exit.sh_vector_to_local(wo);
+    vec3 wi_local;
+    float pdf;
+    beta *= exit_bsdf->sample(wo_local, wi_local, exit, rng.next2d(), pdf);
+    if (beta.maxCoeff() == 0.0f || pdf == 0.0f) {
+        return color3::Zero();
+    }
+    ASSERT(beta.allFinite() && (beta >= 0.0f).all());
+    wi = exit.sh_vector_to_world(wi_local);
+
+    return beta;
+}
+
 MaterialSample BlendedMaterial::sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
                                                    const LocalGeometry &local_geom,
                                                    std::span<const Light *const> lights, RNG &rng, vec3 &wi,

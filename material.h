@@ -20,6 +20,9 @@ struct MaterialSample
 
 struct Material : public Configurable
 {
+    virtual color3 sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom,
+                          RNG &rng, vec3 &wi, Intersection &exit) const = 0;
+
     virtual MaterialSample sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
                                               const LocalGeometry &local_geom, std::span<const Light *const> lights,
                                               RNG &rng, vec3 &wi, Intersection &exit) const = 0;
@@ -33,6 +36,9 @@ struct BlendedMaterial : public Material
 {
     BlendedMaterial();
     ~BlendedMaterial();
+
+    color3 sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom, RNG &rng,
+                  vec3 &wi, Intersection &exit) const;
 
     MaterialSample sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
                                       const LocalGeometry &local_geom, std::span<const Light *const> lights, RNG &rng,
