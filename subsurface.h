@@ -9,16 +9,9 @@
 #include "maths.h"
 
 struct Scene;
+struct LocalGeometry;
 struct SceneHit;
 struct RNG;
-
-struct LocalGeometry
-{
-    const Scene *scene = nullptr;
-    uint32_t geom_id = 0;
-
-    bool intersect1(const Ray &ray, SceneHit &hit) const;
-};
 
 struct LambertianSubsurfaceExitAdapter : public BSDF
 {

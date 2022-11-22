@@ -68,3 +68,12 @@ bool Scene::occlude1(const Ray &ray, const IntersectContext &ctx) const
     RTCRay rtcray = spawn_ray(ray.origin, ray.dir, ray.tmin, ray.tmax);
     return ::occlude1(rtcscene, ctx, rtcray);
 }
+
+
+bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
+{
+    IntersectContext ctx;
+    ctx.context.filter = filter_local_geometry;
+    ctx.ext = (void *)&geom_id;
+    return scene->intersect1(ray, hit, ctx);
+}

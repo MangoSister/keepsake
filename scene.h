@@ -30,3 +30,11 @@ struct Scene
 
     RTCScene rtcscene = nullptr;
 };
+
+struct LocalGeometry
+{
+    const Scene *scene = nullptr;
+    uint32_t geom_id = 0;
+
+    bool intersect1(const Ray &ray, SceneHit &hit) const;
+};

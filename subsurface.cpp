@@ -4,14 +4,6 @@
 #include "rng.h"
 #include "scene.h"
 
-bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
-{
-    IntersectContext ctx;
-    ctx.context.filter = filter_local_geometry;
-    ctx.ext = (void *)&geom_id;
-    return scene->intersect1(ray, hit, ctx);
-}
-
 inline color3 safe_divide_color(const color3 &a, const color3 &b) { return (b == 0.0f).select(color3::Zero(), a / b); }
 
 inline color3 volume_color_transmittance(const color3 &sigma, float t) { return exp(-sigma * t); }
