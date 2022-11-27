@@ -141,13 +141,72 @@ void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool tw
     }
 }
 
+constexpr const char *binary_mesh_asset_magic = "i_am_a_binary_mesh_asset";
+
+void MeshAsset::load_from_binary(const fs::path &path)
+{
+    BinaryReader reader(path);
+    std::array<char, std::string_view(binary_mesh_asset_magic).size() + 1> magic;
+    reader.read_array<char>(magic.data(), magic.size() - 1);
+    magic.back() = 0;
+    if (strcmp(magic.data(), binary_mesh_asset_magic)) {
+        ASSERT(false, "Invalid binary mesh asset.");
+        return;
+    }
+    int n_meshes = reader.read<int>();
+    meshes.resize(n_meshes);
+    for (auto &mesh : meshes) {
+        mesh = std::make_unique<MeshData>();
+        mesh->twosided = reader.read<bool>();
+        int n_verts = reader.read<int>();
+        int n_tris = reader.read<int>();
+        bool has_texcoord = reader.read<bool>();
+
+        // Add a dummy value to vertex buffer for embree padding.
+        mesh->vertices.resize(3 * n_verts + 1);
+        mesh->indices.resize(3 * n_tris);
+        reader.read_array<float>(mesh->vertices.data(), mesh->vertices.size());
+        reader.read_array<uint32_t>(mesh->indices.data(), mesh->indices.size());
+        if (has_texcoord) {
+            // Add two dummy values to vertex buffer for embree padding.
+            mesh->texcoords.resize(2 * n_verts + 2);
+            reader.read_array<float>(mesh->texcoords.data(), mesh->texcoords.size());
+        }
+    }
+}
+
+void MeshAsset::write_to_binary(const fs::path &path) const
+{
+    BinaryWriter writer(path);
+    writer.write_array<char>(binary_mesh_asset_magic, strlen(binary_mesh_asset_magic));
+    writer.write<int>((int)meshes.size());
+    for (const auto &mesh : meshes) {
+        writer.write<bool>(mesh->twosided);
+        writer.write<int>(mesh->vertex_count());
+        writer.write<int>(mesh->tri_count());
+        writer.write<bool>(mesh->has_texcoord());
+        writer.write_array<float>(mesh->vertices.data(), mesh->vertices.size());
+        writer.write_array<uint32_t>(mesh->indices.data(), mesh->indices.size());
+        if (mesh->has_texcoord()) {
+            writer.write_array<float>(mesh->texcoords.data(), mesh->texcoords.size());
+        }
+    }
+}
+
 std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args)
 {
-    fs::path path = args.load_path("path");
-    bool load_materials = args.load_bool("load_materials");
-    bool twosided = args.load_bool("twosided", false);
     std::unique_ptr<MeshAsset> mesh_asset = std::make_unique<MeshAsset>();
-    mesh_asset->load_from_obj(path, load_materials, twosided);
+    fs::path path = args.load_path("path");
+    std::string fmt = args.load_string("format", "obj");
+    if (fmt == "obj") {
+        bool load_materials = args.load_bool("load_materials");
+        bool twosided = args.load_bool("twosided", false);
+        mesh_asset->load_from_obj(path, load_materials, twosided);
+    } else if (fmt == "bin") {
+        mesh_asset->load_from_binary(path);
+    } else {
+        ASSERT(false, "Unsupported mesh asset format [%s].", fmt.c_str());
+    }
     Transform to_world = args.load_transform("to_world", Transform());
     if (!to_world.m.isIdentity()) {
         for (const auto &m : mesh_asset->meshes) {
@@ -168,4 +227,15 @@ Scene create_scene_from_mesh_asset(const MeshAsset &mesh_asset, const EmbreeDevi
     }
     scene.create_rtc_scene(device);
     return scene;
+}
+
+void convert_mesh_asset_task(const ConfigArgs &args, const fs::path &task_dir, int task_id)
+{
+    int n_assets = args["assets"].array_size();
+    for (int i = 0; i < n_assets; ++i) {
+        std::string asset_path = args["assets"].load_string(i);
+        const MeshAsset *mesh_asset = args.asset_table().get<MeshAsset>(asset_path);
+        std::string name = asset_path.substr(asset_path.rfind(".") + 1);
+        mesh_asset->write_to_binary(task_dir / (name + ".bin"));
+    }
 }

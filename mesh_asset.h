@@ -1,9 +1,9 @@
 #pragma once
-#include "geometry.h"
 #include "config.h"
+#include "geometry.h"
 #include "material.h"
-#include "texture.h"
 #include "scene.h"
+#include "texture.h"
 #include <filesystem>
 #include <memory>
 namespace fs = std::filesystem;
@@ -12,6 +12,8 @@ struct MeshAsset : public Configurable
 {
     // TODO: a smarter way to specify twosided
     void load_from_obj(const fs::path &path, bool load_materials, bool twosided);
+    void load_from_binary(const fs::path &path);
+    void write_to_binary(const fs::path &path) const;
 
     std::vector<std::unique_ptr<MeshData>> meshes;
     std::vector<std::unique_ptr<Material>> materials;
