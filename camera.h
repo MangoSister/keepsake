@@ -5,7 +5,9 @@
 struct Camera
 {
     Camera() = default;
+    Camera(const Transform &to_world, float vfov, float aspect);
     Camera(const vec3 &position, const vec3 &target, const vec3 &up, float vfov, float aspect);
+    Camera(const Transform &to_world, float left, float right, float bottom, float top, float near, float far);
     Camera(const vec3 &position, const vec3 &target, const vec3 &up, float left, float right, float bottom, float top,
            float near, float far);
 

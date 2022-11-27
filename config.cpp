@@ -4,6 +4,7 @@
 #include "test_util.h"
 #include <iostream>
 #include <toml.hpp>
+#include <unsupported/Eigen/EulerAngles>
 
 struct ConfigServiceInternal
 {
@@ -185,12 +186,23 @@ Transform ConfigServiceInternal::load_transform_field(const toml::node_view<cons
     }
     quat rotation = quat::Identity();
     if (table.contains("rotation")) {
-        const auto &r = *table["rotation"].as_array();
-        float roll = to_radian(*r[0].value<float>());
-        float pitch = to_radian(*r[1].value<float>());
-        float yaw = to_radian(*r[2].value<float>());
-        using Eigen::AngleAxisf;
-        rotation = AngleAxisf(roll, vec3::UnitX()) * AngleAxisf(pitch, vec3::UnitY()) * AngleAxisf(yaw, vec3::UnitZ());
+        const auto &r = *table["rotation"].as_table();
+        if (r.contains("euler")) {
+            const auto &euler = *r["euler"].as_array();
+            float angle0 = *euler[0].value<float>();
+            float angle1 = *euler[1].value<float>();
+            float angle2 = *euler[2].value<float>();
+            rotation = (quat)Eigen::EulerAnglesXYZf(angle0, angle1, angle2);
+        } else if (r.contains("quat")) {
+            const auto &quaternion = *r["quat"].as_array();
+            float w = *quaternion[0].value<float>();
+            float x = *quaternion[1].value<float>();
+            float y = *quaternion[2].value<float>();
+            float z = *quaternion[3].value<float>();
+            rotation = quat(w, x, y, z).normalized();
+        } else {
+            ASSERT(false, "Must specify rotation as (XYZ) euler angles or quaternion.");
+        }
     }
     vec3 translation = vec3::Zero();
     if (table.contains("translation")) {

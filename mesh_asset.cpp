@@ -148,6 +148,12 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args)
     bool twosided = args.load_bool("twosided", false);
     std::unique_ptr<MeshAsset> mesh_asset = std::make_unique<MeshAsset>();
     mesh_asset->load_from_obj(path, load_materials, twosided);
+    Transform to_world = args.load_transform("to_world", Transform());
+    if (!to_world.m.isIdentity()) {
+        for (const auto &m : mesh_asset->meshes) {
+            m->transform(to_world);
+        }
+    }
     return mesh_asset;
 }
 

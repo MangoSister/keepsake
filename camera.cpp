@@ -74,6 +74,16 @@ static inline mat4 rev_orthographic(float left, float right, float bottom, float
     return proj;
 }
 
+Camera::Camera(const Transform &to_world, float vfov, float aspect) : camera_to_world(to_world)
+{
+    camera_position = to_world.m.col(3).head(3);
+    mat4 world_to_camera_m = camera_to_world.inverse().m;
+    mat4 camera_to_proj_m = rev_inf_projection(vfov, aspect);
+    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    proj_to_camera = Transform(camera_to_proj_m).inverse();
+    ortho_dir = vec3::Zero();
+}
+
 Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float vfov, float aspect)
     : camera_position(position)
 {
@@ -84,6 +94,17 @@ Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float v
     proj_to_camera = Transform(camera_to_proj_m).inverse();
     camera_to_world = Transform(camera_to_world_m);
     ortho_dir = vec3::Zero();
+}
+
+Camera::Camera(const Transform &to_world, float left, float right, float bottom, float top, float near, float far)
+    : camera_to_world(to_world)
+{
+    camera_position = to_world.m.col(3).head(3);
+    mat4 world_to_camera_m = camera_to_world.inverse().m;
+    mat4 camera_to_proj_m = rev_orthographic(left, right, bottom, top, near, far);
+    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    proj_to_camera = Transform(camera_to_proj_m).inverse();
+    ortho_dir = -to_world.m.col(2).head(3).normalized();
 }
 
 Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float left, float right, float bottom,
@@ -142,24 +163,29 @@ Ray Camera::spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) cons
 
 std::unique_ptr<Camera> create_camera(const ConfigArgs &args)
 {
-    vec3 camera_pos = args.load_vec3("pos");
-    vec3 camera_target = args.load_vec3("target");
-    vec3 camera_up = args.load_vec3("up", true);
+    Transform to_world;
+    if (args.contains("to_world")) {
+        to_world = args.load_transform("to_world");
+    } else {
+        vec3 camera_pos = args.load_vec3("pos");
+        vec3 camera_target = args.load_vec3("target");
+        vec3 camera_up = args.load_vec3("up", true);
+        to_world = Transform(look_at(camera_pos, camera_target, camera_up));
+    }
 
     std::string type = args.load_string("type");
     if (type == "perspective") {
         float vfov = to_radian(args.load_float("vfov"));
-        float aspect = 1.0f;
-        return std::make_unique<Camera>(camera_pos, camera_target, camera_up, vfov, aspect);
+        float aspect = args.load_float("aspect");
+        return std::make_unique<Camera>(to_world, vfov, aspect);
     } else if (type == "orthographic") {
-        // Camera camera(camera_pos, camera_target, camera_up, -10.0f, 10.0f, -10.0f, 10.0f, 0.01, 100);
         float left = args.load_float("left");
         float right = args.load_float("right");
         float bottom = args.load_float("bottom");
         float top = args.load_float("top");
         float near = args.load_float("near");
         float far = args.load_float("far");
-        return std::make_unique<Camera>(camera_pos, camera_target, camera_up, left, right, bottom, top, near, far);
+        return std::make_unique<Camera>(to_world, left, right, bottom, top, near, far);
     }
     return nullptr;
 }
