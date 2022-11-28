@@ -210,7 +210,7 @@ inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, c
     return v0 * a + v1 * s + v2 * t + v3 * u;
 }
 
-inline int sample_small_distrib(const std::span<float> data, float u, float *u_remap = nullptr)
+inline int sample_small_distrib(std::span<const float> data, float u, float *u_remap = nullptr)
 {
     int N = (int)data.size();
     float sum_w = 0.0f;
