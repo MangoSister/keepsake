@@ -7,6 +7,7 @@ struct MicrofacetDistribution
 {
     virtual ~MicrofacetDistribution() = default;
     virtual float D(const vec3 &wm) const = 0;
+    virtual float G1(const vec3 &w) const = 0;
     virtual float G2(const vec3 &wo, const vec3 &wi) const = 0;
     virtual float pdf(const vec3 &wo, const vec3 &wm) const = 0;
     virtual vec3 sample(const vec3 &wo, const vec2 &u) const = 0;
