@@ -32,6 +32,18 @@ inline arr2u hash12u(uint32_t p)
     return v;
 }
 
+inline uint32_t hash21u(arr2u p)
+{
+    // xxhash32
+    const uint32_t PRIME32_2 = 2246822519U, PRIME32_3 = 3266489917U;
+    const uint32_t PRIME32_4 = 668265263U, PRIME32_5 = 374761393U;
+    uint32_t h32 = p.y() + PRIME32_5 + p.x() * PRIME32_3;
+    h32 = PRIME32_4 * ((h32 << 17) | (h32 >> (32 - 17)));
+    h32 = PRIME32_2 * (h32 ^ (h32 >> 15));
+    h32 = PRIME32_3 * (h32 ^ (h32 >> 13));
+    return h32 ^ (h32 >> 16);
+}
+
 inline arr2u hash22u(arr2u v)
 {
     // pcg2d

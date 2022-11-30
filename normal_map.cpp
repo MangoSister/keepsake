@@ -33,7 +33,7 @@ void NormalMap::apply(Intersection &it) const
 std::unique_ptr<NormalMap> create_normal_map(const ConfigArgs &args)
 {
     auto normal_map = std::make_unique<NormalMap>();
-    normal_map->map = create_shader_field_color<3>(args["map"]);
+    normal_map->map = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["map"]);
     std::string space = args.load_string("space", "tangent");
     if (space == "tangent") {
         normal_map->space = NormalMap::Space::TangentSpace;

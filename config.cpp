@@ -189,9 +189,9 @@ Transform ConfigServiceInternal::load_transform_field(const toml::node_view<cons
         const auto &r = *table["rotation"].as_table();
         if (r.contains("euler")) {
             const auto &euler = *r["euler"].as_array();
-            float angle0 = *euler[0].value<float>();
-            float angle1 = *euler[1].value<float>();
-            float angle2 = *euler[2].value<float>();
+            float angle0 = to_radian(*euler[0].value<float>());
+            float angle1 = to_radian(*euler[1].value<float>());
+            float angle2 = to_radian(*euler[2].value<float>());
             rotation = (quat)Eigen::EulerAnglesXYZf(angle0, angle1, angle2);
         } else if (r.contains("quat")) {
             const auto &quaternion = *r["quat"].as_array();

@@ -37,7 +37,8 @@ float Lambertian::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) co
 
 std::unique_ptr<Lambertian> create_lambertian(const ConfigArgs &args)
 {
-    std::unique_ptr<ShaderField<color3>> albedo = create_shader_field_color<3>(args["albedo"]);
+    std::unique_ptr<ShaderField3> albedo =
+        args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["albedo"]);
     return std::make_unique<Lambertian>(std::move(albedo));
 }
 

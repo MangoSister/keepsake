@@ -103,6 +103,25 @@ struct ConfigurableTable
         return dynamic_cast<const T *>(get(path));
     }
 
+    std::unique_ptr<Configurable> create_in_place(std::string_view prefix, const ConfigArgs &args) const
+    {
+        auto it = std::find_if(parsers.begin(), parsers.end(), [&](const auto &p) { return p.first == prefix; });
+        if (it == parsers.end())
+            return nullptr;
+        return (it->second)(args);
+    }
+
+    template <typename T>
+    std::unique_ptr<T> create_in_place(std::string_view prefix, const ConfigArgs &args) const
+    {
+        std::unique_ptr<Configurable> obj = create_in_place(prefix, args);
+        T *t_obj = dynamic_cast<T *>(obj.get());
+        if (!t_obj)
+            return nullptr;
+        obj.release();
+        return std::unique_ptr<T>(t_obj);
+    }
+
     StringHashTable<std::unique_ptr<Configurable>> assets;
     std::vector<std::pair<std::string, ConfigurableParser>> parsers;
 };

@@ -561,8 +561,8 @@ bool BSSRDF::sample(const LocalGeometry &local_geometry, const Intersection &ent
 std::unique_ptr<BSSRDF> create_bssrdf(const ConfigArgs &args)
 {
     std::unique_ptr<BSSRDF> bssrdf = std::make_unique<BSSRDF>();
-    bssrdf->albedo = create_shader_field_color<3>(args["albedo"]);
-    bssrdf->radius = create_shader_field_color<3>(args["radius"]);
+    bssrdf->albedo = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["albedo"]);
+    bssrdf->radius = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["radius"]);
     bssrdf->anisotropy = args.load_float("anisotropy");
     bssrdf->ior = args.load_float("ior");
     bssrdf->rfr_entry_prob = args.load_float("rfr_entry_prob");

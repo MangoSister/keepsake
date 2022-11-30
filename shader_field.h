@@ -5,7 +5,7 @@
 #include <numeric>
 
 template <typename T>
-struct ShaderField
+struct ShaderField : Configurable
 {
     virtual ~ShaderField() = default;
     virtual T operator()(const vec2 &uv, const mat2 &duvdxy) const = 0;
@@ -111,3 +111,8 @@ std::unique_ptr<ShaderField<color<N>>> create_shader_field_color(const ConfigArg
     }
     return field;
 }
+
+using ShaderField1 = ShaderField<color<1>>;
+using ShaderField2 = ShaderField<color<2>>;
+using ShaderField3 = ShaderField<color<3>>;
+using ShaderField4 = ShaderField<color<4>>;
