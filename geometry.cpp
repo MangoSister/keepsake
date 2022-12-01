@@ -30,11 +30,23 @@ void MeshGeometry::create_rtc_geom(const EmbreeDevice &device)
                                sizeof(float[3]), (data->vertices.size() - 1) / 3);
     rtcSetSharedGeometryBuffer(rtcgeom, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, data->indices.data(), 0,
                                sizeof(uint32_t[3]), data->indices.size() / 3);
+
+    uint32_t attrib_count = (int)(data->has_texcoord()) + (int)(data->has_vertex_normal() && data->use_smooth_normal);
+    rtcSetGeometryVertexAttributeCount(rtcgeom, attrib_count);
+
+    uint32_t next_slot = 0;
     if (data->has_texcoord()) {
         ASSERT((data->texcoords.size() - 2) % 2 == 0);
-        rtcSetGeometryVertexAttributeCount(rtcgeom, 1);
-        rtcSetSharedGeometryBuffer(rtcgeom, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0, RTC_FORMAT_FLOAT2,
+        texcoord_slot = next_slot;
+        rtcSetSharedGeometryBuffer(rtcgeom, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, next_slot++, RTC_FORMAT_FLOAT2,
                                    data->texcoords.data(), 0, sizeof(float[2]), (data->texcoords.size() - 2) / 2);
+    }
+    if (data->has_vertex_normal() && data->use_smooth_normal) {
+        ASSERT((data->vertex_normals.size() - 1) % 3 == 0);
+        vertex_normal_slot = next_slot;
+        rtcSetSharedGeometryBuffer(rtcgeom, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, next_slot++, RTC_FORMAT_FLOAT3,
+                                   data->vertex_normals.data(), 0, sizeof(float[3]),
+                                   (data->vertex_normals.size() - 1) / 3);
     }
 
     rtcSetGeometryUserData(rtcgeom, (void *)this);
@@ -70,8 +82,8 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     // TODO: refactor hard-coded buffer slot.
     if (data->has_texcoord()) {
         vec4 tc;
-        rtcInterpolate0(rtcgeom, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, 0,
-                        tc.data(), 2);
+        rtcInterpolate0(rtcgeom, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE,
+                        texcoord_slot, tc.data(), 2);
         it.uv = tc.head(2);
 
         // Need to manually re-calculate dpdu/dpdv due to based on supplied texture coordinates.
@@ -108,8 +120,24 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     }
 
     it.frame = Frame(t, b, ng);
-    // TODO: shading frame from vertex normals.
-    it.sh_frame = it.frame;
+    if (!data->use_smooth_normal || data->vertex_normals.empty()) {
+        it.sh_frame = it.frame;
+    } else {
+        vec4 vn4;
+        rtcInterpolate0(rtcgeom, rayhit.hit.primID, rayhit.hit.u, rayhit.hit.v, RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE,
+                        vertex_normal_slot, vn4.data(), 3);
+        vec3 vn = vn4.head(3).normalized();
+        if (!vn.allFinite()) {
+            // Revert to face normal if vertex normal is bad.
+            it.sh_frame = it.frame;
+        } else {
+            // Forcing vertex normal to be on the same side as face normal.
+            if (vn.dot(it.frame.n) < 0.0f) {
+                vn = -vn;
+            }
+            it.sh_frame = Frame(vn);
+        }
+    }
     return it;
 }
 

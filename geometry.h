@@ -1,6 +1,6 @@
 #pragma once
-#include "embree_util.h"
 #include "aabb.h"
+#include "embree_util.h"
 #include "ray.h"
 
 struct Geometry
@@ -28,6 +28,13 @@ struct MeshData
         return vec2(texcoords[offset], texcoords[offset + 1]);
     }
 
+    bool has_vertex_normal() const { return !vertex_normals.empty(); }
+    vec3 get_vertex_normal(uint32_t idx) const
+    {
+        uint32_t offset = 3 * idx;
+        return vec3(vertex_normals[offset], vertex_normals[offset + 1], vertex_normals[offset + 2]);
+    }
+
     // When the buffer will be used as a vertex buffer (RTC_BUFFER_TYPE_VER-
     // TEX and RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE), the last buffer element must
     // be readable using 16-byte SSE load instructions, thus padding the last element is
@@ -43,12 +50,14 @@ struct MeshData
 
     std::vector<float> vertices;
     std::vector<float> texcoords;
+    std::vector<float> vertex_normals;
     std::vector<uint32_t> indices;
 
     // TODO: vertex normal later.
 
     // TODO: a smarter way to specify this
     bool twosided = true;
+    bool use_smooth_normal = true;
 };
 
 struct MeshGeometry : public Geometry
@@ -59,6 +68,8 @@ struct MeshGeometry : public Geometry
     void create_rtc_geom(const EmbreeDevice &device);
     Intersection compute_intersection(const RTCRayHit &rayhit) const;
 
+    uint32_t texcoord_slot = ~0;
+    uint32_t vertex_normal_slot = ~0;
     const MeshData *data = nullptr;
 };
 

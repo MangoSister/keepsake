@@ -11,7 +11,7 @@ namespace fs = std::filesystem;
 struct MeshAsset : public Configurable
 {
     // TODO: a smarter way to specify twosided
-    void load_from_obj(const fs::path &path, bool load_materials, bool twosided);
+    void load_from_obj(const fs::path &path, bool load_materials, bool twosided, bool use_smooth_normal);
     void load_from_binary(const fs::path &path);
     void write_to_binary(const fs::path &path) const;
 

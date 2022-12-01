@@ -50,7 +50,7 @@ struct IndexEqual
     }
 };
 
-void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool twosided)
+void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool twosided, bool use_smooth_normal)
 {
     fs::path base_path = path.parent_path();
     tinyobj::ObjReaderConfig reader_config;
@@ -79,11 +79,13 @@ void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool tw
         const tinyobj::shape_t &shape = shapes[s];
         std::unique_ptr<MeshData> mesh = std::make_unique<MeshData>();
         mesh->twosided = twosided;
+        mesh->use_smooth_normal = use_smooth_normal;
         mesh->indices.reserve(shape.mesh.num_face_vertices.size() * 3);
         // Need to reconstruct index buffer per shape.
         std::unordered_map<tinyobj::index_t, uint32_t, IndexHash, IndexEqual> index_remap;
         mesh->vertices.reserve(shape.mesh.num_face_vertices.size() * 3 * 3);
         mesh->texcoords.reserve(shape.mesh.num_face_vertices.size() * 3 * 2);
+        mesh->vertex_normals.reserve(shape.mesh.num_face_vertices.size() * 3 * 3);
 
         int material_id = -1;
         for (int f = 0; f < (int)shape.mesh.num_face_vertices.size(); f++) {
@@ -118,6 +120,18 @@ void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool tw
                     } else {
                         ASSERT(mesh->texcoords.empty(), "Either all or none vertices have uv.");
                     }
+
+                    if (idx.normal_index >= 0) {
+                        tinyobj::real_t nx = attrib.normals[3 * idx.normal_index + 0];
+                        tinyobj::real_t ny = attrib.normals[3 * idx.normal_index + 1];
+                        tinyobj::real_t nz = attrib.normals[3 * idx.normal_index + 2];
+
+                        mesh->vertex_normals.push_back(nx);
+                        mesh->vertex_normals.push_back(ny);
+                        mesh->vertex_normals.push_back(nz);
+                    } else {
+                        ASSERT(mesh->texcoords.empty(), "Either all or none vertices have vertex normal.");
+                    }
                 }
                 mesh->indices.push_back(insert.first->second);
             }
@@ -132,6 +146,11 @@ void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool tw
             mesh->texcoords.push_back(std::numeric_limits<float>::quiet_NaN());
         }
         mesh->texcoords.shrink_to_fit();
+        // Add a dummy values to vertex buffer for embree padding.
+        if (!mesh->vertex_normals.empty()) {
+            mesh->vertex_normals.push_back(std::numeric_limits<float>::quiet_NaN());
+        }
+        mesh->vertex_normals.shrink_to_fit();
 
         if (load_materials) {
             parse_tinyobj_material(materials[material_id], base_path, *this);
@@ -158,9 +177,11 @@ void MeshAsset::load_from_binary(const fs::path &path)
     for (auto &mesh : meshes) {
         mesh = std::make_unique<MeshData>();
         mesh->twosided = reader.read<bool>();
+        mesh->use_smooth_normal = reader.read<bool>();
         int n_verts = reader.read<int>();
         int n_tris = reader.read<int>();
         bool has_texcoord = reader.read<bool>();
+        bool has_vertex_normal = reader.read<bool>();
 
         // Add a dummy value to vertex buffer for embree padding.
         mesh->vertices.resize(3 * n_verts + 1);
@@ -172,6 +193,10 @@ void MeshAsset::load_from_binary(const fs::path &path)
             mesh->texcoords.resize(2 * n_verts + 2);
             reader.read_array<float>(mesh->texcoords.data(), mesh->texcoords.size());
         }
+        if (has_vertex_normal) {
+            mesh->vertex_normals.resize(3 * n_verts + 1);
+            reader.read_array<float>(mesh->vertex_normals.data(), mesh->vertex_normals.size());
+        }
     }
 }
 
@@ -182,6 +207,7 @@ void MeshAsset::write_to_binary(const fs::path &path) const
     writer.write<int>((int)meshes.size());
     for (const auto &mesh : meshes) {
         writer.write<bool>(mesh->twosided);
+        writer.write<bool>(mesh->use_smooth_normal);
         writer.write<int>(mesh->vertex_count());
         writer.write<int>(mesh->tri_count());
         writer.write<bool>(mesh->has_texcoord());
@@ -189,6 +215,9 @@ void MeshAsset::write_to_binary(const fs::path &path) const
         writer.write_array<uint32_t>(mesh->indices.data(), mesh->indices.size());
         if (mesh->has_texcoord()) {
             writer.write_array<float>(mesh->texcoords.data(), mesh->texcoords.size());
+        }
+        if (mesh->has_vertex_normal()) {
+            writer.write_array<float>(mesh->vertex_normals.data(), mesh->vertex_normals.size());
         }
     }
 }
@@ -201,7 +230,8 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args)
     if (fmt == "obj") {
         bool load_materials = args.load_bool("load_materials");
         bool twosided = args.load_bool("twosided", false);
-        mesh_asset->load_from_obj(path, load_materials, twosided);
+        bool use_smooth_normal = args.load_bool("use_smooth_normal", true);
+        mesh_asset->load_from_obj(path, load_materials, twosided, use_smooth_normal);
     } else if (fmt == "bin") {
         mesh_asset->load_from_binary(path);
     } else {
