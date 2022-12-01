@@ -130,7 +130,7 @@ void MeshAsset::load_from_obj(const fs::path &path, bool load_materials, bool tw
                         mesh->vertex_normals.push_back(ny);
                         mesh->vertex_normals.push_back(nz);
                     } else {
-                        ASSERT(mesh->texcoords.empty(), "Either all or none vertices have vertex normal.");
+                        ASSERT(mesh->vertex_normals.empty(), "Either all or none vertices have vertex normal.");
                     }
                 }
                 mesh->indices.push_back(insert.first->second);
