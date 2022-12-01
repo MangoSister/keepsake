@@ -22,6 +22,7 @@ struct ConfigServiceInternal
 
     toml::parse_result cfg;
 
+    fs::path asset_root_dir;
     ConfigurableTable asset_table;
 
     std::unordered_map<const toml::node *, KeyframeFloat> float_fields;
@@ -306,6 +307,8 @@ void ConfigService::parse_file(const fs::path &file_path) { service->parse_file(
 
 void ConfigService::parse(std::string_view str) { service->parse(str); }
 
+void ConfigService::set_asset_root_dir(const fs::path &root) { service->asset_root_dir = fs::absolute(root); }
+
 void ConfigService::register_asset(std::string_view prefix, const ConfigurableParser &parser)
 {
     service->asset_table.register_parser(prefix, parser);
@@ -341,6 +344,7 @@ struct ConfigArgsInternal
     Transform load_transform(std::string_view name, const std::optional<Transform> &default_value = {}) const;
     bool load_bool(std::string_view name, const std::optional<bool> &default_value = {}) const;
     std::string load_string(std::string_view name, const std::optional<std::string> &default_value = {}) const;
+    fs::path load_path(std::string_view name) const;
 
     int load_integer(int index) const;
     float load_float(int index) const;
@@ -350,6 +354,7 @@ struct ConfigArgsInternal
     Transform load_transform(int index) const;
     bool load_bool(int index) const;
     std::string load_string(int index) const;
+    fs::path load_path(int index) const;
 
     ConfigServiceInternal *service;
     toml::node_view<const toml::node> args;
@@ -527,6 +532,29 @@ std::string ConfigArgsInternal::load_string(int index) const
     return *args[index].value<std::string>();
 }
 
+fs::path ConfigArgsInternal::load_path(std::string_view name) const
+{
+    ASSERT(args.is_table(), "This ConfigArgs is not a table.");
+    ASSERT(args.as_table()->contains(name), "No path value named [%.*s].", static_cast<int>(name.length()),
+           name.data());
+    std::string path_str = *args[name].value<std::string>();
+    if (!service->asset_root_dir.empty()) {
+        return service->asset_root_dir / path_str;
+    }
+    return fs::path(path_str);
+}
+
+fs::path ConfigArgsInternal::load_path(int index) const
+{
+    ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
+    ASSERT(index < args.as_array()->size(), "Index out of bound.");
+    std::string path_str = *args[index].value<std::string>();
+    if (!service->asset_root_dir.empty()) {
+        return service->asset_root_dir / path_str;
+    }
+    return fs::path(path_str);
+}
+
 ConfigArgs::~ConfigArgs() = default;
 
 ConfigArgs::ConfigArgs(std::unique_ptr<ConfigArgsInternal> &&args) : args(std::move(args)) {}
@@ -621,12 +649,9 @@ std::string ConfigArgs::load_string(std::string_view name, const std::optional<s
 
 std::string ConfigArgs::load_string(int index) const { return args->load_string(index); }
 
-fs::path ConfigArgs::load_path(std::string_view name, const std::optional<fs::path> &default_value) const
-{
-    return fs::path(load_string(name, default_value.value_or(fs::path()).string()));
-}
+fs::path ConfigArgs::load_path(std::string_view name) const { return args->load_path(name); }
 
-fs::path ConfigArgs::load_path(int index) const { return args->load_string(index); }
+fs::path ConfigArgs::load_path(int index) const { return args->load_path(index); }
 
 void ConfigArgs::update_time(float t) const { args->time = t; }
 

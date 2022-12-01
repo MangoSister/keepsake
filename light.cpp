@@ -105,7 +105,7 @@ std::unique_ptr<Light> create_light(const ConfigArgs &args)
 
 std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args)
 {
-    fs::path map = args.load_string("map");
+    fs::path map = args.load_path("map");
     Transform to_world;
     if (args.contains("to_world"))
         to_world = args.load_transform("to_world");

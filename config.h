@@ -48,7 +48,7 @@ struct ConfigArgs
     Transform load_transform(std::string_view name, const std::optional<Transform> &default_value = {}) const;
     bool load_bool(std::string_view name, const std::optional<bool> &default_value = {}) const;
     std::string load_string(std::string_view name, const std::optional<std::string> &default_value = {}) const;
-    fs::path load_path(std::string_view name, const std::optional<fs::path> &default_value = {}) const;
+    fs::path load_path(std::string_view name) const;
 
     int load_integer(int index) const;
     float load_float(int index) const;
@@ -134,6 +134,7 @@ struct ConfigService
     ~ConfigService();
     ConfigService();
 
+    void set_asset_root_dir(const fs::path &root);
     void parse_file(const fs::path &file_path);
     void parse(std::string_view str);
 
