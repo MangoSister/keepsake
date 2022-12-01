@@ -214,14 +214,18 @@ inline int sample_small_distrib(std::span<const float> data, float u, float *u_r
 {
     int N = (int)data.size();
     float sum_w = 0.0f;
+    int last_positive = 0;
     for (int i = 0; i < N; ++i) {
         sum_w += data[i];
+        if (data[i] > 0.0f) {
+            last_positive = i;
+        }
     }
     ASSERT(sum_w > 0.0f);
     float inv_sum_w = 1.0f / sum_w;
 
     float cdf = 0.0f;
-    int selected = N - 1;
+    int selected = -1;
     for (int i = 0; i < N; ++i) {
         float dcdf = data[i] * inv_sum_w;
         float cdf_next = cdf + dcdf;
@@ -234,6 +238,9 @@ inline int sample_small_distrib(std::span<const float> data, float u, float *u_r
         }
         cdf = cdf_next;
     }
+    if (selected == -1) {
+        selected = last_positive;
+    }
     ASSERT(data[selected] > 0.0f);
     return selected;
 }
@@ -245,14 +252,18 @@ inline int sample_small_distrib(const std::span<const T> data, float u, float *u
 {
     int N = (int)data.size();
     float sum_w = 0.0f;
+    int last_positive = 0;
     for (int i = 0; i < N; ++i) {
         sum_w += data[i].*member_ptr;
+        if (data[i].*member_ptr > 0.0f) {
+            last_positive = i;
+        }
     }
     ASSERT(sum_w > 0.0f);
     float inv_sum_w = 1.0f / sum_w;
 
     float cdf = 0.0f;
-    int selected = N - 1;
+    int selected = -1;
     for (int i = 0; i < N; ++i) {
         float dcdf = data[i].*member_ptr * inv_sum_w;
         float cdf_next = cdf + dcdf;
@@ -264,6 +275,9 @@ inline int sample_small_distrib(const std::span<const T> data, float u, float *u
             break;
         }
         cdf = cdf_next;
+    }
+    if (selected == -1) {
+        selected = last_positive;
     }
     ASSERT(data[selected].*member_ptr > 0.0f);
     return selected;
