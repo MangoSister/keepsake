@@ -68,6 +68,9 @@ struct MeshGeometry : public Geometry
     void create_rtc_geom(const EmbreeDevice &device);
     Intersection compute_intersection(const RTCRayHit &rayhit) const;
 
+    vec2 interpolate_texcoord(uint32_t prim_id, const vec2 &bary) const;
+    vec3 interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary) const;
+
     uint32_t texcoord_slot = ~0;
     uint32_t vertex_normal_slot = ~0;
     const MeshData *data = nullptr;

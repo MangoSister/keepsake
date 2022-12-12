@@ -141,6 +141,45 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     return it;
 }
 
+vec2 MeshGeometry::interpolate_texcoord(uint32_t prim_id, const vec2 &bary) const
+{
+    if (!data->has_texcoord() || texcoord_slot == ~0) {
+        return vec2::Zero();
+    }
+    vec4 tc;
+    rtcInterpolate0(rtcgeom, prim_id, bary.x(), bary.y(), RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, texcoord_slot, tc.data(),
+                    2);
+    return tc.head(2);
+}
+
+vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary) const
+{
+    int i0 = data->indices[3 * prim_id];
+    int i1 = data->indices[3 * prim_id + 1];
+    int i2 = data->indices[3 * prim_id + 2];
+    vec3 v0 = data->get_pos(i0);
+    vec3 v1 = data->get_pos(i1);
+    vec3 v2 = data->get_pos(i2);
+    vec3 ng = ((v1 - v0).cross(v2 - v1)).normalized();
+    if (!data->use_smooth_normal || !data->has_vertex_normal() || vertex_normal_slot == ~0) {
+        return ng;
+    }
+    vec4 vn4;
+    rtcInterpolate0(rtcgeom, prim_id, bary.x(), bary.y(), RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, vertex_normal_slot,
+                    vn4.data(), 3);
+    vec3 vn = vn4.head(3).normalized();
+    if (!vn.allFinite()) {
+        // Revert to face normal if vertex normal is bad.
+        return ng;
+    } else {
+        // Forcing vertex normal to be on the same side as face normal.
+        if (vn.dot(ng) < 0.0f) {
+            vn = -vn;
+        }
+        return vn;
+    }
+}
+
 void SphereGeometry::create_rtc_geom(const EmbreeDevice &device)
 {
     rtcgeom = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_SPHERE_POINT);
