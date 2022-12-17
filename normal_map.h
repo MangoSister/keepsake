@@ -23,6 +23,7 @@ struct NormalMap : Configurable
     bool range01 = true;
     vec3i swizzle = vec3i(0, 1, 2);
     float strength = 1.0f;
+    Transform to_world;
     std::unique_ptr<ShaderField<color<3>>> map;
 };
 

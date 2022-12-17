@@ -211,6 +211,7 @@ void MeshAsset::write_to_binary(const fs::path &path) const
         writer.write<int>(mesh->vertex_count());
         writer.write<int>(mesh->tri_count());
         writer.write<bool>(mesh->has_texcoord());
+        writer.write<bool>(mesh->has_vertex_normal());
         writer.write_array<float>(mesh->vertices.data(), mesh->vertices.size());
         writer.write_array<uint32_t>(mesh->indices.data(), mesh->indices.size());
         if (mesh->has_texcoord()) {

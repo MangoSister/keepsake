@@ -17,6 +17,14 @@ void MeshData::transform(const Transform &t)
         vertices[i + 0] = v.x();
         vertices[i + 1] = v.y();
         vertices[i + 2] = v.z();
+
+        if (has_vertex_normal()) {
+            vec3 vn(vertex_normals[i + 0], vertex_normals[i + 1], vertex_normals[i + 2]);
+            vn = t.normal(vn);
+            vertex_normals[i + 0] = vn.x();
+            vertex_normals[i + 1] = vn.y();
+            vertex_normals[i + 2] = vn.z();
+        }
     }
 }
 

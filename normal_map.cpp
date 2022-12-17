@@ -26,6 +26,7 @@ void NormalMap::apply(Intersection &it) const
         normal = it.sh_frame.to_world(normal);
         it.sh_frame = Frame(normal);
     } else if (space == Space::WorldSpace) {
+        normal = to_world.normal(normal);
         it.sh_frame = Frame(normal);
     }
 }
@@ -42,5 +43,6 @@ std::unique_ptr<NormalMap> create_normal_map(const ConfigArgs &args)
     }
     normal_map->range01 = args.load_bool("range01", true);
     normal_map->strength = args.load_float("strength", 1.0f);
+    normal_map->to_world = args.load_transform("to_world", Transform());
     return normal_map;
 }

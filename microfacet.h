@@ -316,3 +316,22 @@ struct Beckmann : public MicrofacetDistribution
 
     static constexpr float min_alpha = 1e-3f;
 };
+
+struct MicrofacetAdapter
+{
+    virtual float D(float ax, float ay, const vec3 &wm) const = 0;
+    virtual float G1(float ax, float ay, const vec3 &w) const = 0;
+    virtual float G2(float ax, float ay, const vec3 &wo, const vec3 &wi) const = 0;
+    virtual float pdf(float ax, float ay, const vec3 &wo, const vec3 &wm) const = 0;
+    virtual vec3 sample(float ax, float ay, const vec3 &wo, const vec2 &u) const = 0;
+};
+
+template <typename M>
+struct MicrofacetAdapterDerived : public MicrofacetAdapter
+{
+    float D(float ax, float ay, const vec3 &wm) const { return M(ax, ay).D(wm); }
+    float G1(float ax, float ay, const vec3 &w) const { return M(ax, ay).G1(w); };
+    float G2(float ax, float ay, const vec3 &wo, const vec3 &wi) const { return M(ax, ay).G2(wo, wi); };
+    float pdf(float ax, float ay, const vec3 &wo, const vec3 &wm) const { return M(ax, ay).pdf(wo, wm); };
+    vec3 sample(float ax, float ay, const vec3 &wo, const vec2 &u) const { return M(ax, ay).sample(wo, u); };
+};

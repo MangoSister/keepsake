@@ -70,44 +70,57 @@ struct TextureField : public ShaderField<color<N>>
 };
 
 template <int N>
+std::unique_ptr<ConstantField<color<N>>> create_constant_shader_field_color(const ConfigArgs &args)
+{
+    static_assert(N >= 1 && N <= 4);
+    if constexpr (N == 1) {
+        float value = args.load_float("value");
+        return std::make_unique<ConstantField<color<N>>>(color<N>(value));
+    } else if constexpr (N == 2) {
+        color<N> value = args.load_vec2("value").array();
+        return std::make_unique<ConstantField<color<N>>>(value);
+    } else if constexpr (N == 3) {
+        color<N> value = args.load_vec3("value").array();
+        return std::make_unique<ConstantField<color<N>>>(color<N>(value));
+    } else {
+        color<N> value = args.load_vec4("value").array();
+        return std::make_unique<ConstantField<color<N>>>(color<N>(value));
+    }
+}
+
+template <int N>
+std::unique_ptr<TextureField<N>> create_texture_shader_field_color(const ConfigArgs &args)
+{
+    static_assert(N >= 1 && N <= 4);
+    const Texture *map = args.asset_table().get<Texture>(args.load_string("map"));
+    std::unique_ptr<TextureSampler> sampler = create_texture_sampler(args["sampler"]);
+    bool flip_v = args.load_bool("flip_v", true);
+    arri<N> swizzle;
+    std::iota(swizzle.data(), swizzle.data() + N, 0);
+    if (args.contains("swizzle")) {
+        if constexpr (N == 1) {
+            swizzle = arri<N>(args.load_integer("swizzle"));
+        } else if constexpr (N == 2) {
+            swizzle = args.load_vec2("swizzle").cast<int>().array();
+        } else if constexpr (N == 3) {
+            swizzle = args.load_vec3("swizzle").cast<int>().array();
+        } else {
+            swizzle = args.load_vec4("swizzle").cast<int>().array();
+        }
+    }
+    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, &swizzle);
+}
+
+template <int N>
 std::unique_ptr<ShaderField<color<N>>> create_shader_field_color(const ConfigArgs &args)
 {
     static_assert(N >= 1 && N <= 4);
-
     std::string field_type = args.load_string("type");
     std::unique_ptr<ShaderField<color<N>>> field;
     if (field_type == "constant") {
-        if constexpr (N == 1) {
-            float value = args.load_float("value");
-            field = std::make_unique<ConstantField<color<N>>>(color<N>(value));
-        } else if constexpr (N == 2) {
-            color<N> value = args.load_vec2("value").array();
-            field = std::make_unique<ConstantField<color<N>>>(value);
-        } else if constexpr (N == 3) {
-            color<N> value = args.load_vec3("value").array();
-            field = std::make_unique<ConstantField<color<N>>>(color<N>(value));
-        } else {
-            color<N> value = args.load_vec4("value").array();
-            field = std::make_unique<ConstantField<color<N>>>(color<N>(value));
-        }
+        return create_constant_shader_field_color<N>(args);
     } else if (field_type == "texture") {
-        const Texture *map = args.asset_table().get<Texture>(args.load_string("map"));
-        std::unique_ptr<TextureSampler> sampler = create_texture_sampler(args["sampler"]);
-        bool flip_v = args.load_bool("flip_v", true);
-        arri<N> swizzle;
-        std::iota(swizzle.data(), swizzle.data() + N, 0);
-        if (args.contains("swizzle")) {
-            if constexpr (N == 1) {
-                swizzle = arri<N>(args.load_integer("swizzle"));
-            } else if constexpr (N == 2) {
-                swizzle = args.load_vec2("swizzle").cast<int>().array();
-            } else if constexpr (N == 3) {
-                swizzle = args.load_vec3("swizzle").cast<int>().array();
-            } else {
-                swizzle = args.load_vec4("swizzle").cast<int>().array();
-            }
-        }
-        field = std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, &swizzle);
+        return create_texture_shader_field_color<N>(args);
     }
     return field;
 }
