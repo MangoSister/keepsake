@@ -80,6 +80,15 @@ inline vec2 roberts_qmc_2d(uint32_t n, const vec2 &p0 = vec2::Zero())
     return p;
 }
 
+inline vec3 roberts_qmc_3d(uint32_t n, const vec3 &p0 = vec3::Zero())
+{
+    vec3 p;
+    p.x() = fract(p0.x() + (float)(n * 13743434) / (float)(1 << 24));
+    p.y() = fract(p0.y() + (float)(n * 11258243) / (float)(1 << 24));
+    p.z() = fract(p0.z() + (float)(n * 9222443) / (float)(1 << 24));
+    return p;
+}
+
 inline vec3 sample_uniform_hemisphere(const vec2 &u)
 {
     float z = u.y();
