@@ -149,6 +149,13 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     return it;
 }
 
+vec3 MeshGeometry::interpolate_position(uint32_t prim_id, const vec2 &bary) const
+{
+    vec4 P;
+    rtcInterpolate0(rtcgeom, prim_id, bary.x(), bary.y(), RTC_BUFFER_TYPE_VERTEX, 0, P.data(), 3);
+    return P.head(3);
+}
+
 vec2 MeshGeometry::interpolate_texcoord(uint32_t prim_id, const vec2 &bary) const
 {
     if (!data->has_texcoord() || texcoord_slot == ~0) {
@@ -160,7 +167,7 @@ vec2 MeshGeometry::interpolate_texcoord(uint32_t prim_id, const vec2 &bary) cons
     return tc.head(2);
 }
 
-vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary) const
+vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary, vec3 *ng_out) const
 {
     int i0 = data->indices[3 * prim_id];
     int i1 = data->indices[3 * prim_id + 1];
@@ -169,6 +176,8 @@ vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary)
     vec3 v1 = data->get_pos(i1);
     vec3 v2 = data->get_pos(i2);
     vec3 ng = ((v1 - v0).cross(v2 - v1)).normalized();
+    if (ng_out)
+        *ng_out = ng;
     if (!data->use_smooth_normal || !data->has_vertex_normal() || vertex_normal_slot == ~0) {
         return ng;
     }
