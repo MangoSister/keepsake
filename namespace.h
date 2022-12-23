@@ -15,8 +15,10 @@
 #ifdef KS_NAMESPACE
 #define KS_NAMESPACE_BEGIN namespace KS_NAMESPACE {
 #define KS_NAMESPACE_END }
+#define USING_NAMESPACE_KS using namespace ks;
 #else
 #define KS_NAMESPACE_BEGIN
 #define KS_NAMESPACE_END
+#define USING_NAMESPACE_KS
 #endif
 // clang-format on

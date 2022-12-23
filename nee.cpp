@@ -78,7 +78,7 @@ color3 sample_direct(const Scene &scene, std::span<const Light *const> lights, c
     for (int i = 0; i < lights.size(); ++i) {
         vec2 u_light = rng.next2d();
         vec2 u_bsdf = rng.next2d();
-        Ld += ::sample_direct(*lights[i], bsdf, hit, scene, wo, u_light, u_bsdf);
+        Ld += sample_direct(*lights[i], bsdf, hit, scene, wo, u_light, u_bsdf);
     }
     return Ld;
 }

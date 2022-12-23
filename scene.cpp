@@ -49,7 +49,7 @@ AABB3 Scene::bound() const
 bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ctx) const
 {
     RTCRayHit rayhit = spawn_rtcrayhit(ray.origin, ray.dir, ray.tmin, ray.tmax);
-    if (!::intersect1(rtcscene, ctx, rayhit)) {
+    if (!KS_NAMESPACE::intersect1(rtcscene, ctx, rayhit)) {
         return false;
     }
 
@@ -68,7 +68,7 @@ bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ct
 bool Scene::occlude1(const Ray &ray, const IntersectContext &ctx) const
 {
     RTCRay rtcray = spawn_ray(ray.origin, ray.dir, ray.tmin, ray.tmax);
-    return ::occlude1(rtcscene, ctx, rtcray);
+    return KS_NAMESPACE::occlude1(rtcscene, ctx, rtcray);
 }
 
 

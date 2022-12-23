@@ -10,17 +10,17 @@ void RenderTarget::save_to_png(const fs::path &path) const
         for (int c = 0; c < 3; ++c)
             buf[3 * i + c] = (uint8_t)std::floor(pixels[i][c] * 255.0f);
     }
-    ::save_to_png((const std::byte *)buf.get(), width, height, 3, path);
+    KS_NAMESPACE::save_to_png((const std::byte *)buf.get(), width, height, 3, path);
 }
 
 void RenderTarget::save_to_hdr(const fs::path &path) const
 {
-    ::save_to_hdr((const float *)pixels.data(), width, height, 3, path);
+    KS_NAMESPACE::save_to_hdr((const float *)pixels.data(), width, height, 3, path);
 }
 
 void RenderTarget::save_to_exr(const fs::path &path) const
 {
-    ::save_to_exr((const float *)pixels.data(), width, height, 3, path);
+    KS_NAMESPACE::save_to_exr((const float *)pixels.data(), width, height, 3, path);
 }
 
 KS_NAMESPACE_END
