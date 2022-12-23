@@ -7,6 +7,8 @@
 #include <memory>
 #include <utility>
 
+KS_NAMESPACE_BEGIN
+
 template <typename T>
 struct BlockedArray
 {
@@ -98,3 +100,5 @@ struct BlockedArray
     int log_block_size = 2;
     int stride = 0;
 };
+
+KS_NAMESPACE_END

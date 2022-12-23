@@ -2,6 +2,8 @@
 #include "assertion.h"
 #include "image_util.h"
 
+KS_NAMESPACE_BEGIN
+
 constexpr int byte_stride(TextureDataType data_type)
 {
     switch (data_type) {
@@ -279,3 +281,5 @@ std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args)
     }
     return sampler;
 }
+
+KS_NAMESPACE_END

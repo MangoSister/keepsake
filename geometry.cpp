@@ -1,6 +1,8 @@
 #include "geometry.h"
 #include "embree_util.h"
 
+KS_NAMESPACE_BEGIN
+
 Geometry::~Geometry()
 {
     if (rtcgeom) {
@@ -237,3 +239,5 @@ Intersection SphereGeometry::compute_intersection(const RTCRayHit &rayhit) const
 
     return it;
 }
+
+KS_NAMESPACE_END

@@ -1,7 +1,10 @@
 #pragma once
 
+#include "namespace.h"
 #include <Eigen/Geometry>
 #include <concepts>
+
+KS_NAMESPACE_BEGIN
 
 template <int N>
 using vec = Eigen::Matrix<float, N, 1>;
@@ -692,3 +695,5 @@ inline bool refract(const vec3 &wi, const vec3 &n, float eta, vec3 &wt)
     wt = -eta * wi + (eta * NdotI - sqrt(k)) * n;
     return true;
 }
+
+KS_NAMESPACE_END

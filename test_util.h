@@ -4,6 +4,8 @@
 #include <iomanip>
 namespace fs = std::filesystem;
 
+KS_NAMESPACE_BEGIN
+
 static inline std::string current_time_and_date()
 {
     auto now = std::chrono::system_clock::now();
@@ -31,3 +33,5 @@ void test_case(const fs::path &root_dir, const std::string &test_name, const Fun
     std::chrono::duration<double> duration = end - start;
     printf("Finished [%s]. Took %.3f sec.\n", test_name.c_str(), duration.count());
 }
+
+KS_NAMESPACE_END

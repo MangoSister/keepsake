@@ -2,6 +2,8 @@
 #include "mesh_asset.h"
 #include "normal_map.h"
 
+KS_NAMESPACE_BEGIN
+
 Scene::~Scene()
 {
     if (rtcscene) {
@@ -77,3 +79,5 @@ bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
     ctx.ext = (void *)&geom_id;
     return scene->intersect1(ray, hit, ctx);
 }
+
+KS_NAMESPACE_END

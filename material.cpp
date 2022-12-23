@@ -5,6 +5,8 @@
 #include "scene.h"
 #include "subsurface.h"
 
+KS_NAMESPACE_BEGIN
+
 inline float fresnel_dielectric_cos(float cosi, float eta)
 {
     // compute fresnel reflectance without explicitly computing
@@ -183,3 +185,5 @@ std::unique_ptr<Material> create_material(const ConfigArgs &args)
 
     return material;
 }
+
+KS_NAMESPACE_END

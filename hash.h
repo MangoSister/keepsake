@@ -3,6 +3,8 @@
 #include "maths.h"
 #include <functional>
 
+KS_NAMESPACE_BEGIN
+
 // https://www.shadertoy.com/view/XlGcRh
 
 template <int N>
@@ -115,3 +117,5 @@ inline void hash_combine(std::size_t &seed, const T &v, Rest... rest)
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     hash_combine(seed, rest...);
 }
+
+KS_NAMESPACE_END

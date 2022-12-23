@@ -2,6 +2,8 @@
 #include "assertion.h"
 #include <algorithm>
 
+KS_NAMESPACE_BEGIN
+
 DistribTable::DistribTable(const float *f, uint32_t n) : cdf(n + 1)
 {
     cdf[0] = 0;
@@ -98,3 +100,5 @@ float DistribTable2D::pdf(const vec2 &p) const
     int y = std::clamp(int(p[1] * cond.size()), 0, (int)cond.size() - 1);
     return pdf(x, y);
 }
+
+KS_NAMESPACE_END

@@ -1,5 +1,7 @@
 #include "embree_util.h"
 
+KS_NAMESPACE_BEGIN
+
 void handle_embree_error(void *user_ptr, RTCError code, const char *str)
 {
     if (code == RTC_ERROR_NONE)
@@ -55,3 +57,5 @@ EmbreeDevice::EmbreeDevice(const std::string &device_config) : device(rtcNewDevi
 }
 
 EmbreeDevice::~EmbreeDevice() { rtcReleaseDevice(device); }
+
+KS_NAMESPACE_END

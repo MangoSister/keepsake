@@ -1,5 +1,7 @@
 #include "ray.h"
 
+KS_NAMESPACE_BEGIN
+
 void Intersection::compute_uv_partials(const Ray &ray)
 {
     if (ray.has_ray_diffs()) {
@@ -41,3 +43,5 @@ void Intersection::compute_uv_partials(const Ray &ray)
         dpdx = dpdy = vec3(0, 0, 0);
     }
 }
+
+KS_NAMESPACE_END

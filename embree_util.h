@@ -5,6 +5,8 @@
 #include "ray.h"
 #include <embree3/rtcore.h>
 
+KS_NAMESPACE_BEGIN
+
 struct EmbreeDevice
 {
     explicit EmbreeDevice(const std::string &device_config = "");
@@ -163,3 +165,5 @@ inline void filter_local_geometry(const RTCFilterFunctionNArguments *args)
         }
     }
 }
+
+KS_NAMESPACE_END

@@ -5,6 +5,8 @@
 #include "rng.h"
 #include "scene.h"
 
+KS_NAMESPACE_BEGIN
+
 static inline float power_heur(float pf, float pg)
 {
     float pf2 = sqr(pf);
@@ -80,3 +82,5 @@ color3 sample_direct(const Scene &scene, std::span<const Light *const> lights, c
     }
     return Ld;
 }
+
+KS_NAMESPACE_END

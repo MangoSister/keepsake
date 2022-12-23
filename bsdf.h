@@ -3,6 +3,8 @@
 #include "maths.h"
 #include "shader_field.h"
 
+KS_NAMESPACE_BEGIN
+
 struct BSDF : public Configurable
 {
     virtual ~BSDF() = default;
@@ -34,3 +36,5 @@ struct Lambertian : public BSDF
 
 std::unique_ptr<Lambertian> create_lambertian(const ConfigArgs &args);
 std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args);
+
+KS_NAMESPACE_END

@@ -2,6 +2,8 @@
 
 #include "ks/maths.h"
 
+KS_NAMESPACE_BEGIN
+
 // eta = eta_i / eta_t
 inline float fresnel_dielectric(float cos_theta_i, float eta)
 {
@@ -33,3 +35,5 @@ inline float fresnel_mix(float metallic, float eta, float VDotH)
     float dielectricFresnel = fresnel_dielectric(VDotH, eta);
     return std::lerp(dielectricFresnel, metallicFresnel, metallic);
 }
+
+KS_NAMESPACE_END

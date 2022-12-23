@@ -3,6 +3,8 @@
 #include "ks/assertion.h"
 #include "ks/maths.h"
 
+KS_NAMESPACE_BEGIN
+
 struct MicrofacetDistribution
 {
     virtual ~MicrofacetDistribution() = default;
@@ -335,3 +337,5 @@ struct MicrofacetAdapterDerived : public MicrofacetAdapter
     float pdf(float ax, float ay, const vec3 &wo, const vec3 &wm) const { return M(ax, ay).pdf(wo, wm); };
     vec3 sample(float ax, float ay, const vec3 &wo, const vec2 &u) const { return M(ax, ay).sample(wo, u); };
 };
+
+KS_NAMESPACE_END

@@ -1,6 +1,9 @@
 #pragma once
-#include <vector>
+#include "namespace.h"
 #include <cstdint>
+#include <vector>
+
+KS_NAMESPACE_BEGIN
 
 inline void *alloc_aligned(size_t size, size_t alignment)
 {
@@ -113,3 +116,5 @@ class BlockAllocator final : public Allocator
     std::vector<std::pair<size_t, byteptr_t>> free_blocks;
     size_t max_num_blocks;
 };
+
+KS_NAMESPACE_END

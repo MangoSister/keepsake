@@ -10,6 +10,8 @@
 #include <array>
 #include <unordered_map>
 
+KS_NAMESPACE_BEGIN
+
 static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::path &base_path, MeshAsset &asset)
 {
     std::unique_ptr<Lambertian> lambert;
@@ -270,3 +272,5 @@ void convert_mesh_asset_task(const ConfigArgs &args, const fs::path &task_dir, i
         mesh_asset->write_to_binary(task_dir / (name + ".bin"));
     }
 }
+
+KS_NAMESPACE_END

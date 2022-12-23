@@ -8,6 +8,8 @@
 #include <memory>
 namespace fs = std::filesystem;
 
+KS_NAMESPACE_BEGIN
+
 struct MeshAsset : public Configurable
 {
     // TODO: a smarter way to specify twosided
@@ -29,3 +31,5 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args);
 
 // Convenient function: create a scene from a single mesh asset.
 Scene create_scene_from_mesh_asset(const MeshAsset &mesh_asset, const EmbreeDevice &device);
+
+KS_NAMESPACE_END

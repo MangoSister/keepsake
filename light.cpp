@@ -4,6 +4,8 @@
 #include "ray.h"
 #include "rng.h"
 
+KS_NAMESPACE_BEGIN
+
 SkyLight::SkyLight(const fs::path &path, const Transform &l2w, float strength) : l2w(l2w), strength(strength)
 {
     int width, height;
@@ -119,3 +121,5 @@ std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &arg
     vec3 dir = args.load_vec3("dir", true);
     return std::make_unique<DirectionalLight>(L, dir);
 }
+
+KS_NAMESPACE_END

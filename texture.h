@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <span>
 
+KS_NAMESPACE_BEGIN
+
 // TODO: building mipmaps
 // TODO: EWA filtering
 // TODO: f16 data type?
@@ -102,3 +104,5 @@ struct CubicSampler : public TextureSampler
 std::unique_ptr<Texture> create_texture_from_file(int channels, bool build_mipmap, const fs::path &path);
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args);
 std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args);
+
+KS_NAMESPACE_END

@@ -1,6 +1,8 @@
 #include "camera.h"
 #include "config.h"
 
+KS_NAMESPACE_BEGIN
+
 static inline mat4 look_at(const vec3 &position, const vec3 &target, vec3 up)
 {
     vec3 back = (position - target).normalized();
@@ -189,3 +191,5 @@ std::unique_ptr<Camera> create_camera(const ConfigArgs &args)
     }
     return nullptr;
 }
+
+KS_NAMESPACE_END

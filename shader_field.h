@@ -4,6 +4,8 @@
 #include "texture.h"
 #include <numeric>
 
+KS_NAMESPACE_BEGIN
+
 template <typename T>
 struct ShaderField : Configurable
 {
@@ -129,3 +131,6 @@ using ShaderField1 = ShaderField<color<1>>;
 using ShaderField2 = ShaderField<color<2>>;
 using ShaderField3 = ShaderField<color<3>>;
 using ShaderField4 = ShaderField<color<4>>;
+
+
+KS_NAMESPACE_END

@@ -3,6 +3,8 @@
 #include "ray.h"
 #include "texture.h"
 
+KS_NAMESPACE_BEGIN
+
 vec3 NormalMap::sample(const vec2 &uv) const
 {
     color3 sample = (*map)(uv, mat2::Zero()).head(3);
@@ -46,3 +48,5 @@ std::unique_ptr<NormalMap> create_normal_map(const ConfigArgs &args)
     normal_map->to_world = args.load_transform("to_world", Transform());
     return normal_map;
 }
+
+KS_NAMESPACE_END

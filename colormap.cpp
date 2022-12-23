@@ -1,5 +1,7 @@
 #include "colormap.h"
 
+KS_NAMESPACE_BEGIN
+
 namespace colormap
 {
 // clang-format off
@@ -265,7 +267,7 @@ const color3 plasma[plasma_size] =
 // clang-format on
 
 // clang-format off
-const color3 viridis[viridis_size] = 
+const color3 viridis[viridis_size] =
 {
     { 0.267004, 0.004874, 0.329415 },
     { 0.268510, 0.009605, 0.335427 },
@@ -527,3 +529,5 @@ const color3 viridis[viridis_size] =
 // clang-format on
 
 } // namespace colormap
+
+KS_NAMESPACE_END

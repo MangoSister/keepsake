@@ -4,6 +4,8 @@
 #include "rng.h"
 #include "scene.h"
 
+KS_NAMESPACE_BEGIN
+
 inline color3 safe_divide_color(const color3 &a, const color3 &b) { return (b == 0.0f).select(color3::Zero(), a / b); }
 
 inline color3 volume_color_transmittance(const color3 &sigma, float t) { return exp(-sigma * t); }
@@ -568,3 +570,5 @@ std::unique_ptr<BSSRDF> create_bssrdf(const ConfigArgs &args)
     bssrdf->rfr_entry_prob = args.load_float("rfr_entry_prob");
     return bssrdf;
 }
+
+KS_NAMESPACE_END

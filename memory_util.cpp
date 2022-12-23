@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 
+KS_NAMESPACE_BEGIN
+
 BlockAllocator::BlockAllocator(size_t default_block_size, size_t max_num_blocks)
     : default_block_size(default_block_size), max_num_blocks(max_num_blocks)
 {}
@@ -95,3 +97,5 @@ void BlockAllocator::reset()
                        std::make_move_iterator(used_blocks.end()));
     used_blocks.clear();
 }
+
+KS_NAMESPACE_END

@@ -3,6 +3,8 @@
 #include <tbb/global_control.h>
 #include <tbb/task_arena.h>
 
+KS_NAMESPACE_BEGIN
+
 std::mutex mutex_init_parallel;
 bool parallel_initialized = false;
 std::unique_ptr<tbb::global_control> global_control;
@@ -23,3 +25,5 @@ void init_parallel(int nthreads)
         global_control = std::make_unique<tbb::global_control>(tbb::global_control::max_allowed_parallelism, nthreads);
     }
 }
+
+KS_NAMESPACE_END

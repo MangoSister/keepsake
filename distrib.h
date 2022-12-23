@@ -2,6 +2,8 @@
 
 #include "maths.h"
 
+KS_NAMESPACE_BEGIN
+
 struct DistribTable
 {
     DistribTable() = default;
@@ -28,3 +30,5 @@ struct DistribTable2D
     std::vector<DistribTable> cond;
     DistribTable margin;
 };
+
+KS_NAMESPACE_END

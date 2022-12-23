@@ -3,6 +3,8 @@
 #include "maths.h"
 #include <vector>
 
+KS_NAMESPACE_BEGIN
+
 template <typename T>
 struct KeyframeField
 {
@@ -57,3 +59,5 @@ struct KeyframeVec4 : public KeyframeField<vec4>
 
     bool use_slerp = false;
 };
+
+KS_NAMESPACE_END

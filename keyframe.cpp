@@ -1,5 +1,7 @@
 #include "keyframe.h"
 
+KS_NAMESPACE_BEGIN
+
 float KeyframeFloat::eval(float t) const
 {
     int left, right;
@@ -45,3 +47,5 @@ vec4 KeyframeVec4::eval(float t) const
         return lerp(values[left], values[right], weight);
     }
 }
+
+KS_NAMESPACE_END

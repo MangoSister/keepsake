@@ -5,6 +5,8 @@
 #include <vector>
 namespace fs = std::filesystem;
 
+KS_NAMESPACE_BEGIN
+
 struct RenderTarget
 {
     RenderTarget() = default;
@@ -40,3 +42,5 @@ struct RenderTarget
     int width, height;
     std::vector<color3> pixels;
 };
+
+KS_NAMESPACE_END

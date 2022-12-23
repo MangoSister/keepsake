@@ -4,6 +4,8 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
+KS_NAMESPACE_BEGIN
+
 std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, int &h);
 
 enum class ColorSpace
@@ -52,3 +54,5 @@ std::unique_ptr<color<C>[]> load_from_exr(const fs::path &path, int &w, int &h) 
 }
 
 void save_to_exr(const float *data, int w, int h, int c, const fs::path &path);
+
+KS_NAMESPACE_END

@@ -9,6 +9,8 @@
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
+KS_NAMESPACE_BEGIN
+
 std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, int &h)
 {
     int comp;
@@ -166,3 +168,5 @@ void save_to_exr(const float *data, int w, int h, int c, const fs::path &path)
     free(header.pixel_types);
     free(header.requested_pixel_types);
 }
+
+KS_NAMESPACE_END

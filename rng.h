@@ -7,6 +7,8 @@
 #include <random>
 #include <span>
 
+KS_NAMESPACE_BEGIN
+
 struct RNG
 {
     RNG() = default;
@@ -295,3 +297,5 @@ inline int sample_small_distrib(const std::span<const T> data, float u, float *u
     ASSERT(data[selected].*member_ptr > 0.0f);
     return selected;
 }
+
+KS_NAMESPACE_END
