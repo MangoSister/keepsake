@@ -539,22 +539,28 @@ fs::path ConfigArgsInternal::load_path(std::string_view name) const
     ASSERT(args.is_table(), "This ConfigArgs is not a table.");
     ASSERT(args.as_table()->contains(name), "No path value named [%.*s].", static_cast<int>(name.length()),
            name.data());
-    std::string path_str = *args[name].value<std::string>();
-    if (!service->asset_root_dir.empty()) {
-        return service->asset_root_dir / path_str;
+    fs::path p(*args[name].value<std::string>());
+    if (p.is_absolute()) {
+        return p;
+    } else if (!service->asset_root_dir.empty()) {
+        return service->asset_root_dir / p;
+    } else {
+        return p;
     }
-    return fs::path(path_str);
 }
 
 fs::path ConfigArgsInternal::load_path(int index) const
 {
     ASSERT(args.is_array() || args.is_array_of_tables(), "This ConfigArgs is not an array.");
     ASSERT(index < args.as_array()->size(), "Index out of bound.");
-    std::string path_str = *args[index].value<std::string>();
-    if (!service->asset_root_dir.empty()) {
-        return service->asset_root_dir / path_str;
+    fs::path p(*args[index].value<std::string>());
+    if (p.is_absolute()) {
+        return p;
+    } else if (!service->asset_root_dir.empty()) {
+        return service->asset_root_dir / p;
+    } else {
+        return p;
     }
-    return fs::path(path_str);
 }
 
 ConfigArgs::~ConfigArgs() = default;
