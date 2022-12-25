@@ -22,3 +22,8 @@
 #define USING_NAMESPACE_KS
 #endif
 // clang-format on
+
+// Finally if no namespace, define this to empty (kinda stupid...)
+#ifndef KS_NAMESPACE
+#define KS_NAMESPACE
+#endif
