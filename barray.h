@@ -3,6 +3,7 @@
 // Modified from pbrt.
 
 #include "memory_util.h"
+#include "parallel.h"
 #include <algorithm>
 #include <memory>
 #include <utility>
@@ -21,17 +22,28 @@ struct BlockedArray
 
     BlockedArray() = default;
 
-    BlockedArray(int ures, int vres, int stride, const T *d = nullptr, int log_block_size = 2)
+    BlockedArray(int ures, int vres, int stride, const T *d = nullptr, int log_block_size = 2,
+                 bool parallel_construct = false)
         : ures(ures), vres(vres), stride(stride), log_block_size(log_block_size)
     {
         ublocks = round_up(ures) >> log_block_size;
         int n_alloc = round_up(ures) * round_up(vres) * stride;
         constexpr size_t cache_line = 64;
         data = alloc_aligned<T>(n_alloc, cache_line);
-        for (int v = 0; v < vres; ++v)
+
+        auto loop_row = [&](int v) {
             for (int u = 0; u < ures; ++u)
                 for (int c = 0; c < stride; ++c)
                     std::construct_at(&(*this)(u, v, c), d ? d[(v * ures + u) * stride + c] : T());
+        };
+
+        if (!parallel_construct) {
+            for (int v = 0; v < vres; ++v) {
+                loop_row(v);
+            }
+        } else {
+            parallel_for(vres, [&](int v) { loop_row(v); });
+        }
     }
 
     BlockedArray(const BlockedArray &other)
@@ -41,9 +53,7 @@ struct BlockedArray
         int n_alloc = round_up(ures) * round_up(vres);
         constexpr size_t cache_line = 64;
         data = alloc_aligned<T>(n_alloc, cache_line);
-        for (int i = 0; i < n_alloc; ++i)
-            new (&data[i]) T();
-        std::copy(other.data, other.data + n_alloc, data);
+        std::uninitialized_copy(other.data, other.data + n_alloc, data);
     }
 
     friend void swap(BlockedArray &first, BlockedArray &second)

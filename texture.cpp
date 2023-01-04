@@ -21,7 +21,9 @@ Texture::Texture(const std::byte *bytes, int width, int height, int num_channels
 {
     int stride = byte_stride(data_type) * num_channels;
     pyramid.resize(1);
-    pyramid[0] = BlockedArray(width, height, stride, bytes);
+    constexpr int min_parallel_res = 256 * 256;
+    bool parallel = width * height >= min_parallel_res;
+    pyramid[0] = BlockedArray(width, height, stride, bytes, 2, parallel);
 }
 
 Texture::Texture(const std::byte **pyramid_bytes, int width, int height, int num_channels, TextureDataType data_type,
@@ -31,7 +33,11 @@ Texture::Texture(const std::byte **pyramid_bytes, int width, int height, int num
     int stride = byte_stride(data_type) * num_channels;
     pyramid.resize(levels);
     for (int i = 0; i < levels; ++i) {
-        pyramid[i] = BlockedArray(width, height, stride, pyramid_bytes[i]);
+        constexpr int min_parallel_res = 256 * 256;
+        bool parallel = width * height >= min_parallel_res;
+        pyramid[i] = BlockedArray(width, height, stride, pyramid_bytes[i], 2, parallel);
+        width = std::max(1, (width / 2));
+        height = std::max(1, (height / 2));
     }
 }
 
