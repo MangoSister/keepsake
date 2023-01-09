@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ks/assertion.h"
-#include "ks/maths.h"
+#include "assertion.h"
+#include "maths.h"
 
 KS_NAMESPACE_BEGIN
 

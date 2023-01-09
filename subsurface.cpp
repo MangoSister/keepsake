@@ -1,5 +1,6 @@
 #include "subsurface.h"
 #include "maths.h"
+#include "microfacet.h"
 #include "ray.h"
 #include "rng.h"
 #include "scene.h"
@@ -277,11 +278,24 @@ bool subsurface_random_walk(SubsurfaceProfile profile, const LocalGeometry &loca
     const vec3 &N = entry.sh_frame.n; // entry shading normal
     const vec3 &Ng = entry.frame.n;   // entry geometric normal
     if (rng.next() < profile.rfr_entry_prob) {
-        // Do nothing because D is already from rfr entry.
-        // TODO:
         // Per Christophe, using D as-is may not get the best result in terms of matching references,
         // even if it seems to be the more "principal" way.
         // Empirically, re-sample refractive D given wo with a fixed 1.0 alpha GGX gives better result.
+        vec3 wo = -D;
+        wo = entry.sh_vector_to_local(wo);
+        if (wo.z() <= 0.0f) {
+            return false;
+        }
+        vec3 wh = GGX(1.0f).sample(wo, rng.next2d());
+        if (!refract(wo, wh, 1.0f / profile.ior, D)) {
+            // total internal reflection
+            return false;
+        }
+        // side check
+        if (wo.z() * D.z() >= 0.0f) {
+            return false;
+        }
+        D = entry.sh_vector_to_world(D);
     } else {
         // Override D with classic cosine entry.
         D = sample_cosine_hemisphere(rng.next2d(), -N);
