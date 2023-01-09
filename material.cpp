@@ -66,7 +66,7 @@ color3 BlendedMaterial::sample(vec3 wo, const Intersection &entry, const Scene &
 
     const BSDF *exit_bsdf = nullptr;
     if (sample_subsurface) {
-        vec3 D = vec3::Zero();
+        vec3 D = -wo;
         vec3 ss_wi;
         SceneHit exit_hit;
         if (!subsurface->sample(local_geom, entry, D, rng, beta, exit_hit, ss_wi)) {
@@ -133,7 +133,7 @@ MaterialSample BlendedMaterial::sample_with_direct(vec3 wo, const Intersection &
 
     const BSDF *exit_bsdf = nullptr;
     if (sample_subsurface) {
-        vec3 D = vec3::Zero();
+        vec3 D = -wo;
         vec3 ss_wi;
         SceneHit exit_hit;
         if (!subsurface->sample(local_geom, entry, D, rng, s.beta, exit_hit, ss_wi)) {
