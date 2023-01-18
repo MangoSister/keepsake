@@ -266,6 +266,7 @@ constexpr int BSSRDF_MAX_BOUNCES = 256;
 constexpr float VOLUME_THROUGHPUT_EPSILON = 1e-6f;
 
 // Following the convention, D is the entry direction (used to be diffuse entry).
+// if D is 0, we resample D based on rfr_entry_prob.
 // wi is the random walk output direction.
 // Pass in the current throughput to be accumulated during the random walk.
 // Return whether the random walk is successful.
@@ -277,28 +278,30 @@ bool subsurface_random_walk(SubsurfaceProfile profile, const LocalGeometry &loca
     const vec3 &P = entry.p;          // entry position
     const vec3 &N = entry.sh_frame.n; // entry shading normal
     const vec3 &Ng = entry.frame.n;   // entry geometric normal
-    if (rng.next() < profile.rfr_entry_prob) {
-        // Per Christophe, using D as-is may not get the best result in terms of matching references,
-        // even if it seems to be the more "principal" way.
-        // Empirically, re-sample refractive D given wo with a fixed 1.0 alpha GGX gives better result.
-        vec3 wo = -D;
-        wo = entry.sh_vector_to_local(wo);
-        if (wo.z() <= 0.0f) {
-            return false;
+    if (D.isZero()) {
+        if (rng.next() < profile.rfr_entry_prob) {
+            // Per Christophe, using D as-is may not get the best result in terms of matching references,
+            // even if it seems to be the more "principal" way.
+            // Empirically, re-sample refractive D given wo with a fixed 1.0 alpha GGX gives better result.
+            vec3 wo = -D;
+            wo = entry.sh_vector_to_local(wo);
+            if (wo.z() <= 0.0f) {
+                return false;
+            }
+            vec3 wh = GGX(1.0f).sample(wo, rng.next2d());
+            if (!refract(wo, wh, 1.0f / profile.ior, D)) {
+                // total internal reflection
+                return false;
+            }
+            // side check
+            if (wo.z() * D.z() >= 0.0f) {
+                return false;
+            }
+            D = entry.sh_vector_to_world(D);
+        } else {
+            // Override D with classic cosine entry.
+            D = sample_cosine_hemisphere(rng.next2d(), -N);
         }
-        vec3 wh = GGX(1.0f).sample(wo, rng.next2d());
-        if (!refract(wo, wh, 1.0f / profile.ior, D)) {
-            // total internal reflection
-            return false;
-        }
-        // side check
-        if (wo.z() * D.z() >= 0.0f) {
-            return false;
-        }
-        D = entry.sh_vector_to_world(D);
-    } else {
-        // Override D with classic cosine entry.
-        D = sample_cosine_hemisphere(rng.next2d(), -N);
     }
     //
     if (-Ng.dot(D) <= 0.0f) {
