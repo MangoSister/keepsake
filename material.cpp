@@ -48,7 +48,7 @@ color3 BlendedMaterial::sample(vec3 wo, const Intersection &entry, const Scene &
     // TODO: currently select between BSDF and BSSRDF uniformly...
     float bssrdf_sample_weight = 1.0f;
     float bsdf_sample_weight = 1.0f;
-    float sum = 2.0f;
+    float sum = bssrdf_sample_weight + bsdf_sample_weight;
     //
 
     bool sample_subsurface = false;
@@ -115,7 +115,7 @@ MaterialSample BlendedMaterial::sample_with_direct(vec3 wo, const Intersection &
     // TODO: currently select between BSDF and BSSRDF uniformly...
     float bssrdf_sample_weight = 1.0f;
     float bsdf_sample_weight = 1.0f;
-    float sum = 2.0f;
+    float sum = bssrdf_sample_weight + bsdf_sample_weight;
     //
 
     bool sample_subsurface = false;
