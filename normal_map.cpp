@@ -23,14 +23,18 @@ vec3 NormalMap::sample(const vec2 &uv) const
 void NormalMap::apply(Intersection &it) const
 {
     vec3 normal = sample(it.uv);
-
+    vec3 n_perturb;
     if (space == Space::TangentSpace) {
-        normal = it.sh_frame.to_world(normal);
-        it.sh_frame = Frame(normal);
+        n_perturb = it.sh_frame.to_world(normal);
     } else if (space == Space::WorldSpace) {
-        normal = to_world.normal(normal);
-        it.sh_frame = Frame(normal);
+        n_perturb = to_world.normal(normal);
     }
+    vec3 bump_deriv = -normal / normal.z();
+    vec3 t_perturb = (it.sh_frame.t + bump_deriv.x() * it.sh_frame.n).normalized();
+    // re-orthogonalize (n_perturb is respected).
+    vec3 b_perturb = n_perturb.cross(t_perturb).normalized();
+    t_perturb = b_perturb.cross(n_perturb).normalized();
+    it.sh_frame = Frame(t_perturb, b_perturb, n_perturb);
 }
 
 std::unique_ptr<NormalMap> create_normal_map(const ConfigArgs &args)

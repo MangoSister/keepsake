@@ -117,7 +117,7 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
         }
     }
 
-    // re-normalize for geometry frame (ng is respected).
+    // re-orthogonalize for geometry frame (ng is respected).
     vec3 b = ng.cross(it.dpdu).normalized();
     vec3 t = b.cross(ng).normalized();
 
@@ -145,7 +145,11 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
             if (vn.dot(it.frame.n) < 0.0f) {
                 vn = -vn;
             }
-            it.sh_frame = Frame(vn);
+            // re-orthogonalize for geometry frame (vn is respected).
+            vec3 vb = vn.cross(it.dpdu).normalized();
+            vec3 vt = vb.cross(vn).normalized();
+
+            it.sh_frame = Frame(vt, vb, vn);
         }
     }
     return it;
