@@ -4,6 +4,7 @@
 #include "image_util.h"
 #include "parallel.h"
 #include <array>
+#include <lz4.h>
 
 KS_NAMESPACE_BEGIN
 
@@ -589,46 +590,9 @@ std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, c
     return std::make_unique<Texture>(ptr, width, height, ch, data_type, build_mipmaps);
 }
 
-constexpr const char *serialized_texture_magic = "i_am_a_serialized_texture";
+// We use lz4 to compress serialized textures for smaller file size and fast decompress speed.
 
-std::unique_ptr<Texture> create_texture_from_serialized(const fs::path &path)
-{
-    BinaryReader reader(path);
-    std::array<char, std::string_view(serialized_texture_magic).size() + 1> magic;
-    reader.read_array<char>(magic.data(), magic.size() - 1);
-    magic.back() = 0;
-    if (strcmp(magic.data(), serialized_texture_magic)) {
-        ASSERT(false, "Invalid serialized texture.");
-        return nullptr;
-    }
-    int width = reader.read<int>();
-    int height = reader.read<int>();
-    int num_channels = reader.read<int>();
-    TextureDataType data_type = reader.read<TextureDataType>();
-    int levels = reader.read<int>();
-    int w = width;
-    int h = height;
-    int stride = byte_stride(data_type) * num_channels;
-    size_t total_size = 0;
-    for (int l = 0; l < levels; ++l) {
-        total_size += w * h * stride;
-        w = std::max(1, (w + 1) / 2);
-        h = std::max(1, (h + 1) / 2);
-    }
-    std::unique_ptr<std::byte[]> buf = std::make_unique<std::byte[]>(total_size);
-    reader.read_array<std::byte>(buf.get(), total_size);
-    std::vector<const std::byte *> mip_bytes(levels);
-    w = width;
-    h = height;
-    size_t offset = 0;
-    for (int l = 0; l < levels; ++l) {
-        mip_bytes[l] = buf.get() + offset;
-        offset += w * h * stride;
-        w = std::max(1, (w + 1) / 2);
-        h = std::max(1, (h + 1) / 2);
-    }
-    return std::make_unique<Texture>(mip_bytes, width, height, num_channels, data_type);
-}
+constexpr const char *serialized_texture_magic = "i_am_a_serialized_texture";
 
 void write_texture_to_serialized(const Texture &texture, const fs::path &path)
 {
@@ -649,6 +613,8 @@ void write_texture_to_serialized(const Texture &texture, const fs::path &path)
         w = std::max(1, (w + 1) / 2);
         h = std::max(1, (h + 1) / 2);
     }
+    writer.write<size_t>(total_size);
+
     std::unique_ptr<std::byte[]> buf = std::make_unique<std::byte[]>(total_size);
     w = texture.width;
     h = texture.height;
@@ -659,7 +625,89 @@ void write_texture_to_serialized(const Texture &texture, const fs::path &path)
         w = std::max(1, (w + 1) / 2);
         h = std::max(1, (h + 1) / 2);
     }
-    writer.write_array<std::byte>(buf.get(), total_size);
+
+    // LZ4_MAX_INPUT_SIZE is ~2GB. For super high-res textures we need to split the data into blocks.
+    int num_blocks = (int)std::ceil((double)total_size / double(LZ4_MAX_INPUT_SIZE));
+    writer.write<int>(num_blocks);
+
+    offset = 0;
+    size_t total_compressed_capacity = 0;
+    for (int block = 0; block < num_blocks; ++block) {
+        size_t block_size = std::min(size_t(LZ4_MAX_INPUT_SIZE), total_size - offset);
+        total_compressed_capacity += LZ4_compressBound((int)block_size);
+        offset += block_size;
+    }
+    std::unique_ptr<std::byte[]> compressed_buf = std::make_unique<std::byte[]>(total_compressed_capacity);
+    offset = 0;
+    size_t compressed_offset = 0;
+    for (int block = 0; block < num_blocks; ++block) {
+        size_t block_size = std::min(size_t(LZ4_MAX_INPUT_SIZE), total_size - offset);
+        int compressed_block_capacity = LZ4_compressBound((int)block_size);
+        int compressed_block_size =
+            LZ4_compress_default((const char *)(buf.get() + offset), (char *)(compressed_buf.get() + compressed_offset),
+                                 (int)block_size, compressed_block_capacity);
+        ASSERT(compressed_block_size > 0, "lz4 compression failed.");
+        writer.write<int>(compressed_block_size);
+        compressed_offset += compressed_block_size;
+        offset += block_size;
+    }
+    size_t total_compressed_size = compressed_offset;
+    writer.write_array<std::byte>(compressed_buf.get(), total_compressed_size);
+}
+
+std::unique_ptr<Texture> create_texture_from_serialized(const fs::path &path)
+{
+    BinaryReader reader(path);
+    std::array<char, std::string_view(serialized_texture_magic).size() + 1> magic;
+    reader.read_array<char>(magic.data(), magic.size() - 1);
+    magic.back() = 0;
+    if (strcmp(magic.data(), serialized_texture_magic)) {
+        ASSERT(false, "Invalid serialized texture.");
+        return nullptr;
+    }
+    int width = reader.read<int>();
+    int height = reader.read<int>();
+    int num_channels = reader.read<int>();
+    TextureDataType data_type = reader.read<TextureDataType>();
+    int levels = reader.read<int>();
+    size_t total_size = reader.read<size_t>();
+    int num_blocks = reader.read<int>();
+    std::vector<int> compressed_block_sizes(num_blocks);
+    size_t total_compressed_size = 0;
+    for (int block = 0; block < num_blocks; ++block) {
+        compressed_block_sizes[block] = reader.read<int>();
+        total_compressed_size += compressed_block_sizes[block];
+    }
+    //
+    std::unique_ptr<std::byte[]> compressed_buf = std::make_unique<std::byte[]>(total_compressed_size);
+    reader.read_array<std::byte>(compressed_buf.get(), total_compressed_size);
+    std::unique_ptr<std::byte[]> buf = std::make_unique<std::byte[]>(total_size);
+    // LZ4_MAX_INPUT_SIZE is ~2GB. For super high-res textures we need to split the data into blocks.
+    size_t offset = 0;
+    size_t compressed_offset = 0;
+    for (int block = 0; block < num_blocks; ++block) {
+        size_t block_size = std::min(size_t(LZ4_MAX_INPUT_SIZE), total_size - offset);
+        int ret = LZ4_decompress_safe((const char *)(compressed_buf.get() + compressed_offset),
+                                      (char *)(buf.get() + offset), compressed_block_sizes[block], (int)block_size);
+        ASSERT(ret > 0, "lz4 decompression failed.");
+        offset += block_size;
+        compressed_offset += compressed_block_sizes[block];
+    }
+    // compressed_buf can be released now.
+    compressed_buf.reset();
+
+    std::vector<const std::byte *> mip_bytes(levels);
+    int w = width;
+    int h = height;
+    int stride = byte_stride(data_type) * num_channels;
+    offset = 0;
+    for (int l = 0; l < levels; ++l) {
+        mip_bytes[l] = buf.get() + offset;
+        offset += w * h * stride;
+        w = std::max(1, (w + 1) / 2);
+        h = std::max(1, (h + 1) / 2);
+    }
+    return std::make_unique<Texture>(mip_bytes, width, height, num_channels, data_type);
 }
 
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args)
