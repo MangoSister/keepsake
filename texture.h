@@ -28,14 +28,14 @@ struct Texture : public Configurable
     Texture() = default;
     Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
             bool build_mipmaps);
-    Texture(const std::byte **pyramid_bytes, int width, int height, int num_channels, TextureDataType data_type,
-            int levels);
+    Texture(std::span<const std::byte *> mip_bytes, int width, int height, int num_channels, TextureDataType data_type);
 
-    const std::byte *fetch_raw(int x, int y, int level) const { return pyramid[level].fetch_multi(x, y); }
+    const std::byte *fetch_raw(int x, int y, int level) const { return mips[level].fetch_multi(x, y); }
     void fetch_as_float(int x, int y, int level, std::span<float> out) const;
-    int levels() const { return (int)pyramid.size(); }
+    void set_from_float(int x, int y, int level, std::span<const float> in);
+    int levels() const { return (int)mips.size(); }
 
-    std::vector<BlockedArray<std::byte>> pyramid;
+    std::vector<BlockedArray<std::byte>> mips;
     int width = 0;
     int height = 0;
     int num_channels = 0;
@@ -101,7 +101,9 @@ struct CubicSampler : public TextureSampler
     vec4 ca, cb;
 };
 
-std::unique_ptr<Texture> create_texture_from_file(int channels, bool build_mipmap, const fs::path &path);
+std::unique_ptr<Texture> create_texture_from_image(int channels, bool build_mipmap, const fs::path &path);
+std::unique_ptr<Texture> create_texture_from_serialized(const fs::path &path);
+void write_texture_to_serialized(const Texture &texture, const fs::path &path);
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args);
 std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args);
 

@@ -17,7 +17,7 @@ static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::pat
     std::unique_ptr<Lambertian> lambert;
     if (!mat.diffuse_texname.empty()) {
         fs::path path = base_path / mat.diffuse_texname;
-        std::unique_ptr<Texture> albedo_map = create_texture_from_file(3, true, path);
+        std::unique_ptr<Texture> albedo_map = create_texture_from_image(3, true, path);
         std::unique_ptr<LinearSampler> sampler = std::make_unique<LinearSampler>();
         std::unique_ptr<TextureField<3>> albedo = std::make_unique<TextureField<3>>(*albedo_map, std::move(sampler));
         asset.textures.push_back(std::move(albedo_map));

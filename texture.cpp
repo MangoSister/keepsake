@@ -1,6 +1,10 @@
 #include "texture.h"
 #include "assertion.h"
+#include "file_util.h"
 #include "image_util.h"
+#include "parallel.h"
+#include "render_target.h"
+#include <array>
 
 KS_NAMESPACE_BEGIN
 
@@ -20,24 +24,343 @@ Texture::Texture(const std::byte *bytes, int width, int height, int num_channels
     : width(width), height(height), num_channels(num_channels), data_type(data_type)
 {
     int stride = byte_stride(data_type) * num_channels;
-    pyramid.resize(1);
+    // https://www.nvidia.com/en-us/drivers/np2-mipmapping/
+    // NPOT mipmapping with rounding-up.
+    int levels = build_mipmaps ? (1 + (int)std::ceil(std::log2(std::max(width, height)))) : 1;
+    mips.resize(levels);
     constexpr int min_parallel_res = 256 * 256;
-    bool parallel = width * height >= min_parallel_res;
-    pyramid[0] = BlockedArray(width, height, stride, bytes, 2, parallel);
+    for (int l = 0; l < levels; ++l) {
+        if (l == 0) {
+            bool parallel = width * height >= min_parallel_res;
+            mips[l] = BlockedArray(width, height, stride, bytes, 2, parallel);
+        } else {
+            mips[l] = BlockedArray<std::byte>(width, height, stride);
+            int last_width = mips[l - 1].ures;
+            int last_height = mips[l - 1].vres;
+            bool round_up_width = (last_width == width * 2 - 1);
+            bool round_up_height = (last_height == height * 2 - 1);
+            if (last_width > 1 && round_up_width && last_height > 1 && round_up_height) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    float w0x = (float)x / (float)(last_width);
+                    float w1x = (float)width / (float)(last_width);
+                    float w2x = (float)(width - x - 1) / (float)(last_width);
+                    int x0 = 2 * x - 1;
+                    int x1 = 2 * x;
+                    int x2 = 2 * x + 1;
+                    float w0y = (float)y / (float)(last_height);
+                    float w1y = (float)height / (float)(last_height);
+                    float w2y = (float)(height - y - 1) / (float)(last_height);
+                    int y0 = 2 * y - 1;
+                    int y1 = 2 * y;
+                    int y2 = 2 * y + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    if (x0 > 0 && y0 > 0) {
+                        fetch_as_float(x0, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w0y * v_span[c];
+                    }
+                    if (y0 > 0) {
+                        fetch_as_float(x1, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w0y * v_span[c];
+                    }
+                    if (x2 < last_width && y0 > 0) {
+                        fetch_as_float(x2, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2x * w0y * v_span[c];
+                    }
+                    if (x0 > 0) {
+                        fetch_as_float(x0, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w1y * v_span[c];
+                    }
+                    {
+                        fetch_as_float(x1, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w1y * v_span[c];
+                    }
+                    if (x2 < last_width) {
+                        fetch_as_float(x2, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2x * w1y * v_span[c];
+                    }
+                    if (x0 > 0 && y2 < last_height) {
+                        fetch_as_float(x0, y2, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w2y * v_span[c];
+                    }
+                    if (y2 < last_height) {
+                        fetch_as_float(x1, y2, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w2y * v_span[c];
+                    }
+                    if (x2 < last_width && y2 < last_height) {
+                        fetch_as_float(x2, y2, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2x * w2y * v_span[c];
+                    }
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width > 1 && !round_up_width && last_height > 1 && round_up_height) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    constexpr float w0x = 0.5f;
+                    constexpr float w1x = 0.5f;
+                    int x0 = 2 * x;
+                    int x1 = 2 * x + 1;
+                    float w0y = (float)y / (float)(last_height);
+                    float w1y = (float)height / (float)(last_height);
+                    float w2y = (float)(height - y - 1) / (float)(last_height);
+                    int y0 = 2 * y - 1;
+                    int y1 = 2 * y;
+                    int y2 = 2 * y + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    if (y0 > 0) {
+                        fetch_as_float(x0, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w0y * v_span[c];
+                        fetch_as_float(x1, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w0y * v_span[c];
+                    }
+                    {
+                        fetch_as_float(x0, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w1y * v_span[c];
+                        fetch_as_float(x1, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w1y * v_span[c];
+                    }
+                    if (y2 < last_height) {
+                        fetch_as_float(x0, y2, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w2y * v_span[c];
+                        fetch_as_float(x1, y2, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w2y * v_span[c];
+                    }
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width > 1 && round_up_width && last_height > 1 && !round_up_height) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    float w0x = (float)x / (float)(last_width);
+                    float w1x = (float)width / (float)(last_width);
+                    float w2x = (float)(width - x - 1) / (float)(last_width);
+                    int x0 = 2 * x - 1;
+                    int x1 = 2 * x;
+                    int x2 = 2 * x + 1;
+                    constexpr float w0y = 0.5f;
+                    constexpr float w1y = 0.5f;
+                    int y0 = 2 * y;
+                    int y1 = 2 * y + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    if (x0 > 0) {
+                        fetch_as_float(x0, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w0y * v_span[c];
+                    }
+                    {
+                        fetch_as_float(x1, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w0y * v_span[c];
+                    }
+                    if (x2 < last_width) {
+                        fetch_as_float(x2, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2x * w0y * v_span[c];
+                    }
+                    if (x0 > 0) {
+                        fetch_as_float(x0, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * w1y * v_span[c];
+                    }
+                    {
+                        fetch_as_float(x1, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * w1y * v_span[c];
+                    }
+                    if (x2 < last_width) {
+                        fetch_as_float(x2, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2x * w1y * v_span[c];
+                    }
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width > 1 && !round_up_width && last_height > 1 && !round_up_height) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    int x0 = 2 * x;
+                    int x1 = 2 * x + 1;
+                    int y0 = 2 * y;
+                    int y1 = 2 * y + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    fetch_as_float(x0, y0, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.25f * v_span[c];
+                    fetch_as_float(x1, y0, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.25f * v_span[c];
+                    fetch_as_float(x0, y1, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.25f * v_span[c];
+                    fetch_as_float(x1, y1, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.25f * v_span[c];
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width == 1 && last_height > 1 && round_up_height) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    float w0y = (float)y / (float)(last_height);
+                    float w1y = (float)height / (float)(last_height);
+                    float w2y = (float)(height - y - 1) / (float)(last_height);
+                    int y0 = 2 * y - 1;
+                    int y1 = 2 * y;
+                    int y2 = 2 * y + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    if (y0 > 0) {
+                        fetch_as_float(x, y0, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0y * v_span[c];
+                    }
+                    {
+                        fetch_as_float(x, y1, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1y * v_span[c];
+                    }
+                    if (y2 < last_height) {
+                        fetch_as_float(x, y2, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2y * v_span[c];
+                    }
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width == 1 && last_height > 1 && !round_up_height) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    int y0 = 2 * y;
+                    int y1 = 2 * y + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    fetch_as_float(x, y0, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.5f * v_span[c];
+                    fetch_as_float(x, y1, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.5f * v_span[c];
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width > 1 && round_up_width && last_height == 1) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    float w0x = (float)x / (float)(last_width);
+                    float w1x = (float)width / (float)(last_width);
+                    float w2x = (float)(width - x - 1) / (float)(last_width);
+                    int x0 = 2 * x - 1;
+                    int x1 = 2 * x;
+                    int x2 = 2 * x + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    if (x0 > 0) {
+                        fetch_as_float(x0, y, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w0x * v_span[c];
+                    }
+                    {
+                        fetch_as_float(x1, y, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w1x * v_span[c];
+                    }
+                    if (x2 < last_width) {
+                        fetch_as_float(x2, y, l - 1, v_span);
+                        for (int c = 0; c < num_channels; ++c)
+                            v_sum_span[c] += w2x * v_span[c];
+                    }
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            } else if (last_width > 1 && !round_up_width && last_height == 1) {
+                parallel_tile_2d(width, height, [&](int x, int y) {
+                    int x0 = 2 * x;
+                    int x1 = 2 * x + 1;
+
+                    VLA(v_sum, float, num_channels);
+                    std::span<float> v_sum_span(v_sum, v_sum + num_channels);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] = 0.0f;
+                    VLA(v, float, num_channels);
+                    std::span<float> v_span(v, v + num_channels);
+
+                    fetch_as_float(x0, y, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.5f * v_span[c];
+                    fetch_as_float(x1, y, l - 1, v_span);
+                    for (int c = 0; c < num_channels; ++c)
+                        v_sum_span[c] += 0.5f * v_span[c];
+                    set_from_float(x, y, l, v_sum_span);
+                });
+            }
+        }
+        width = std::max(1, (width + 1) / 2);
+        height = std::max(1, (height + 1) / 2);
+    }
 }
 
-Texture::Texture(const std::byte **pyramid_bytes, int width, int height, int num_channels, TextureDataType data_type,
-                 int levels)
+Texture::Texture(std::span<const std::byte *> mip_bytes, int width, int height, int num_channels,
+                 TextureDataType data_type)
     : width(width), height(height), num_channels(num_channels), data_type(data_type)
 {
     int stride = byte_stride(data_type) * num_channels;
-    pyramid.resize(levels);
+    int levels = (int)mip_bytes.size();
+    mips.resize(levels);
     for (int i = 0; i < levels; ++i) {
         constexpr int min_parallel_res = 256 * 256;
         bool parallel = width * height >= min_parallel_res;
-        pyramid[i] = BlockedArray(width, height, stride, pyramid_bytes[i], 2, parallel);
-        width = std::max(1, (width / 2));
-        height = std::max(1, (height / 2));
+        mips[i] = BlockedArray(width, height, stride, mip_bytes[i], 2, parallel);
+        // Assuming rounding up.
+        width = std::max(1, (width + 1) / 2);
+        height = std::max(1, (height + 1) / 2);
     }
 }
 
@@ -45,7 +368,7 @@ Texture::Texture(const std::byte **pyramid_bytes, int width, int height, int num
 // TODO: SIMD
 void Texture::fetch_as_float(int x, int y, int level, std::span<float> out) const
 {
-    const std::byte *bytes = fetch_raw(x, y, 0);
+    const std::byte *bytes = fetch_raw(x, y, level);
     switch (data_type) {
     case TextureDataType::u8: {
         const uint8_t *u8_data = reinterpret_cast<const uint8_t *>(bytes);
@@ -60,6 +383,27 @@ void Texture::fetch_as_float(int x, int y, int level, std::span<float> out) cons
         const float *f32_data = reinterpret_cast<const float *>(bytes);
         int nc = std::min(num_channels, (int)out.size());
         std::copy(f32_data, f32_data + nc, out.data());
+        break;
+    }
+    }
+}
+
+void Texture::set_from_float(int x, int y, int level, std::span<const float> in)
+{
+    ASSERT(in.size() == num_channels);
+    std::byte *bytes = mips[level].fetch_multi(x, y);
+    switch (data_type) {
+    case TextureDataType::u8: {
+        uint8_t *u8_data = reinterpret_cast<uint8_t *>(bytes);
+        for (int c = 0; c < num_channels; ++c) {
+            u8_data[c] = (uint8_t)std::floor(in[c] * 255.0f);
+        }
+        break;
+    }
+    case TextureDataType::f32:
+    default: {
+        float *f32_data = reinterpret_cast<float *>(bytes);
+        std::copy(in.data(), in.data() + num_channels, f32_data);
         break;
     }
     }
@@ -88,12 +432,12 @@ color4 TextureSampler::operator()(const Texture &texture, const vec2 &uv, const 
 
 void NearestSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
 {
-    float u = uv[0] * texture.pyramid[0].ures - 0.5f;
-    float v = uv[1] * texture.pyramid[0].vres - 0.5f;
+    float u = uv[0] * texture.mips[0].ures - 0.5f;
+    float v = uv[1] * texture.mips[0].vres - 0.5f;
     int u0 = (int)std::floor(u);
     int v0 = (int)std::floor(v);
-    u0 = wrap(u0, texture.pyramid[0].ures, wrap_mode_u);
-    v0 = wrap(v0, texture.pyramid[0].vres, wrap_mode_v);
+    u0 = wrap(u0, texture.mips[0].ures, wrap_mode_u);
+    v0 = wrap(v0, texture.mips[0].vres, wrap_mode_v);
 
     texture.fetch_as_float(u0, v0, 0, out);
 }
@@ -121,17 +465,17 @@ void LinearSampler::operator()(const Texture &texture, const vec2 &uv, const mat
 
 void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const
 {
-    float u = uv[0] * texture.pyramid[level].ures - 0.5f;
-    float v = uv[1] * texture.pyramid[level].vres - 0.5f;
+    float u = uv[0] * texture.mips[level].ures - 0.5f;
+    float v = uv[1] * texture.mips[level].vres - 0.5f;
     int u0 = (int)std::floor(u);
     int v0 = (int)std::floor(v);
     float du = u - u0;
     float dv = v - v0;
 
-    u0 = wrap(u0, texture.pyramid[level].ures, wrap_mode_u);
-    v0 = wrap(v0, texture.pyramid[level].vres, wrap_mode_v);
-    int u1 = wrap(u0 + 1, texture.pyramid[level].ures, wrap_mode_u);
-    int v1 = wrap(v0 + 1, texture.pyramid[level].vres, wrap_mode_v);
+    u0 = wrap(u0, texture.mips[level].ures, wrap_mode_u);
+    v0 = wrap(v0, texture.mips[level].vres, wrap_mode_v);
+    int u1 = wrap(u0 + 1, texture.mips[level].ures, wrap_mode_u);
+    int v1 = wrap(v0 + 1, texture.mips[level].vres, wrap_mode_v);
 
     float w00 = (1 - du) * (1 - dv);
     float w10 = du * (1 - dv);
@@ -190,8 +534,8 @@ inline void spline(float x, int nc, const float *c0, const float *c1, const floa
 
 void CubicSampler::bicubic(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const
 {
-    float u = uv[0] * texture.pyramid[level].ures - 0.5f;
-    float v = uv[1] * texture.pyramid[level].vres - 0.5f;
+    float u = uv[0] * texture.mips[level].ures - 0.5f;
+    float v = uv[1] * texture.mips[level].vres - 0.5f;
     int u0 = (int)std::floor(u);
     int v0 = (int)std::floor(v);
     float du = u - u0;
@@ -200,8 +544,8 @@ void CubicSampler::bicubic(const Texture &texture, int level, const vec2 &uv, st
     vec4i us;
     vec4i vs;
     for (int i = 0; i < 4; ++i) {
-        us[i] = wrap(u0 + i - 1, texture.pyramid[level].ures, wrap_mode_u);
-        vs[i] = wrap(v0 + i - 1, texture.pyramid[level].vres, wrap_mode_v);
+        us[i] = wrap(u0 + i - 1, texture.mips[level].ures, wrap_mode_u);
+        vs[i] = wrap(v0 + i - 1, texture.mips[level].vres, wrap_mode_v);
     }
 
     size_t nc = std::min((size_t)texture.num_channels, out.size());
@@ -224,7 +568,7 @@ void CubicSampler::bicubic(const Texture &texture, int level, const vec2 &uv, st
     spline(dv, nc, c0, c1, c2, c3, ca, cb, out.data());
 }
 
-std::unique_ptr<Texture> create_texture_from_file(int ch, bool build_mipmaps, const fs::path &path)
+std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, const fs::path &path)
 {
     std::string ext = path.extension().string();
     int width, height;
@@ -246,12 +590,90 @@ std::unique_ptr<Texture> create_texture_from_file(int ch, bool build_mipmaps, co
     return std::make_unique<Texture>(ptr, width, height, ch, data_type, build_mipmaps);
 }
 
+constexpr const char *serialized_texture_magic = "i_am_a_serialized_texture";
+
+std::unique_ptr<Texture> create_texture_from_serialized(const fs::path &path)
+{
+    BinaryReader reader(path);
+    std::array<char, std::string_view(serialized_texture_magic).size() + 1> magic;
+    reader.read_array<char>(magic.data(), magic.size() - 1);
+    magic.back() = 0;
+    if (strcmp(magic.data(), serialized_texture_magic)) {
+        ASSERT(false, "Invalid serialized texture.");
+        return nullptr;
+    }
+    int width = reader.read<int>();
+    int height = reader.read<int>();
+    int num_channels = reader.read<int>();
+    TextureDataType data_type = reader.read<TextureDataType>();
+    int levels = reader.read<int>();
+    int w = width;
+    int h = height;
+    int stride = byte_stride(data_type) * num_channels;
+    size_t total_size = 0;
+    for (int l = 0; l < levels; ++l) {
+        total_size += w * h * stride;
+        w = std::max(1, (w + 1) / 2);
+        h = std::max(1, (h + 1) / 2);
+    }
+    std::unique_ptr<std::byte[]> buf = std::make_unique<std::byte[]>(total_size);
+    reader.read_array<std::byte>(buf.get(), total_size);
+    std::vector<const std::byte *> mip_bytes(levels);
+    w = width;
+    h = height;
+    size_t offset = 0;
+    for (int l = 0; l < levels; ++l) {
+        mip_bytes[l] = buf.get() + offset;
+        offset += w * h * stride;
+        w = std::max(1, (w + 1) / 2);
+        h = std::max(1, (h + 1) / 2);
+    }
+    return std::make_unique<Texture>(mip_bytes, width, height, num_channels, data_type);
+}
+
+void write_texture_to_serialized(const Texture &texture, const fs::path &path)
+{
+    BinaryWriter writer(path);
+    writer.write_array<char>(serialized_texture_magic, strlen(serialized_texture_magic));
+    writer.write<int>(texture.width);
+    writer.write<int>(texture.height);
+    writer.write<int>(texture.num_channels);
+    writer.write<TextureDataType>(texture.data_type);
+    int levels = (int)texture.levels();
+    writer.write<int>(levels);
+    size_t total_size = 0;
+    int w = texture.width;
+    int h = texture.height;
+    int stride = byte_stride(texture.data_type) * texture.num_channels;
+    for (int l = 0; l < levels; ++l) {
+        total_size += w * h * stride;
+        w = std::max(1, (w + 1) / 2);
+        h = std::max(1, (h + 1) / 2);
+    }
+    std::unique_ptr<std::byte[]> buf = std::make_unique<std::byte[]>(total_size);
+    w = texture.width;
+    h = texture.height;
+    size_t offset = 0;
+    for (int l = 0; l < levels; ++l) {
+        texture.mips[l].copy_to_linear_array(buf.get() + offset);
+        offset += w * h * stride;
+        w = std::max(1, (w + 1) / 2);
+        h = std::max(1, (h + 1) / 2);
+    }
+    writer.write_array<std::byte>(buf.get(), total_size);
+}
+
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args)
 {
-    int ch = args.load_integer("channels");
-    bool build_mipmaps = args.load_bool("build_mipmaps");
     fs::path path = args.load_path("path");
-    return create_texture_from_file(ch, build_mipmaps, path);
+    bool serialized = args.load_bool("serialized", false);
+    if (serialized) {
+        return create_texture_from_serialized(path);
+    } else {
+        int ch = args.load_integer("channels");
+        bool build_mipmaps = args.load_bool("build_mipmaps");
+        return create_texture_from_image(ch, build_mipmaps, path);
+    }
 }
 
 std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args)
@@ -286,6 +708,33 @@ std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args)
         sampler->wrap_mode_v = TextureWrapMode::Clamp;
     }
     return sampler;
+}
+
+void convert_texture_task(const ConfigArgs &args, const fs::path &task_dir, int task_id)
+{
+    int n_textures = args["textures"].array_size();
+    for (int i = 0; i < n_textures; ++i) {
+        std::string asset_path = args["textures"].load_string(i);
+        const Texture *texture = args.asset_table().get<Texture>(asset_path);
+        std::string name = asset_path.substr(asset_path.rfind(".") + 1);
+        write_texture_to_serialized(*texture, task_dir / (name + ".bin"));
+
+        int w = texture->width;
+        int h = texture->height;
+        for (int l = 0; l < texture->levels(); ++l) {
+            RenderTarget rt(w, h, color3::Zero());
+            for (int y = 0; y < h; ++y) {
+                for (int x = 0; x < w; ++x) {
+                    color3 c;
+                    texture->fetch_as_float(x, y, l, {c.data(), 3});
+                    rt(x, y) = c;
+                }
+            }
+            w = std::max(1, (w + 1) / 2);
+            h = std::max(1, (h + 1) / 2);
+            rt.save_to_png(task_dir / string_format("%s_%d.png", name.c_str(), l));
+        }
+    }
 }
 
 KS_NAMESPACE_END

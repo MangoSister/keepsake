@@ -22,8 +22,17 @@ struct BlockedArray
 
     BlockedArray() = default;
 
-    BlockedArray(int ures, int vres, int stride, const T *d = nullptr, int log_block_size = 2,
-                 bool parallel_construct = false)
+    BlockedArray(int ures, int vres, int stride, int log_block_size = 2)
+        : ures(ures), vres(vres), stride(stride), log_block_size(log_block_size)
+    {
+        ublocks = round_up(ures) >> log_block_size;
+        int n_alloc = round_up(ures) * round_up(vres) * stride;
+        constexpr size_t cache_line = 64;
+        data = alloc_aligned<T>(n_alloc, cache_line);
+        std::uninitialized_default_construct_n(data, n_alloc);
+    }
+
+    BlockedArray(int ures, int vres, int stride, const T *d, int log_block_size = 2, bool parallel_construct = false)
         : ures(ures), vres(vres), stride(stride), log_block_size(log_block_size)
     {
         ublocks = round_up(ures) >> log_block_size;
@@ -34,7 +43,7 @@ struct BlockedArray
         auto loop_row = [&](int v) {
             for (int u = 0; u < ures; ++u)
                 for (int c = 0; c < stride; ++c)
-                    std::construct_at(&(*this)(u, v, c), d ? d[(v * ures + u) * stride + c] : T());
+                    std::construct_at(&(*this)(u, v, c), d[(v * ures + u) * stride + c]);
         };
 
         if (!parallel_construct) {
@@ -93,7 +102,7 @@ struct BlockedArray
 
     const T *fetch_multi(int u, int v) const { return &(*this)(u, v, 0); }
 
-    T *fetch_multi(int u, int v) { return const_cast<T &>(std::as_const(*this).fetch_multi(u, v)); }
+    T *fetch_multi(int u, int v) { return const_cast<T *>(std::as_const(*this).fetch_multi(u, v)); }
 
     void copy_to_linear_array(T *a) const
     {
