@@ -3,7 +3,6 @@
 #include "file_util.h"
 #include "image_util.h"
 #include "parallel.h"
-#include "render_target.h"
 #include <array>
 
 KS_NAMESPACE_BEGIN
@@ -719,21 +718,21 @@ void convert_texture_task(const ConfigArgs &args, const fs::path &task_dir, int 
         std::string name = asset_path.substr(asset_path.rfind(".") + 1);
         write_texture_to_serialized(*texture, task_dir / (name + ".bin"));
 
-        int w = texture->width;
-        int h = texture->height;
-        for (int l = 0; l < texture->levels(); ++l) {
-            RenderTarget rt(w, h, color3::Zero());
-            for (int y = 0; y < h; ++y) {
-                for (int x = 0; x < w; ++x) {
-                    color3 c;
-                    texture->fetch_as_float(x, y, l, {c.data(), 3});
-                    rt(x, y) = c;
-                }
-            }
-            w = std::max(1, (w + 1) / 2);
-            h = std::max(1, (h + 1) / 2);
-            rt.save_to_png(task_dir / string_format("%s_%d.png", name.c_str(), l));
-        }
+        // int w = texture->width;
+        // int h = texture->height;
+        // for (int l = 0; l < texture->levels(); ++l) {
+        //    RenderTarget rt(w, h, color3::Zero());
+        //    for (int y = 0; y < h; ++y) {
+        //        for (int x = 0; x < w; ++x) {
+        //            color3 c;
+        //            texture->fetch_as_float(x, y, l, {c.data(), 3});
+        //            rt(x, y) = c;
+        //        }
+        //    }
+        //    w = std::max(1, (w + 1) / 2);
+        //    h = std::max(1, (h + 1) / 2);
+        //    rt.save_to_png(task_dir / string_format("%s_%d.png", name.c_str(), l));
+        //}
     }
 }
 
