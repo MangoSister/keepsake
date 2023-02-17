@@ -21,6 +21,13 @@ SkyLight::SkyLight(const fs::path &path, const Transform &l2w, float strength) :
     distrib = DistribTable2D(lum.data(), map.ures, map.vres);
 }
 
+SkyLight::SkyLight(const color3 &ambient)
+{
+    map = BlockedArray<color3>(1, 1, 1, &ambient);
+    float lum = luminance(ambient);
+    distrib = DistribTable2D(&lum, map.ures, map.vres);
+}
+
 color3 SkyLight::eval(const vec3 &p, const vec3 &wi) const
 {
     vec3 wi_local = l2w.inverse().direction(wi);
@@ -107,12 +114,17 @@ std::unique_ptr<Light> create_light(const ConfigArgs &args)
 
 std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args)
 {
-    fs::path map = args.load_path("map");
-    Transform to_world;
-    if (args.contains("to_world"))
-        to_world = args.load_transform("to_world");
-    float strength = args.load_float("strength", 1.0f);
-    return std::make_unique<SkyLight>(map, to_world, strength);
+    if (args.contains("ambient")) {
+        color3 ambient = args.load_vec3("ambient").array();
+        return std::make_unique<SkyLight>(ambient);
+    } else {
+        fs::path map = args.load_path("map");
+        Transform to_world;
+        if (args.contains("to_world"))
+            to_world = args.load_transform("to_world");
+        float strength = args.load_float("strength", 1.0f);
+        return std::make_unique<SkyLight>(map, to_world, strength);
+    }
 }
 
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args)

@@ -25,6 +25,8 @@ struct Light
 struct SkyLight : public Light
 {
     SkyLight(const fs::path &path, const Transform &l2w, float strength = 1.0f);
+    // Shortcut for ambient light.
+    explicit SkyLight(const color3 &ambient);
     bool delta_position() const { return false; };
     bool delta_direction() const { return false; };
 
