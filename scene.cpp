@@ -2,7 +2,8 @@
 #include "mesh_asset.h"
 #include "normal_map.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 Scene::~Scene()
 {
@@ -49,7 +50,7 @@ AABB3 Scene::bound() const
 bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ctx) const
 {
     RTCRayHit rayhit = spawn_rtcrayhit(ray.origin, ray.dir, ray.tmin, ray.tmax);
-    if (!KS_NAMESPACE::intersect1(rtcscene, ctx, rayhit)) {
+    if (!ks::intersect1(rtcscene, ctx, rayhit)) {
         return false;
     }
 
@@ -69,9 +70,8 @@ bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ct
 bool Scene::occlude1(const Ray &ray, const IntersectContext &ctx) const
 {
     RTCRay rtcray = spawn_ray(ray.origin, ray.dir, ray.tmin, ray.tmax);
-    return KS_NAMESPACE::occlude1(rtcscene, ctx, rtcray);
+    return ks::occlude1(rtcscene, ctx, rtcray);
 }
-
 
 bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
 {
@@ -81,4 +81,4 @@ bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
     return scene->intersect1(ray, hit, ctx);
 }
 
-KS_NAMESPACE_END
+} // namespace ks

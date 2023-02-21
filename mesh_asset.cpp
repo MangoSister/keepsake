@@ -10,7 +10,8 @@
 #include <array>
 #include <unordered_map>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::path &base_path, MeshAsset &asset)
 {
@@ -273,4 +274,4 @@ void convert_mesh_asset_task(const ConfigArgs &args, const fs::path &task_dir, i
     }
 }
 
-KS_NAMESPACE_END
+} // namespace ks

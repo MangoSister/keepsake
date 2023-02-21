@@ -1,7 +1,8 @@
 #include "bsdf.h"
 #include "rng.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 std::pair<color3, float> BSDF::eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
 {
@@ -54,4 +55,4 @@ std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args)
     return bsdf;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

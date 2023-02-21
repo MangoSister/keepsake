@@ -6,7 +6,8 @@
 #include <array>
 #include <lz4.h>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 constexpr int byte_stride(TextureDataType data_type)
 {
@@ -784,4 +785,4 @@ void convert_texture_task(const ConfigArgs &args, const fs::path &task_dir, int 
     }
 }
 
-KS_NAMESPACE_END
+} // namespace ks

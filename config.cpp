@@ -6,7 +6,8 @@
 #include <toml.hpp>
 #include <unsupported/Eigen/EulerAngles>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct ConfigServiceInternal
 {
@@ -665,4 +666,4 @@ void ConfigArgs::update_time(float t) const { args->time = t; }
 
 const ConfigurableTable &ConfigArgs::asset_table() const { return args->service->asset_table; }
 
-KS_NAMESPACE_END
+} // namespace ks

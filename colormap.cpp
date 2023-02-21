@@ -1,6 +1,7 @@
 #include "colormap.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 namespace colormap
 {
@@ -530,4 +531,4 @@ const color3 viridis[viridis_size] =
 
 } // namespace colormap
 
-KS_NAMESPACE_END
+} // namespace ks

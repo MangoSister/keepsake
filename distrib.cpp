@@ -2,7 +2,8 @@
 #include "assertion.h"
 #include <algorithm>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 DistribTable::DistribTable(const float *f, uint32_t n) : cdf(n + 1)
 {
@@ -101,4 +102,4 @@ float DistribTable2D::pdf(const vec2 &p) const
     return pdf(x, y);
 }
 
-KS_NAMESPACE_END
+} // namespace ks

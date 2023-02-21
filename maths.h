@@ -1,11 +1,11 @@
 #pragma once
 
-#include "namespace.h"
 #include <Eigen/Geometry>
 #include <concepts>
 #include <span>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 template <int N>
 using vec = Eigen::Matrix<float, N, 1>;
@@ -711,4 +711,4 @@ inline bool refract(const vec3 &wi, const vec3 &n, float eta, vec3 &wt)
     return true;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

@@ -2,7 +2,8 @@
 
 #include "maths.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct Ray
 {
@@ -179,4 +180,4 @@ inline Intersection transform_it(const Transform &t, const Intersection &it)
     return it_out;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

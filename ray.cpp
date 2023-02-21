@@ -1,6 +1,7 @@
 #include "ray.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 void Intersection::compute_uv_partials(const Ray &ray)
 {
@@ -44,4 +45,4 @@ void Intersection::compute_uv_partials(const Ray &ray)
     }
 }
 
-KS_NAMESPACE_END
+} // namespace ks

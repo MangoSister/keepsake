@@ -3,7 +3,8 @@
 #include "embree_util.h"
 #include "ray.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct Geometry
 {
@@ -89,4 +90,4 @@ struct SphereGeometry : public Geometry
     std::vector<vec4> data; // [x, y, z, radius]
 };
 
-KS_NAMESPACE_END
+} // namespace ks

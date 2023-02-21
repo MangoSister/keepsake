@@ -5,7 +5,8 @@
 #include "rng.h"
 #include "scene.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 static inline float power_heur(float pf, float pg)
 {
@@ -83,4 +84,4 @@ color3 sample_direct(const Scene &scene, std::span<const Light *const> lights, c
     return Ld;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

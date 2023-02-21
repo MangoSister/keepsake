@@ -3,7 +3,8 @@
 #include "ray.h"
 #include "texture.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 vec3 NormalMap::sample(const vec2 &uv) const
 {
@@ -53,4 +54,4 @@ std::unique_ptr<NormalMap> create_normal_map(const ConfigArgs &args)
     return normal_map;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

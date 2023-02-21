@@ -19,12 +19,12 @@
 #undef ERROR
 #endif
 #endif
-#include "namespace.h"
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 #include <thread>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 inline int num_system_cores() { return std::max(1u, std::thread::hardware_concurrency()); }
 
@@ -111,4 +111,4 @@ void parallel_tile_2d(int width, int height, const Func &pixel_func)
     });
 }
 
-KS_NAMESPACE_END
+} // namespace ks

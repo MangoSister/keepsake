@@ -8,7 +8,8 @@
 #include <memory>
 #include <utility>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 template <typename T>
 struct BlockedArray
@@ -120,4 +121,4 @@ struct BlockedArray
     int stride = 0;
 };
 
-KS_NAMESPACE_END
+} // namespace ks

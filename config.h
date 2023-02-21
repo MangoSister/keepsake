@@ -10,7 +10,8 @@
 #include <unordered_map>
 namespace fs = std::filesystem;
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 // heterogeneous lookup: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1690r1.html
 // https://www.cppstories.com/2021/heterogeneous-access-cpp20/
@@ -152,4 +153,4 @@ struct ConfigService
     std::unique_ptr<ConfigServiceInternal> service;
 };
 
-KS_NAMESPACE_END
+} // namespace ks

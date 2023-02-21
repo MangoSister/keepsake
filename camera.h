@@ -2,7 +2,8 @@
 #include "maths.h"
 #include "ray.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct Camera
 {
@@ -26,4 +27,4 @@ struct Camera
 struct ConfigArgs;
 std::unique_ptr<Camera> create_camera(const ConfigArgs &args);
 
-KS_NAMESPACE_END
+} // namespace ks

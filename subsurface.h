@@ -8,7 +8,8 @@
 #include "config.h"
 #include "maths.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct Scene;
 struct LocalGeometry;
@@ -44,4 +45,4 @@ struct BSSRDF : Configurable
 
 std::unique_ptr<BSSRDF> create_bssrdf(const ConfigArgs &args);
 
-KS_NAMESPACE_END
+} // namespace ks

@@ -4,7 +4,8 @@
 #include "maths.h"
 #include "ray.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct AABB2
 {
@@ -359,4 +360,4 @@ inline AABB3 transform_aabb(const Transform &t, const AABB3 &b)
     return out;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

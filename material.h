@@ -2,7 +2,8 @@
 #include "config.h"
 #include <span>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct BSDF;
 struct BSSRDF;
@@ -61,4 +62,4 @@ struct StackedMaterial : public Material
 
 std::unique_ptr<Material> create_material(const ConfigArgs &args);
 
-KS_NAMESPACE_END
+} // namespace ks

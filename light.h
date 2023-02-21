@@ -6,7 +6,8 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct Light
 {
@@ -62,4 +63,4 @@ std::unique_ptr<Light> create_light(const ConfigArgs &args);
 std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args);
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args);
 
-KS_NAMESPACE_END
+} // namespace ks

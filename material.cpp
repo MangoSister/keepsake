@@ -5,7 +5,8 @@
 #include "scene.h"
 #include "subsurface.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 inline float fresnel_dielectric_cos(float cosi, float eta)
 {
@@ -283,4 +284,4 @@ std::unique_ptr<Material> create_material(const ConfigArgs &args)
     return material;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

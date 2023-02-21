@@ -3,7 +3,8 @@
 #include "geometry.h"
 #include <memory>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct BSDF;
 struct BSSRDF;
@@ -41,4 +42,4 @@ struct LocalGeometry
     bool intersect1(const Ray &ray, SceneHit &hit) const;
 };
 
-KS_NAMESPACE_END
+} // namespace ks

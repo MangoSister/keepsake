@@ -3,7 +3,8 @@
 #include "assertion.h"
 #include "maths.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct MicrofacetDistribution
 {
@@ -338,4 +339,4 @@ struct MicrofacetAdapterDerived : public MicrofacetAdapter
     vec3 sample(float ax, float ay, const vec3 &wo, const vec2 &u) const { return M(ax, ay).sample(wo, u); };
 };
 
-KS_NAMESPACE_END
+} // namespace ks

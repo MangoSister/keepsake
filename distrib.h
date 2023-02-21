@@ -2,7 +2,8 @@
 
 #include "maths.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct DistribTable
 {
@@ -31,4 +32,4 @@ struct DistribTable2D
     DistribTable margin;
 };
 
-KS_NAMESPACE_END
+} // namespace ks

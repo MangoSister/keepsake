@@ -7,7 +7,8 @@
 #include <vector>
 namespace fs = std::filesystem;
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct BinaryReader
 {
@@ -167,4 +168,4 @@ std::string string_format(const std::string &format, Args... args)
     return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
 }
 
-KS_NAMESPACE_END
+} // namespace ks

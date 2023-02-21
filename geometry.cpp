@@ -1,7 +1,8 @@
 #include "geometry.h"
 #include "embree_util.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 Geometry::~Geometry()
 {
@@ -244,4 +245,4 @@ Intersection SphereGeometry::compute_intersection(const RTCRayHit &rayhit) const
     return it;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

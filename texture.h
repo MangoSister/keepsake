@@ -5,7 +5,8 @@
 #include <cstddef>
 #include <span>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 // TODO: building mipmaps
 // TODO: EWA filtering
@@ -107,4 +108,4 @@ void write_texture_to_serialized(const Texture &texture, const fs::path &path);
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args);
 std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args);
 
-KS_NAMESPACE_END
+} // namespace ks

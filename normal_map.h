@@ -2,7 +2,8 @@
 #include "config.h"
 #include "shader_field.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct Texture;
 struct TextureSampler;
@@ -31,4 +32,4 @@ struct NormalMap : Configurable
 
 std::unique_ptr<NormalMap> create_normal_map(const ConfigArgs &args);
 
-KS_NAMESPACE_END
+} // namespace ks

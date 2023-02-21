@@ -1,7 +1,8 @@
 #include "sobol.h"
 #include "hash.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 static constexpr uint32_t reverse_bits(uint32_t x)
 {
@@ -78,4 +79,4 @@ float sobol_owen(uint32_t index, uint32_t dim, uint32_t seed)
     return nested_uniform_scramble_base2(sobol(index, dim), s) * scale;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

@@ -3,7 +3,8 @@
 #include "maths.h"
 #include <functional>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 // https://www.shadertoy.com/view/XlGcRh
 
@@ -118,4 +119,4 @@ inline void hash_combine(std::size_t &seed, const T &v, Rest... rest)
     hash_combine(seed, rest...);
 }
 
-KS_NAMESPACE_END
+} // namespace ks

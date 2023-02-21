@@ -5,7 +5,8 @@
 #include <vector>
 namespace fs = std::filesystem;
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 struct RenderTarget
 {
@@ -43,4 +44,4 @@ struct RenderTarget
     std::vector<color3> pixels;
 };
 
-KS_NAMESPACE_END
+} // namespace ks

@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <cstddef>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 BlockAllocator::BlockAllocator(size_t default_block_size, size_t max_num_blocks)
     : default_block_size(default_block_size), max_num_blocks(max_num_blocks)
@@ -98,4 +99,4 @@ void BlockAllocator::reset()
     used_blocks.clear();
 }
 
-KS_NAMESPACE_END
+} // namespace ks

@@ -1,7 +1,8 @@
 #include "camera.h"
 #include "config.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 static inline mat4 look_at(const vec3 &position, const vec3 &target, vec3 up)
 {
@@ -192,4 +193,4 @@ std::unique_ptr<Camera> create_camera(const ConfigArgs &args)
     return nullptr;
 }
 
-KS_NAMESPACE_END
+} // namespace ks

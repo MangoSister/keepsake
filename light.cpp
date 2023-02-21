@@ -4,7 +4,8 @@
 #include "ray.h"
 #include "rng.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 SkyLight::SkyLight(const fs::path &path, const Transform &l2w, float strength) : l2w(l2w), strength(strength)
 {
@@ -134,4 +135,4 @@ std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &arg
     return std::make_unique<DirectionalLight>(L, dir);
 }
 
-KS_NAMESPACE_END
+} // namespace ks

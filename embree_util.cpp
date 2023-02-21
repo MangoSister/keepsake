@@ -1,6 +1,7 @@
 #include "embree_util.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 void handle_embree_error(void *user_ptr, RTCError code, const char *str)
 {
@@ -58,4 +59,4 @@ EmbreeDevice::EmbreeDevice(const std::string &device_config) : device(rtcNewDevi
 
 EmbreeDevice::~EmbreeDevice() { rtcReleaseDevice(device); }
 
-KS_NAMESPACE_END
+} // namespace ks

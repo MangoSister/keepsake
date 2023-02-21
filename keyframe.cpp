@@ -1,6 +1,7 @@
 #include "keyframe.h"
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 float KeyframeFloat::eval(float t) const
 {
@@ -48,4 +49,4 @@ vec4 KeyframeVec4::eval(float t) const
     }
 }
 
-KS_NAMESPACE_END
+} // namespace ks

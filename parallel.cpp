@@ -3,7 +3,8 @@
 #include <tbb/global_control.h>
 #include <tbb/task_arena.h>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 std::mutex mutex_init_parallel;
 bool parallel_initialized = false;
@@ -26,4 +27,4 @@ void init_parallel(int nthreads)
     }
 }
 
-KS_NAMESPACE_END
+} // namespace ks

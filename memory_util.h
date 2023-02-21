@@ -1,9 +1,9 @@
 #pragma once
-#include "namespace.h"
 #include <cstdint>
 #include <vector>
 
-KS_NAMESPACE_BEGIN
+namespace ks
+{
 
 inline void *alloc_aligned(size_t size, size_t alignment)
 {
@@ -117,4 +117,4 @@ class BlockAllocator final : public Allocator
     size_t max_num_blocks;
 };
 
-KS_NAMESPACE_END
+} // namespace ks
