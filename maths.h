@@ -3,6 +3,7 @@
 #include "namespace.h"
 #include <Eigen/Geometry>
 #include <concepts>
+#include <span>
 
 KS_NAMESPACE_BEGIN
 
@@ -529,6 +530,20 @@ inline void lerp_helper(const float *u, const int *res, const WrapMode *wrap, co
 {
     for (int i = 0; i < N; ++i) {
         lerp_helper(u[i], res[i], wrap[i], tick[i], u0[i], u1[i], t[i]);
+    }
+}
+
+// 0 is the lowest dimension
+inline void unravel_index(int index, std::span<const int> dim, std::span<int> unraveled)
+{
+    int D = 1;
+    for (int i = 0; i < (int)dim.size() - 1; ++i) {
+        D *= dim[i];
+    }
+    for (int i = (int)dim.size() - 1; i >= 0; --i) {
+        unraveled[i] = index / D;
+        index -= unraveled[i] * D;
+        D /= dim[i];
     }
 }
 
