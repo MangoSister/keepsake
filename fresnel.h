@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ks/maths.h"
+#include "maths.h"
 
 namespace ks
 {

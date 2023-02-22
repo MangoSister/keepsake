@@ -1,6 +1,7 @@
 #pragma once
 #include "maths.h"
 #include "ray.h"
+#include <memory>
 
 namespace ks
 {

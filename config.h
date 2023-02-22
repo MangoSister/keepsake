@@ -88,7 +88,7 @@ struct ConfigurableTable
     void register_parser(std::string_view prefix,
                          const std::function<std::unique_ptr<T>(const ConfigArgs &args)> &parser)
     {
-        parsers.insert({std::string(prefix), [](const ConfigArgs &args) { return parser(args); }});
+        parsers.insert({std::string(prefix), [&](const ConfigArgs &args) { return parser(args); }});
     }
 
     void load(ConfigServiceInternal &service);
