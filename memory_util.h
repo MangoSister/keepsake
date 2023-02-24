@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 namespace ks
 {
@@ -55,8 +56,7 @@ class Allocator
     {
         void *bytes = allocate(sizeof(T));
         T *obj = reinterpret_cast<T *>(bytes);
-        new (obj) T(std::forward<Args>(args)...);
-        return obj;
+        return std::construct_at(obj, std::forward<Args>(args)...);
     }
 
     template <typename T, typename... Args>
@@ -65,7 +65,7 @@ class Allocator
         void *bytes = allocate(sizeof(T) * count);
         T *objs = reinterpret_cast<T *>(bytes);
         for (size_t i = 0; i < count; ++i) {
-            new (objs[i]) T(std::forward<Args>(args)...);
+            std::construct_at(&objs[i], std::forward<Args>(args)...);
         }
         return objs;
     }
@@ -73,16 +73,14 @@ class Allocator
     template <typename T>
     void free_typed(T *obj)
     {
-        obj->~T();
+        std::destroy_at(obj);
         free(obj);
     }
 
     template <typename T>
     void free_array(T *objs, size_t count)
     {
-        for (size_t i = 0; i < count; ++i) {
-            objs[i].~T();
-        }
+        std::destroy_n(objs, count);
         free(objs);
     }
 };
