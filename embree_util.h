@@ -167,4 +167,20 @@ inline void filter_local_geometry(const RTCFilterFunctionNArguments *args)
     }
 }
 
+inline void filter_exclude_local_geometry(const RTCFilterFunctionNArguments *args)
+{
+    uint32_t geom_id = *(uint32_t *)((IntersectContext *)(args->context))->ext;
+
+    uint32_t N = args->N;
+    int *valid = args->valid;
+    RTCRayN *ray = args->ray;
+    RTCHitN *hit = args->hit;
+    for (uint32_t i = 0; i < N; ++i) {
+        if (valid[i] != 0) {
+            if (geom_id == RTCHitN_geomID(hit, N, i))
+                valid[i] = 0;
+        }
+    }
+}
+
 } // namespace ks
