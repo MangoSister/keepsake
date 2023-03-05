@@ -1,4 +1,5 @@
 #include "bsdf.h"
+#include "principled_bsdf.h"
 #include "rng.h"
 
 namespace ks
@@ -51,6 +52,8 @@ std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args)
     std::unique_ptr<BSDF> bsdf;
     if (bsdf_type == "lambertian") {
         bsdf = create_lambertian(args);
+    } else if (bsdf_type == "principled_bsdf") {
+        bsdf = create_principled_bsdf(args);
     }
     return bsdf;
 }
