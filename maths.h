@@ -348,6 +348,12 @@ inline bool solve_linear_system_2x2(const float A[2][2], const float B[2], float
 
 inline bool solve_quadratic(float a, float b, float c, float &t0, float &t1)
 {
+    if (a == 0.0f && b == 0.0f) {
+        return false;
+    }
+    if (a == 0.0f) {
+        t0 = t1 = -c / b;
+    }
     // Find quadratic discriminant
     double discrim = (double)b * (double)b - 4 * (double)a * (double)c;
     if (discrim < 0)
