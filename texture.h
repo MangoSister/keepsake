@@ -27,6 +27,7 @@ enum class TextureWrapMode
 struct Texture : public Configurable
 {
     Texture() = default;
+    Texture(int width, int height, int num_channels, TextureDataType data_type);
     Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
             bool build_mipmaps);
     Texture(std::span<const std::byte *> mip_bytes, int width, int height, int num_channels, TextureDataType data_type);
