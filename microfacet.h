@@ -116,6 +116,36 @@ struct GGX : public MicrofacetDistribution
         return Ne;
     }
 
+    float pdf(const vec3 &wm) const
+    {
+        float pdf = D(wm) * std::abs(wm.z());
+        return pdf;
+        // Don't forget to correct jacobian after this, depending on reflection or refraction.
+    }
+
+    vec3 sample(const vec2 &u) const
+    {
+        float cos_theta = 0, phi = (two_pi)*u[1];
+        if (isotropic()) {
+            float tan_theta2 = alpha_x * alpha_x * u[0] / (1.0f - u[0]);
+            cos_theta = 1 / std::sqrt(1 + tan_theta2);
+        } else {
+            phi = std::atan(alpha_y / alpha_x * std::tan(two_pi * u[1] + .5f * pi));
+            if (u[1] > .5f)
+                phi += pi;
+            float sin_phi = std::sin(phi);
+            float cos_phi = std::cos(phi);
+            float alphax2 = alpha_x * alpha_x;
+            float alphay2 = alpha_y * alpha_y;
+            float alpha2 = 1 / (cos_phi * cos_phi / alphax2 + sin_phi * sin_phi / alphay2);
+            float tan_theta2 = alpha2 * u[0] / (1 - u[0]);
+            cos_theta = 1 / std::sqrt(1 + tan_theta2);
+        }
+        float sin_theta = std::sqrt(std::max(0.0f, 1.0f - cos_theta * cos_theta));
+        vec3 wh(sin_theta * std::cos(phi), sin_theta * std::sin(phi), cos_theta);
+        return wh;
+    }
+
     float alpha_x = 0.1f, alpha_y = 0.1f;
 
     static constexpr float min_alpha = 1e-3f;

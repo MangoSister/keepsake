@@ -1,16 +1,23 @@
 #pragma once
 
-// Sobol sequence with Owen scrambling without precomputed tables.
-// Based on Brent Burley, Practical Hash-based Owen Scrambling, Journal of Computer Graphics Techniques (JCGT), vol. 9,
-// no. 4, 1-20, 2020
-// http://jcgt.org/published/0009/04/01/
+// Helmer, Andrew, Per H.Christensen, and Andrew Kensler."Stochastic Generation of (t, s) Sample Sequences."
+// EGSR(DL).2021.
+// https://github.com/Andrew-Helmer/stochastic-generation
 
 #include <cstdint>
 
 namespace ks
 {
+// Helmer's stateless iterative stochastic Owen-scrambled Sobol:
+// Support up to 64 dimensions
 
-// TODO: can be vectorized, etc.
-float sobol_owen(uint32_t index, uint32_t dim, uint32_t seed);
+// Query for an arbitrary coordinate from a scrambled Sobol (0,2)-sequence. Seed
+// can be the same across all dimensions, or it can be different for each
+// dimension.
+//
+// nd is the number of dimensions shared by the same seed value, to get separate
+// hashed values for each sample index. If a different seed is provided for each
+// dimension, this can be used with nd=1.
+float sobol_owen(int idx, int dim, uint32_t seed, int nd);
 
 } // namespace ks

@@ -21,6 +21,7 @@
 #endif
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
+#include <tbb/spin_mutex.h>
 #include <thread>
 
 namespace ks
@@ -110,5 +111,7 @@ void parallel_tile_2d(int width, int height, const Func &pixel_func)
                 pixel_func(x, y);
     });
 }
+
+using spin_lock = tbb::spin_mutex;
 
 } // namespace ks

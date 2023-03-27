@@ -92,6 +92,14 @@ inline vec3 roberts_qmc_3d(uint32_t n, const vec3 &p0 = vec3::Zero())
     return p;
 }
 
+inline vec3 spherical_fibonacci(int i, int N)
+{
+    constexpr float golden_ratio = 1.61803398875f;
+    float phi = two_pi * ((float)i / golden_ratio - std::floor((float)i / golden_ratio));
+    float z = 1.0f - (float)(2 * i + 1) / (float)N;
+    return to_cartesian(phi, std::acos(z));
+}
+
 inline vec3 sample_uniform_hemisphere(const vec2 &u)
 {
     float z = u.y();
@@ -298,5 +306,28 @@ inline int sample_small_distrib(const std::span<const T> data, float u, float *u
     ASSERT(data[selected].*member_ptr > 0.0f);
     return selected;
 }
+
+inline float sample_standard_exp(float u) { return -std::log(1.0f - u); }
+
+inline float sample_normal(float u1, float u2, float *n2 = nullptr)
+{
+    float x1 = 2.0f * u1 - 1.0f;
+    float x2 = 2.0f * u2 - 1.0f;
+    float r2 = x1 * x1 + x2 * x2;
+    r2 = std::clamp(r2, 1e-5f, 1.0f - 1e-5f);
+
+    // Polar method, a more efficient version of the Box-Muller approach.
+    float f = std::sqrt(-2.0f * std::log(r2) / r2);
+    /* Keep for next call */
+    if (n2)
+        *n2 = f * x2;
+    return f * x1;
+}
+
+// beta, gamma distribution sampling ported from numpy.
+// https://github.com/numpy/numpy/blob/9ee262b5bf89e8c866a507e4d62b78532361adc2/numpy/random/src/legacy/legacy-distributions.c
+float sample_standard_gamma(RNG &rng, float shape);
+
+float sample_beta(RNG &rng, float a, float b);
 
 } // namespace ks

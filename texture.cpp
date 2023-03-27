@@ -20,6 +20,15 @@ constexpr int byte_stride(TextureDataType data_type)
     }
 }
 
+Texture::Texture(int width, int height, int num_channels, TextureDataType data_type)
+    : width(width), height(height), num_channels(num_channels), data_type(data_type)
+{
+    int stride = byte_stride(data_type) * num_channels;
+    int levels = 1;
+    mips.resize(levels);
+    mips[0] = BlockedArray<std::byte>(width, height, stride);
+}
+
 Texture::Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
                  bool build_mipmaps)
     : width(width), height(height), num_channels(num_channels), data_type(data_type)

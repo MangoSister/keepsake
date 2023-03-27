@@ -327,6 +327,61 @@ inline vec3 to_cartesian_yup(float phi, float theta)
     return vec3(cos_phi * sin_theta, cos_theta, sin_phi * sin_theta);
 }
 
+inline vec3 square_to_hemisphere(vec2 u)
+{
+    // Map uniform random numbers to $[-1,1]^2$
+    u = 2.0f * u - vec2::Constant(1.0f);
+
+    // Handle degeneracy at the origin
+    if (u.x() == 0.0f && u.y() == 0.0f) {
+        return vec3(0.0f, 0.0f, 1.0f);
+    }
+
+    // Apply concentric mapping to point
+    float phi, r;
+    if (std::abs(u.x()) > std::abs(u.y())) {
+        r = u.x();
+        phi = (pi * 0.25f) * (u.y() / u.x());
+    } else {
+        r = u.y();
+        phi = (pi * 0.5f) - (pi * 0.25f) * (u.x() / u.y());
+    }
+
+    float r2 = sqr(r);
+    float sin_theta = r * std::sqrt(2.0f - sqr(r));
+
+    float x = std::cos(phi) * sin_theta;
+    float y = std::sin(phi) * sin_theta;
+    float z = 1.0f - r2;
+    return vec3(x, y, z);
+}
+
+inline vec2 hemisphere_to_square(const vec3 &w)
+{
+    float r = safe_sqrt(1.0f - w.z());
+    float phi = std::atan2(w.y(), w.x());
+    if (phi < -0.25f * pi) {
+        phi += two_pi;
+    }
+    float x, y;
+    if (phi < 0.25f * pi) {
+        x = r;
+        y = 4.0f / pi * r * phi;
+    } else if (phi < 0.75f * pi) {
+        x = -4.0f / pi * r * (phi - 0.5f * pi);
+        y = r;
+    } else if (phi < 1.25f * pi) {
+        x = -r;
+        y = -4.0f / pi * r * (phi - pi);
+    } else {
+        x = 4.0f / pi * r * (phi - 1.5f * pi);
+        y = -r;
+    }
+    x = x * 0.5f + 0.5f;
+    y = y * 0.5f + 0.5f;
+    return vec2(x, y);
+}
+
 inline float delta_angle(float alpha, float beta)
 {
     float phi = std::fmod(std::abs(beta - alpha), two_pi);
@@ -348,6 +403,12 @@ inline bool solve_linear_system_2x2(const float A[2][2], const float B[2], float
 
 inline bool solve_quadratic(float a, float b, float c, float &t0, float &t1)
 {
+    if (a == 0.0f && b == 0.0f) {
+        return false;
+    }
+    if (a == 0.0f) {
+        t0 = t1 = -c / b;
+    }
     // Find quadratic discriminant
     double discrim = (double)b * (double)b - 4 * (double)a * (double)c;
     if (discrim < 0)

@@ -277,10 +277,19 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_
                            float thit[2] = nullptr, vec3 phit[2] = nullptr)
 {
     // Check for ray intersection against $x$ and $y$ slabs
-    float tmin = (bounds[dir_is_neg[0]].x() - ray.origin.x()) * inv_dir.x();
-    float tmax = (bounds[1 - dir_is_neg[0]].x() - ray.origin.x()) * inv_dir.x();
-    float tymin = (bounds[dir_is_neg[1]].y() - ray.origin.y()) * inv_dir.y();
-    float tymax = (bounds[1 - dir_is_neg[1]].y() - ray.origin.y()) * inv_dir.y();
+    // Need to avoid 0 multiplied by inf here...
+    float tmin = (bounds[dir_is_neg[0]].x() - ray.origin.x());
+    if (tmin != 0.0f)
+        tmin *= inv_dir.x();
+    float tmax = (bounds[1 - dir_is_neg[0]].x() - ray.origin.x());
+    if (tmax != 0.0f)
+        tmax *= inv_dir.x();
+    float tymin = (bounds[dir_is_neg[1]].y() - ray.origin.y());
+    if (tymin != 0.0f)
+        tymin *= inv_dir.y();
+    float tymax = (bounds[1 - dir_is_neg[1]].y() - ray.origin.y());
+    if (tymax != 0.0f)
+        tymax *= inv_dir.y();
 
     int min_axis = dir_is_neg[0] * 3;
     int max_axis = (1 - dir_is_neg[0]) * 3;
@@ -297,8 +306,12 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_
     }
 
     // Check for ray intersection against $z$ slab
-    float tzmin = (bounds[dir_is_neg[2]].z() - ray.origin.z()) * inv_dir.z();
-    float tzmax = (bounds[1 - dir_is_neg[2]].z() - ray.origin.z()) * inv_dir.z();
+    float tzmin = (bounds[dir_is_neg[2]].z() - ray.origin.z());
+    if (tzmin != 0.0f)
+        tzmin *= inv_dir.z();
+    float tzmax = (bounds[1 - dir_is_neg[2]].z() - ray.origin.z());
+    if (tzmax != 0.0f)
+        tzmax *= inv_dir.z();
 
     // Update _tzMax_ to ensure robust bounds intersection
     if (tmin > tzmax || tzmin > tmax)
