@@ -182,7 +182,14 @@ vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary,
     vec3 v0 = data->get_pos(i0);
     vec3 v1 = data->get_pos(i1);
     vec3 v2 = data->get_pos(i2);
-    vec3 ng = ((v1 - v0).cross(v2 - v1)).normalized();
+
+    // NOTE: somehow this line is bugged in release...??
+    // vec3 ng = ((v1 - v0).cross(v2 - v1)).normalized();
+    vec3 e01 = v1 - v0;
+    vec3 e12 = v2 - v1;
+    vec3 ng = e01.cross(e12);
+    ng.normalize();
+
     if (ng_out)
         *ng_out = ng;
     if (!data->use_smooth_normal || !data->has_vertex_normal() || vertex_normal_slot == ~0) {
