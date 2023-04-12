@@ -115,6 +115,9 @@ inline vec2 sample_disk(const vec2 &u)
 {
     float a = 2.0f * u[0] - 1.0f;
     float b = 2.0f * u[1] - 1.0f;
+    if (a == 0.0f && b == 0.0f) {
+        return vec2::Zero();
+    }
     float r, phi;
     if (a * a > b * b) {
         r = a;
