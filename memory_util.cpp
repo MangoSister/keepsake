@@ -42,7 +42,8 @@ void BlockAllocator::swap(BlockAllocator &other)
 
 void *BlockAllocator::allocate(size_t byteCount)
 {
-    constexpr size_t alignment = alignof(std::max_align_t);
+    // constexpr size_t alignment = alignof(std::max_align_t);
+    constexpr size_t alignment = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
 
     byteCount = (byteCount + alignment - 1) & ~(alignment - 1);
     if (curr_block_pos + byteCount > curr_alloc_size) {
