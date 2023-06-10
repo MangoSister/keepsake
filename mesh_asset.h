@@ -6,6 +6,7 @@
 #include "texture.h"
 #include <filesystem>
 #include <memory>
+#include <span>
 namespace fs = std::filesystem;
 
 namespace ks
@@ -32,5 +33,17 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args);
 
 // Convenient function: create a scene from a single mesh asset.
 Scene create_scene_from_mesh_asset(const MeshAsset &mesh_asset, const EmbreeDevice &device);
+void assign_material_list(Scene &scene, const ConfigArgs &args_materials);
+
+struct CompoundMeshAsset : public Configurable
+{
+    void load_from_gltf_binary(const fs::path &path, bool load_materials, bool twosided);
+
+    std::vector<MeshAsset> prototypes;
+    std::vector<std::pair<uint32_t, Transform>> instances;
+};
+
+std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &args);
+Scene create_scene_from_compound_mesh_asset(const CompoundMeshAsset &compound, const EmbreeDevice &device);
 
 } // namespace ks

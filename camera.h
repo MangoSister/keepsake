@@ -25,7 +25,13 @@ struct Camera
     Transform camera_to_world;
 };
 
+ks::mat4 look_at(const ks::vec3 &position, const ks::vec3 &target, ks::vec3 up);
+ks::mat4 look_at_view(const ks::vec3 &position, const ks::vec3 &target, ks::vec3 up);
+ks::mat4 rev_inf_projection(float vfov, float aspect, float near_clip = 0.01f);
+ks::mat4 rev_orthographic(float left, float right, float bottom, float top, float near, float far);
+
 struct ConfigArgs;
 std::unique_ptr<Camera> create_camera(const ConfigArgs &args);
+
 
 } // namespace ks

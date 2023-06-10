@@ -154,10 +154,10 @@ MaterialSample BlendedMaterial::sample_with_direct(vec3 wo, const Intersection &
     vec3 wi_local;
     float pdf;
     s.beta *= exit_bsdf->sample(wo_local, wi_local, exit, rng.next2d(), pdf);
-    if (s.beta.maxCoeff() == 0.0f || pdf == 0.0f) {
-        return {color3::Zero(), color3::Zero()};
-    }
     ASSERT(s.beta.allFinite() && (s.beta >= 0.0f).all());
+    if (s.beta.maxCoeff() == 0.0f || pdf == 0.0f) {
+        return s;
+    }
     wi = exit.sh_vector_to_world(wi_local);
 
     return s;

@@ -213,6 +213,14 @@ inline vec3 sample_triangle(const vec3 &v0, const vec3 &v1, const vec3 &v2, cons
     return alpha * v0 + beta * v1 + gamma * v2;
 }
 
+inline vec2 sample_triangle_bary(const vec2 &u)
+{
+    float su0 = std::sqrt(u[0]);
+    float alpha = 1.0f - su0;
+    float beta = u[1] * su0;
+    return vec2(alpha, beta);
+}
+
 // Sample a tetrahedron: http://vcg.isti.cnr.it/jgt/tetra.htm
 inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, const vec3 &v3, const vec3 &xi)
 {

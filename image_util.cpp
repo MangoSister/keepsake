@@ -12,7 +12,7 @@
 namespace ks
 {
 
-std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, int &h)
+std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, int &h, ColorSpace src_colorspace)
 {
     int comp;
     stbi_uc *loaded = stbi_load(path.string().c_str(), &w, &h, &comp, c);
@@ -21,10 +21,21 @@ std::unique_ptr<std::byte[]> load_from_ldr(const fs::path &path, int c, int &w, 
     std::copy(reinterpret_cast<const std::byte *>(loaded), reinterpret_cast<const std::byte *>(loaded) + (w * h * c),
               copy.get());
     stbi_image_free(loaded);
+    if (src_colorspace == ColorSpace::sRGB) {
+        // TODO: converting srgb to linear for in u8 may have precision problem on the dark end...
+        // https://blog.demofox.org/2018/03/10/dont-convert-srgb-u8-to-linear-u8/
+        int n = w * h * c;
+        for (int i = 0; i < n; ++i) {
+            float f32 = (float)(*reinterpret_cast<uint8_t *>(&copy[i])) / 255.0f;
+            float linear_f32 = srgb_to_linear(f32);
+            uint8_t linear_u8 = (uint8_t)std::floor(linear_f32 * 255.0f);
+            (*reinterpret_cast<uint8_t *>(&copy[i])) = linear_u8;
+        }
+    }
     return copy;
 }
 
-std::unique_ptr<float[]> load_from_ldr_to_float(const fs::path &path, int c, int &w, int &h, ColorSpace color_space)
+std::unique_ptr<float[]> load_from_ldr_to_float(const fs::path &path, int c, int &w, int &h, ColorSpace src_colorspace)
 {
     int comp;
     stbi_uc *loaded = stbi_load(path.string().c_str(), &w, &h, &comp, c);
@@ -34,12 +45,12 @@ std::unique_ptr<float[]> load_from_ldr_to_float(const fs::path &path, int c, int
     for (int i = 0; i < n; ++i) {
         float_data[i] = (float)loaded[i] / 255.0f;
     }
-    if (color_space == ColorSpace::sRGB) {
+    stbi_image_free(loaded);
+    if (src_colorspace == ColorSpace::sRGB) {
         for (int i = 0; i < n; ++i) {
             float_data[i] = srgb_to_linear(float_data[i]);
         }
     }
-    stbi_image_free(loaded);
     return float_data;
 }
 

@@ -578,7 +578,8 @@ void CubicSampler::bicubic(const Texture &texture, int level, const vec2 &uv, st
     spline(dv, nc, c0, c1, c2, c3, ca, cb, out.data());
 }
 
-std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, const fs::path &path)
+std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, ColorSpace src_colorspace,
+                                                   const fs::path &path)
 {
     std::string ext = path.extension().string();
     int width, height;
@@ -593,7 +594,7 @@ std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, c
         float_data = load_from_hdr(path, ch, width, height);
         data_type = TextureDataType::f32;
     } else {
-        byte_data = load_from_ldr(path, ch, width, height);
+        byte_data = load_from_ldr(path, ch, width, height, src_colorspace);
         data_type = TextureDataType::u8;
     }
     ptr = float_data ? reinterpret_cast<const std::byte *>(float_data.get()) : byte_data.get();
@@ -729,7 +730,12 @@ std::unique_ptr<Texture> create_texture(const ConfigArgs &args)
     } else {
         int ch = args.load_integer("channels");
         bool build_mipmaps = args.load_bool("build_mipmaps");
-        return create_texture_from_image(ch, build_mipmaps, path);
+        std::string src_colorspace_str = args.load_string("colorspace", "Linear");
+        ColorSpace src_colorspace = ColorSpace::Linear;
+        if (src_colorspace_str == "sRGB") {
+            src_colorspace = ColorSpace::sRGB;
+        }
+        return create_texture_from_image(ch, build_mipmaps, src_colorspace, path);
     }
 }
 

@@ -25,7 +25,7 @@ struct Light
 
 struct SkyLight : public Light
 {
-    SkyLight(const fs::path &path, const Transform &l2w, float strength = 1.0f);
+    SkyLight(const fs::path &path, const Transform &l2w, bool transform_y_up, float strength = 1.0f);
     // Shortcut for ambient light.
     explicit SkyLight(const color3 &ambient);
     bool delta_position() const { return false; };
@@ -40,6 +40,7 @@ struct SkyLight : public Light
     DistribTable2D distrib;
     BlockedArray<color3> map;
     Transform l2w;
+    bool transform_y_up = true;
     float strength = 1.0f;
 };
 

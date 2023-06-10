@@ -38,8 +38,9 @@ struct TextureField : public ShaderField<color<N>>
 {
     TextureField() = default;
     TextureField(const Texture &texture, std::unique_ptr<TextureSampler> &&sampler, bool flip_v = true,
-                 const arri<N> *swizzle = nullptr)
-        : texture(&texture), sampler(std::move(sampler)), flip_v(flip_v)
+                 const arri<N> *swizzle = nullptr, const vec2 &uv_scale = vec2::Ones(),
+                 const vec2 &uv_offset = vec2::Zero())
+        : texture(&texture), sampler(std::move(sampler)), flip_v(flip_v), uv_scale(uv_scale), uv_offset(uv_offset)
     {
         if (!swizzle)
             std::iota(this->swizzle.data(), this->swizzle.data() + N, 0);
@@ -57,6 +58,11 @@ struct TextureField : public ShaderField<color<N>>
             flip_duvdxy(0, 1) *= -1.0f;
             flip_duvdxy(1, 1) *= -1.0f;
         }
+        flip_uv = flip_uv.cwiseProduct(uv_scale) + uv_offset;
+        flip_duvdxy(0, 0) *= uv_scale[0];
+        flip_duvdxy(1, 0) *= uv_scale[0];
+        flip_duvdxy(0, 1) *= uv_scale[1];
+        flip_duvdxy(1, 1) *= uv_scale[1];
 
         VLA(out, float, texture->num_channels);
         (*sampler)(*texture, flip_uv, flip_duvdxy, {out, (size_t)texture->num_channels});
@@ -70,6 +76,8 @@ struct TextureField : public ShaderField<color<N>>
     std::unique_ptr<TextureSampler> sampler;
     arri<N> swizzle;
     bool flip_v = true; // This is very common for some reasons...
+    vec2 uv_scale = vec2::Ones();
+    vec2 uv_offset = vec2::Zero();
 };
 
 template <int N>
@@ -111,7 +119,9 @@ std::unique_ptr<TextureField<N>> create_texture_shader_field_color(const ConfigA
             swizzle = args.load_vec4("swizzle").cast<int>().array();
         }
     }
-    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, &swizzle);
+    vec2 uv_scale = args.load_vec2("uv_scale", false, vec2::Ones());
+    vec2 uv_offset = args.load_vec2("uv_offset", false, vec2::Zero());
+    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, &swizzle, uv_scale, uv_offset);
 }
 
 template <int N>

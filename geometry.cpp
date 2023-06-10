@@ -65,13 +65,14 @@ void MeshGeometry::create_rtc_geom(const EmbreeDevice &device)
     rtcCommitGeometry(rtcgeom);
 }
 
-Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
+Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit, const Ray &ray,
+                                                const Transform &transform) const
 {
     Intersection it;
     it.thit = rayhit.ray.tfar;
 
     vec3 ray_dir = vec3(rayhit.ray.dir_x, rayhit.ray.dir_y, rayhit.ray.dir_z).normalized();
-    vec3 wo = -ray_dir;
+    vec3 wo_object = transform_dir(transform.inv, -ray_dir);
     vec3 ng = vec3(rayhit.hit.Ng_x, rayhit.hit.Ng_y, rayhit.hit.Ng_z).normalized();
 
     it.uv[0] = rayhit.hit.u;
@@ -123,7 +124,7 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
     vec3 t = b.cross(ng).normalized();
 
     if (data->twosided) {
-        if (wo.dot(ng) < 0.0f) {
+        if (wo_object.dot(ng) < 0.0f) {
             ng = -ng;
             it.dpdu = -it.dpdu;
             t = -t;
@@ -153,6 +154,9 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit) const
             it.sh_frame = Frame(vt, vb, vn);
         }
     }
+
+    it.compute_uv_partials(ray);
+    it = transform_it(transform, it);
     return it;
 }
 

@@ -327,6 +327,7 @@ inline vec3 to_cartesian_yup(float phi, float theta)
     return vec3(cos_phi * sin_theta, cos_theta, sin_phi * sin_theta);
 }
 
+// Concentric mapping
 inline vec3 square_to_hemisphere(vec2 u)
 {
     // Map uniform random numbers to $[-1,1]^2$
@@ -356,6 +357,7 @@ inline vec3 square_to_hemisphere(vec2 u)
     return vec3(x, y, z);
 }
 
+// Inverse concentric mapping
 inline vec2 hemisphere_to_square(const vec3 &w)
 {
     float r = safe_sqrt(1.0f - w.z());

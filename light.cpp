@@ -7,7 +7,8 @@
 namespace ks
 {
 
-SkyLight::SkyLight(const fs::path &path, const Transform &l2w, float strength) : l2w(l2w), strength(strength)
+SkyLight::SkyLight(const fs::path &path, const Transform &l2w, bool transform_y_up, float strength)
+    : l2w(l2w), transform_y_up(transform_y_up), strength(strength)
 {
     int width, height;
     std::unique_ptr<color3[]> pixels = load_from_hdr<3>(path, width, height);
@@ -34,7 +35,11 @@ color3 SkyLight::eval(const vec3 &p, const vec3 &wi) const
     vec3 wi_local = l2w.inverse().direction(wi);
 
     float phi, theta;
-    to_spherical_yup(wi_local, phi, theta);
+    if (transform_y_up) {
+        to_spherical_yup(wi_local, phi, theta);
+    } else {
+        to_spherical(wi_local, phi, theta);
+    }
     vec2 uv;
     uv[0] = phi * inv_pi * 0.5f;
     uv[1] = theta * inv_pi;
@@ -61,7 +66,12 @@ color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &pdf) cons
     }
     float phi = uv[0] * 2.0f * pi;
     float theta = uv[1] * pi;
-    vec3 wi_local = to_cartesian_yup(phi, theta);
+    vec3 wi_local;
+    if (transform_y_up) {
+        wi_local = to_cartesian_yup(phi, theta);
+    } else {
+        wi_local = to_cartesian(phi, theta);
+    }
     float sin_theta = std::sin(theta);
     pdf /= (2.0f * pi * pi * sin_theta);
     if (sin_theta == 0.0f) {
@@ -75,7 +85,11 @@ float SkyLight::pdf(const vec3 &p, const vec3 &wi) const
 {
     vec3 wi_local = l2w.inverse().direction(wi);
     float phi, theta;
-    to_spherical_yup(wi_local, phi, theta);
+    if (transform_y_up) {
+        to_spherical_yup(wi_local, phi, theta);
+    } else {
+        to_spherical(wi_local, phi, theta);
+    }
     float sin_theta = std::sin(theta);
     if (sin_theta == 0.0f) {
         return 0.0f;
@@ -123,8 +137,9 @@ std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args)
         Transform to_world;
         if (args.contains("to_world"))
             to_world = args.load_transform("to_world");
+        bool transform_y_up = args.load_bool("transform_y_up", true);
         float strength = args.load_float("strength", 1.0f);
-        return std::make_unique<SkyLight>(map, to_world, strength);
+        return std::make_unique<SkyLight>(map, to_world, transform_y_up, strength);
     }
 }
 

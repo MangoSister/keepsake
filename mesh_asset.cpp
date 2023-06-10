@@ -7,7 +7,14 @@
 #include "parallel.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
+#include <stb_image.h>
+#include <stb_image_write.h>
+#define TINYGLTF_IMPLEMENTATION
+#define TINYGLTF_NO_INCLUDE_STB_IMAGE
+#define TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE
+#include "tiny_gltf.h"
 #include <array>
+#include <iostream>
 #include <unordered_map>
 
 namespace ks
@@ -18,7 +25,7 @@ static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::pat
     std::unique_ptr<Lambertian> lambert;
     if (!mat.diffuse_texname.empty()) {
         fs::path path = base_path / mat.diffuse_texname;
-        std::unique_ptr<Texture> albedo_map = create_texture_from_image(3, true, path);
+        std::unique_ptr<Texture> albedo_map = create_texture_from_image(3, true, ColorSpace::sRGB, path);
         std::unique_ptr<LinearSampler> sampler = std::make_unique<LinearSampler>();
         std::unique_ptr<TextureField<3>> albedo = std::make_unique<TextureField<3>>(*albedo_map, std::move(sampler));
         asset.textures.push_back(std::move(albedo_map));
@@ -252,15 +259,36 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args)
 
 Scene create_scene_from_mesh_asset(const MeshAsset &mesh_asset, const EmbreeDevice &device)
 {
-    Scene scene;
+    SubScene subscene;
     for (const auto &m : mesh_asset.meshes) {
-        scene.geometries.push_back(std::make_unique<MeshGeometry>(*m));
+        subscene.geometries.push_back(std::make_unique<MeshGeometry>(*m));
     }
     for (const auto &m : mesh_asset.materials) {
-        scene.materials.push_back(&*m);
+        subscene.materials.push_back(&*m);
     }
+    subscene.create_rtc_scene(device);
+
+    Scene scene;
+    scene.add_subscene(std::move(subscene));
+    scene.add_instance(device, 0, Transform());
     scene.create_rtc_scene(device);
+
     return scene;
+}
+
+void assign_material_list(Scene &scene, const ConfigArgs &args_materials)
+{
+    ASSERT(args_materials.array_size() == scene.subscenes.size(), "Material list mismatch dimension.");
+    for (int subscene_id = 0; subscene_id < scene.subscenes.size(); ++subscene_id) {
+        SubScene &subscene = *scene.subscenes[subscene_id];
+        ConfigArgs subscene_materials = args_materials[subscene_id];
+        ASSERT(subscene_materials.array_size() == subscene.geometries.size(), "Material list mismatch dimension.");
+        subscene.materials.resize(subscene.geometries.size());
+        for (int geom_id = 0; geom_id < subscene.geometries.size(); ++geom_id) {
+            subscene.materials[geom_id] =
+                args_materials.asset_table().get<Material>(subscene_materials.load_string(geom_id));
+        }
+    }
 }
 
 void convert_mesh_asset_task(const ConfigArgs &args, const fs::path &task_dir, int task_id)
@@ -272,6 +300,258 @@ void convert_mesh_asset_task(const ConfigArgs &args, const fs::path &task_dir, i
         std::string name = asset_path.substr(asset_path.rfind(".") + 1);
         mesh_asset->write_to_binary(task_dir / (name + ".bin"));
     }
+}
+
+void copy_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::BufferView &view,
+                             const tinygltf::Accessor &acc, uint8_t *dest)
+{
+    ASSERT(!buf.data.empty());
+    const uint8_t *buf_data = buf.data.data();
+    const uint8_t *src = buf_data + view.byteOffset + acc.byteOffset;
+
+    int comp_size_in_bytes = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType));
+    int num_comp = tinygltf::GetNumComponentsInType(static_cast<uint32_t>(acc.type));
+    int element_size_in_bytes = comp_size_in_bytes * num_comp;
+
+    int stride = acc.ByteStride(view);
+    for (int i = 0; i < acc.count; ++i) {
+        std::copy(src, src + element_size_in_bytes, dest);
+        dest += element_size_in_bytes;
+        src += stride;
+    }
+}
+
+template <typename CastFn>
+void copy_and_cast_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::BufferView &view,
+                                      const tinygltf::Accessor &acc, uint8_t *dest, const CastFn &fn = CastFn())
+{
+    ASSERT(!buf.data.empty());
+    const uint8_t *buf_data = buf.data.data();
+    const uint8_t *src = buf_data + view.byteOffset + acc.byteOffset;
+
+    int comp_size_in_bytes = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType));
+    int num_comp = tinygltf::GetNumComponentsInType(static_cast<uint32_t>(acc.type));
+    int element_size_in_bytes = comp_size_in_bytes * num_comp;
+
+    int stride = acc.ByteStride(view);
+    VLA(after_cast, uint8_t, fn.cast_element_size_in_bytes);
+    for (int i = 0; i < acc.count; ++i) {
+        fn(src, after_cast);
+
+        std::copy(after_cast, after_cast + fn.cast_element_size_in_bytes, dest);
+        dest += fn.cast_element_size_in_bytes;
+        src += stride;
+    }
+}
+
+struct CastU16ToU32
+{
+    void operator()(const uint8_t *src, uint8_t *dst) const
+    {
+        uint16_t u16 = *reinterpret_cast<const uint16_t *>(src);
+        uint32_t u32 = static_cast<uint32_t>(u16);
+        *reinterpret_cast<uint32_t *>(dst) = u32;
+    }
+
+    size_t cast_element_size_in_bytes = 4;
+};
+
+void CompoundMeshAsset::load_from_gltf_binary(const fs::path &path, bool load_materials, bool twosided)
+{
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err;
+    std::string warn;
+    bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
+    if (!err.empty()) {
+        std::cout << "GLTF Loader Error: " << err << "\n";
+    }
+    if (!warn.empty()) {
+        std::cout << "GLTF Loader Warning: " << warn << "\n";
+    }
+    const std::vector<tinygltf::Mesh> &src_meshes = model.meshes;
+    const std::vector<tinygltf::Material> &src_materials = model.materials;
+    const std::vector<tinygltf::Buffer> &buffers = model.buffers;
+    const std::vector<tinygltf::BufferView> &bufferviews = model.bufferViews;
+    const std::vector<tinygltf::Accessor> &accessors = model.accessors;
+
+    prototypes.resize(src_meshes.size());
+    for (int i = 0; i < src_meshes.size(); ++i) {
+        MeshAsset mesh_asset;
+        const auto &primtives = src_meshes[i].primitives;
+        for (int j = 0; j < primtives.size(); ++j) {
+            MeshData mesh_data;
+
+            ASSERT(primtives[j].mode == TINYGLTF_MODE_TRIANGLES, "GLTF: Only support triangle primitives!");
+            const auto &acc_idx = accessors[primtives[j].indices];
+            ASSERT(acc_idx.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT ||
+                       acc_idx.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT,
+                   "GLTF: Unsupported index buffer component type!");
+            ASSERT(acc_idx.type == TINYGLTF_TYPE_SCALAR, "GLTF: Unsupport index buffer data type!");
+            ASSERT(acc_idx.count % 3 == 0);
+            mesh_data.indices.resize(acc_idx.count);
+            if (acc_idx.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                const auto &view = bufferviews[acc_idx.bufferView];
+                const auto &buf = buffers[view.buffer];
+                copy_accessor_to_linear(buf, view, acc_idx, reinterpret_cast<uint8_t *>(mesh_data.indices.data()));
+            } else {
+                const auto &view = bufferviews[acc_idx.bufferView];
+                const auto &buf = buffers[view.buffer];
+                copy_and_cast_accessor_to_linear<CastU16ToU32>(buf, view, acc_idx,
+                                                               reinterpret_cast<uint8_t *>(mesh_data.indices.data()));
+            }
+
+            auto it_pos = primtives[j].attributes.find("POSITION");
+            ASSERT(it_pos != primtives[j].attributes.end(), "GLTF primitive must have positions!");
+            const auto &acc_pos = accessors[it_pos->second];
+            ASSERT(acc_pos.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT,
+                   "GLTF: Unsupported vertex position component type!");
+            ASSERT(acc_pos.type == TINYGLTF_TYPE_VEC3, "GLTF: Unsupport vertex position data type!");
+            // Add a dummy value to vertex buffer for embree padding.
+            mesh_data.vertices.resize(acc_pos.count * 3 + 1);
+            {
+                const auto &view = bufferviews[acc_pos.bufferView];
+                const auto &buf = buffers[view.buffer];
+                copy_accessor_to_linear(buf, view, acc_pos, reinterpret_cast<uint8_t *>(mesh_data.vertices.data()));
+            }
+
+            auto it_normal = primtives[j].attributes.find("NORMAL");
+            bool has_normal = it_normal != primtives[j].attributes.end();
+            if (has_normal) {
+                const auto &acc_normal = accessors[it_normal->second];
+                ASSERT(acc_normal.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT,
+                       "GLTF: Unsupported vertex normal component type!");
+                ASSERT(acc_normal.type == TINYGLTF_TYPE_VEC3, "GLTF: Unsupport vertex normal data type!");
+
+                // Add a dummy value to vertex buffer for embree padding.
+                mesh_data.vertex_normals.resize(acc_normal.count * 3 + 1);
+                {
+                    const auto &view = bufferviews[acc_normal.bufferView];
+                    const auto &buf = buffers[view.buffer];
+                    copy_accessor_to_linear(buf, view, acc_normal,
+                                            reinterpret_cast<uint8_t *>(mesh_data.vertex_normals.data()));
+                }
+            }
+
+            auto it_tc0 = primtives[j].attributes.find("TEXCOORD_0");
+            bool has_tc0 = it_tc0 != primtives[j].attributes.end();
+            if (has_tc0) {
+                const auto &acc_tc0 = accessors[it_tc0->second];
+                ASSERT(acc_tc0.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT,
+                       "GLTF: Unsupported texcoord component type!");
+                ASSERT(acc_tc0.type == TINYGLTF_TYPE_VEC2, "GLTF: Unsupport texcoord data type!");
+
+                // Add two dummy value to vertex buffer for embree padding.
+                mesh_data.texcoords.resize(acc_tc0.count * 2 + 2);
+                {
+                    const auto &view = bufferviews[acc_tc0.bufferView];
+                    const auto &buf = buffers[view.buffer];
+                    copy_accessor_to_linear(buf, view, acc_tc0,
+                                            reinterpret_cast<uint8_t *>(mesh_data.texcoords.data()));
+                }
+            }
+
+            if (load_materials) {
+                // TODO:
+                // src_materials[primtives[j].material].
+            }
+
+            mesh_asset.meshes.emplace_back(std::make_unique<MeshData>(std::move(mesh_data)));
+        }
+        prototypes[i] = std::move(mesh_asset);
+    }
+
+    auto dfs_add_instance = [&](int node_idx, Transform transform, auto &self) -> void {
+        const auto &node = model.nodes[node_idx];
+
+        Transform local_transform;
+        if (!node.matrix.empty()) {
+            mat4 m;
+            std::copy(node.matrix.begin(), node.matrix.end(), m.data());
+            local_transform = Transform(m);
+        } else {
+            vec3 scale = vec3::Ones();
+            quat rotation = quat::Identity();
+            vec3 translation = vec3::Zero();
+            if (!node.scale.empty()) {
+                scale[0] = node.scale[0];
+                scale[1] = node.scale[1];
+                scale[2] = node.scale[2];
+            }
+            if (!node.rotation.empty()) {
+                // GLTF rotations are stored as XYZW quaternions
+                rotation.w() = node.rotation[3];
+                rotation.x() = node.rotation[0];
+                rotation.y() = node.rotation[1];
+                rotation.z() = node.rotation[2];
+            }
+            if (!node.translation.empty()) {
+                translation[0] = node.translation[0];
+                translation[1] = node.translation[1];
+                translation[2] = node.translation[2];
+            }
+            local_transform = Transform(scale_rotate_translate(scale, rotation, translation));
+        }
+
+        transform = transform * local_transform;
+
+        if (node.mesh >= 0) {
+            uint32_t prototype = model.nodes[node_idx].mesh;
+            instances.push_back({prototype, transform});
+        }
+
+        for (int child_idx : node.children) {
+            self(child_idx, transform, self);
+        }
+    };
+
+    for (int root : model.scenes[model.defaultScene].nodes) {
+        Transform transform;
+        dfs_add_instance(root, transform, dfs_add_instance);
+    }
+
+    return;
+}
+
+std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &args)
+{
+    std::unique_ptr<CompoundMeshAsset> compound = std::make_unique<CompoundMeshAsset>();
+
+    fs::path path = args.load_path("path");
+    std::string fmt = args.load_string("format", "glb");
+    if (fmt == "glb") {
+        bool load_materials = args.load_bool("load_materials");
+        bool twosided = args.load_bool("twosided", false);
+        compound->load_from_gltf_binary(path, load_materials, twosided);
+    } else {
+        ASSERT(false, "Unsupported mesh asset format [%s].", fmt.c_str());
+    }
+
+    return compound;
+}
+
+Scene create_scene_from_compound_mesh_asset(const CompoundMeshAsset &compound, const EmbreeDevice &device)
+{
+    Scene scene;
+    for (const auto &p : compound.prototypes) {
+        SubScene subscene;
+        subscene.geometries.reserve(p.meshes.size());
+        for (const auto &m : p.meshes) {
+            subscene.geometries.push_back(std::make_unique<MeshGeometry>(*m));
+        }
+        subscene.materials.reserve(p.meshes.size());
+        for (const auto &m : p.materials) {
+            subscene.materials.push_back(&*m);
+        }
+        subscene.create_rtc_scene(device);
+        scene.add_subscene(std::move(subscene));
+    }
+    scene.instances.reserve(compound.instances.size());
+    for (const auto &[prototype, transform] : compound.instances) {
+        scene.add_instance(device, prototype, transform);
+    }
+    scene.create_rtc_scene(device);
+    return scene;
 }
 
 } // namespace ks

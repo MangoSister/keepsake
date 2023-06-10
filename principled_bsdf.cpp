@@ -5,6 +5,226 @@
 namespace ks
 {
 
+PrincipledBRDF::Closure PrincipledBRDF::eval_closure(const Intersection &it) const
+{
+    Closure closure;
+    closure.basecolor = (*basecolor)(it);
+    closure.basecolor = clamp(closure.basecolor, color3::Zero(), color3::Ones());
+    closure.ax = (*roughness)(it)[0];
+    closure.ax = clamp(closure.ax, 0.0f, 1.0f);
+    closure.ax = sqr(closure.ax);
+    closure.ay = closure.ax;
+    closure.metallic = (*metallic)(it)[0];
+    closure.metallic = clamp(closure.metallic, 0.0f, 1.0f);
+    closure.specular = (*specular)(it)[0];
+    closure.specular = clamp(closure.specular, 0.0f, 1.0f) * 0.08f;
+    closure.microfacet = &*microfacet;
+    return closure;
+}
+
+color3 PrincipledBRDF::eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const
+{
+    Closure closure = eval_closure(it);
+    return internal::eval(wo, wi, closure);
+}
+
+color3 PrincipledBRDF::sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const
+{
+    Closure closure = eval_closure(it);
+    return internal::sample(wo, wi, closure, u, pdf);
+}
+
+float PrincipledBRDF::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
+{
+    Closure closure = eval_closure(it);
+    return internal::pdf(wo, wi, closure);
+}
+
+color3 PrincipledBRDF::internal::eval(const vec3 &wo, const vec3 &wi, const Closure &closure)
+{
+    if (wo.z() == 0.0f || wi.z() == 0.0f) {
+        return color3::Zero();
+    }
+
+    color3 f = color3::Zero();
+    if (wo.z() > 0.0f && wi.z() > 0.0f) {
+        f += eval_diffuse(wo, wi, closure);
+        f += eval_specular(wo, wi, closure);
+    }
+    return f;
+}
+
+color3 PrincipledBRDF::internal::sample(const vec3 &wo, vec3 &wi, const Closure &closure, const vec2 &u, float &pdf)
+{
+    if (wo.z() == 0.0f) {
+        pdf = 0.0f;
+        return color3::Zero();
+    }
+
+    vec2 sample_weights = lobe_sample_weights(wo, closure);
+    if (sample_weights.isZero()) {
+        pdf = 0.0f;
+        return color3::Zero();
+    }
+    float u0_remap;
+    int lobe = sample_small_distrib({sample_weights.data(), 2}, u[0], &u0_remap);
+    vec2 u_remap(u0_remap, u[1]);
+
+    vec2 pdf_lobe = vec2::Zero();
+    if (lobe == 0) {
+        wi = sample_diffuse(wo, closure, u_remap, pdf_lobe[0]);
+        if (wi.isZero() || pdf_lobe[0] == 0.0f) {
+            pdf = 0.0f;
+            return color3::Zero();
+        }
+        if (wo.z() > 0.0f && wi.z() > 0.0f)
+            pdf_lobe[1] = pdf_specular(wo, wi, closure);
+    } else if (lobe == 1 || pdf_lobe[1] == 0.0f) {
+        wi = sample_specular(wo, closure, u_remap, pdf_lobe[1]);
+        if (wi.isZero()) {
+            pdf = 0.0f;
+            return color3::Zero();
+        }
+        if (wo.z() > 0.0f && wi.z() > 0.0f)
+            pdf_lobe[0] = pdf_diffuse(wo, wi, closure);
+    }
+
+    pdf = pdf_lobe.dot(sample_weights);
+    ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
+    return eval(wo, wi, closure) / pdf;
+}
+
+float PrincipledBRDF::internal::pdf(const vec3 &wo, const vec3 &wi, const Closure &closure)
+{
+    if (wo.z() == 0.0f || wi.z() == 0.0f) {
+        return 0.0f;
+    }
+
+    vec2 weights = lobe_sample_weights(wo, closure);
+    if (weights.isZero()) {
+        return 0.0f;
+    }
+    if (wo.z() <= 0.0f || wi.z() <= 0.0f) {
+        return 0.0f;
+    }
+
+    vec2 pdf_lobe = vec2::Zero();
+    if (wo.z() > 0.0f && wi.z() > 0.0f) {
+        pdf_lobe[0] = pdf_diffuse(wo, wi, closure);
+        pdf_lobe[1] = pdf_specular(wo, wi, closure);
+    }
+
+    return pdf_lobe.dot(weights);
+}
+
+color3 PrincipledBRDF::internal::eval_diffuse(const vec3 &wo, const vec3 &wi, const Closure &c)
+{
+    float lobe_weight = (1.0f - c.metallic);
+    if (lobe_weight == 0.0f) {
+        return color3::Zero();
+    }
+    return lobe_weight * c.basecolor * inv_pi * wi.z();
+}
+
+color3 PrincipledBRDF::internal::eval_specular(const vec3 &wo, const vec3 &wi, const Closure &c)
+{
+    vec3 wh = (wo + wi).normalized();
+    float D = c.microfacet->D(c.ax, c.ay, wh);
+    float G = c.microfacet->G2(c.ax, c.ay, wo, wi);
+
+    color3 R0 = lerp(color3::Constant(c.specular), c.basecolor, c.metallic);
+    color3 Fr = lerp(R0, color3::Ones(), fresnel_schlick(wo.dot(wh)));
+    color3 f = D * G * Fr / (4.0f * wo.z());
+    ASSERT(f.allFinite() && (f >= 0.0f).all());
+    return f;
+}
+
+vec2 PrincipledBRDF::internal::lobe_sample_weights(const vec3 &wo, const Closure &c)
+{
+    float lum_basecolor = luminance(c.basecolor);
+    float lum_R0 = std::lerp(c.specular, lum_basecolor, c.metallic);
+
+    float weight_diffuse = wo.z() > 0.0f ? (1.0f - c.metallic) * lum_basecolor * inv_pi : 0.0f;
+    // wh isn't available at this point...
+    float weight_specular = wo.z() > 0.0f ? std::lerp(lum_R0, 1.0f, fresnel_schlick(wo.z())) : 0.0f;
+
+    float sum = weight_diffuse + weight_specular;
+    if (sum == 0.0f) {
+        return vec2::Zero();
+    }
+    float inv_sum = 1.0f / sum;
+    weight_diffuse = weight_diffuse * inv_sum;
+    weight_specular = weight_specular * inv_sum;
+
+    vec2 weights(weight_diffuse, weight_specular);
+    ASSERT(weights.allFinite() && (weights.array() >= 0.0f).all());
+    return weights;
+}
+
+vec3 PrincipledBRDF::internal::sample_diffuse(const vec3 &wo, const Closure &closure, const vec2 &u, float &pdf)
+{
+    vec3 wi = sample_cosine_hemisphere(u);
+    pdf = wi.z() * inv_pi;
+    return wi;
+}
+
+vec3 PrincipledBRDF::internal::sample_specular(const vec3 &wo, const Closure &c, const vec2 &u, float &pdf)
+{
+    if (wo.z() == 0.0f) {
+        pdf = 0.0f;
+        return vec3::Zero();
+    }
+
+    vec3 wh = c.microfacet->sample(c.ax, c.ay, sgn(wo.z()) * wo, u);
+    vec3 wi = reflect(wo, wh);
+    // side check
+    if (wo.z() * wi.z() < 0.0f) {
+        pdf = 0.0f;
+        return vec3::Zero();
+    }
+
+    float D = c.microfacet->D(c.ax, c.ay, wh);
+    float G1 = c.microfacet->G1(c.ax, c.ay, wo);
+    pdf = D * G1 / (4.0f * std::abs(wo.z()));
+    ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
+    return wi;
+}
+
+float PrincipledBRDF::internal::pdf_diffuse(const vec3 &wo, const vec3 &wi, const Closure &c)
+{
+    return wi.z() * inv_pi;
+}
+
+float PrincipledBRDF::internal::pdf_specular(const vec3 &wo, const vec3 &wi, const Closure &c)
+{
+    vec3 wh = (wo + wi).normalized();
+    float D = c.microfacet->D(c.ax, c.ay, wh);
+    float G1 = c.microfacet->G1(c.ax, c.ay, wo);
+    float pdf = D * G1 / (4.0f * std::abs(wo.z()));
+    ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
+    return pdf;
+}
+
+std::unique_ptr<PrincipledBRDF> create_principled_brdf(const ConfigArgs &args)
+{
+    auto bsdf = std::make_unique<PrincipledBRDF>();
+
+    bsdf->basecolor = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["basecolor"]);
+    bsdf->roughness = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["roughness"]);
+    bsdf->metallic = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["metallic"]);
+    bsdf->specular = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular"]);
+    std::string m = args.load_string("microfacet", "ggx");
+    if (m == "ggx") {
+        bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
+    } else if (m == "beckmann") {
+        bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<Beckmann>>();
+    }
+
+    return bsdf;
+}
+
+////////////////////////////////////////////////////////////////////////
+
 PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) const
 {
     Closure closure;
@@ -77,7 +297,7 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
     vec3 pdf_lobe = vec3::Zero();
     if (lobe == 0) {
         wi = sample_diffuse(wo, closure, u_remap, pdf_lobe[0]);
-        if (wi.isZero()) {
+        if (wi.isZero() || pdf_lobe[0] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
         }
@@ -86,7 +306,7 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
         pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
     } else if (lobe == 1) {
         wi = sample_metallic_specular(wo, closure, u_remap, pdf_lobe[1]);
-        if (wi.isZero()) {
+        if (wi.isZero() || pdf_lobe[1] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
         }
@@ -95,7 +315,7 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
         pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
     } else {
         wi = sample_dielectric_specular(wo, closure, u_remap, pdf_lobe[2]);
-        if (wi.isZero()) {
+        if (wi.isZero() || pdf_lobe[2] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
         }
@@ -362,6 +582,8 @@ float PrincipledBSDF::internal::pdf_dielectric_specular(const ks::vec3 &wo, cons
 
 std::unique_ptr<PrincipledBSDF> create_principled_bsdf(const ConfigArgs &args)
 {
+    printf("The current implementation of Principled B[S]DF may require some rework!!!\n");
+
     auto bsdf = std::make_unique<PrincipledBSDF>();
 
     bsdf->basecolor = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["basecolor"]);

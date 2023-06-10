@@ -1,6 +1,7 @@
 #pragma once
 #include "barray.h"
 #include "config.h"
+#include "image_util.h"
 #include "maths.h"
 #include <cstddef>
 #include <span>
@@ -103,7 +104,8 @@ struct CubicSampler : public TextureSampler
     vec4 ca, cb;
 };
 
-std::unique_ptr<Texture> create_texture_from_image(int channels, bool build_mipmap, const fs::path &path);
+std::unique_ptr<Texture> create_texture_from_image(int channels, bool build_mipmap, ColorSpace src_colorspace,
+                                                   const fs::path &path);
 std::unique_ptr<Texture> create_texture_from_serialized(const fs::path &path);
 void write_texture_to_serialized(const Texture &texture, const fs::path &path);
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args);

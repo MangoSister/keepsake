@@ -4,7 +4,7 @@
 namespace ks
 {
 
-static inline mat4 look_at(const vec3 &position, const vec3 &target, vec3 up)
+mat4 look_at(const vec3 &position, const vec3 &target, vec3 up)
 {
     vec3 back = (position - target).normalized();
     vec3 right = up.cross(back);
@@ -26,7 +26,7 @@ static inline mat4 look_at(const vec3 &position, const vec3 &target, vec3 up)
     return mat;
 }
 
-static inline mat4 look_at_view(const vec3 &position, const vec3 &target, vec3 up)
+mat4 look_at_view(const vec3 &position, const vec3 &target, vec3 up)
 {
     vec3 back = (position - target).normalized();
     vec3 right = up.cross(back);
@@ -48,7 +48,7 @@ static inline mat4 look_at_view(const vec3 &position, const vec3 &target, vec3 u
     return mat;
 }
 
-static inline mat4 rev_inf_projection(float vfov, float aspect, float near_clip = 0.01f)
+mat4 rev_inf_projection(float vfov, float aspect, float near_clip)
 {
     // Reverse inf projection.
     float cot_half_vfov = 1.0f / std::tan(vfov * 0.5f);
@@ -64,7 +64,7 @@ static inline mat4 rev_inf_projection(float vfov, float aspect, float near_clip 
     return proj;
 }
 
-static inline mat4 rev_orthographic(float left, float right, float bottom, float top, float near, float far)
+mat4 rev_orthographic(float left, float right, float bottom, float top, float near, float far)
 {
     mat4 proj;
     // clang-format off
