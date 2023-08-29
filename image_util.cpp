@@ -109,7 +109,7 @@ std::unique_ptr<float[]> load_from_exr(const fs::path &path, int c, int &w, int 
     return float_data;
 }
 
-void save_to_exr(const float *data, int w, int h, int c, const fs::path &path)
+void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs::path &path)
 {
     ASSERT(c == 3 || c == 4, "save_to_exr only supports rgb or rgba");
     EXRHeader header;
@@ -124,14 +124,16 @@ void save_to_exr(const float *data, int w, int h, int c, const fs::path &path)
     image.num_channels = c;
 
     // Split channels
-    std::vector<float> images[4];
+    int channel_size = half ? 2 : 4;
+    std::vector<std::byte> images[4];
     for (int i = 0; i < c; ++i)
-        images[i].resize(w * h);
+        images[i].resize(w * h * c * channel_size);
     for (int i = 0; i < w * h; i++)
         for (int j = 0; j < c; ++j)
-            images[j][i] = data[c * i + j];
+            for (int k = 0; k < channel_size; ++k)
+                images[j][i * channel_size + k] = data[channel_size * (c * i + j) + k];
 
-    float *image_ptr[4];
+    std::byte *image_ptr[4];
     // Must be (A)BGR order, since most of EXR viewers expect this channel order.
     if (c == 4) {
         image_ptr[0] = images[3].data(); // A
@@ -164,8 +166,10 @@ void save_to_exr(const float *data, int w, int h, int c, const fs::path &path)
     header.pixel_types = (int *)malloc(sizeof(int) * header.num_channels);
     header.requested_pixel_types = (int *)malloc(sizeof(int) * header.num_channels);
     for (int i = 0; i < header.num_channels; i++) {
-        header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;           // pixel type of input image
-        header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT; // pixel type of output image to be stored in .EXR
+        header.pixel_types[i] = (half ? TINYEXR_PIXELTYPE_HALF : TINYEXR_PIXELTYPE_FLOAT); // pixel type of input image
+        header.requested_pixel_types[i] =
+            (half ? TINYEXR_PIXELTYPE_HALF
+                  : TINYEXR_PIXELTYPE_FLOAT); // pixel type of output image to be stored in .EXR
         // TODO: maybe also support saving to half
     }
 

@@ -52,6 +52,6 @@ std::unique_ptr<color<C>[]> load_from_exr(const fs::path &path, int &w, int &h) 
     return std::unique_ptr<color<C>[]>(color_ptr);
 }
 
-void save_to_exr(const float *data, int w, int h, int c, const fs::path &path);
+void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs::path &path);
 
 } // namespace ks
