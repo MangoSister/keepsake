@@ -2,6 +2,8 @@
 
 #include "error.h"
 
+#include <cfloat>
+#include <climits>
 #include <cmath>
 
 namespace ksc
