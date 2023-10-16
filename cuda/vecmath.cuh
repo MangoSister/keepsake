@@ -1267,4 +1267,15 @@ CUDA_HOST_DEVICE inline float spherical_phi(vec3 v)
 
 CUDA_HOST_DEVICE inline vec2 to_spherical(vec3 xyz) { return vec2(spherical_phi(xyz), spherical_theta(xyz)); }
 
+CUDA_HOST_DEVICE inline vec3 to_cartesian(vec2 sph)
+{
+    float phi = sph.x;
+    float theta = sph.y;
+    float cos_phi = cos(phi);
+    float sin_phi = sin(phi);
+    float sin_theta = sin(theta);
+    float cos_theta = cos(theta);
+    return vec3(cos_phi * sin_theta, sin_phi * sin_theta, cos_theta);
+}
+
 } // namespace ksc
