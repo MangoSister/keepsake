@@ -1,6 +1,9 @@
 #pragma once
 
 #include "ray.cuh"
+#ifdef CPP_CODE_ONLY
+#include "../config.h"
+#endif
 
 namespace ksc
 {
@@ -36,6 +39,10 @@ struct Camera
     ksc::Transform proj_to_camera;
     ksc::Transform camera_to_world;
     bool orthographic = false;
+
+#ifdef CPP_CODE_ONLY
+    void load_from_config(const ks::ConfigArgs &args);
+#endif
 };
 
 CUDA_HOST_DEVICE

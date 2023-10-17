@@ -363,7 +363,7 @@ CUDA_HOST_DEVICE inline uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904
 
 CUDA_HOST_DEVICE inline float fast_exp(float x)
 {
-#ifdef CUDA_IS_GPU_CODE
+#ifdef CUDA_IS_DEVICE_CODE
     return __expf(x);
 #else
     return exp(x);

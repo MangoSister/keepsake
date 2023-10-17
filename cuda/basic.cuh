@@ -10,19 +10,23 @@ namespace ksc
 {
 
 // __CUDACC__ defines whether nvcc is steering compilation or not
-// __CUDA_ARCH__is always undefined when compiling host code, steered by nvcc or not
-// __CUDA_ARCH__is only defined for the device code trajectory of compilation steered by nvcc
+// __CUDA_ARCH__ is always undefined when compiling host code, steered by nvcc or not
+// __CUDA_ARCH__ is only defined for the device code trajectory of compilation steered by nvcc
+// __CUDACC__ +  __CUDA_ARCH__: use nvcc and device code (.cuh/.cu)
+// __CUDACC__ +  !__CUDA_ARCH__: use nvcc and host code (.cuh/.cu)
+// !__CUDACC__: use normal cpp compiler and host code (.h/.cpp)
 #ifdef __CUDACC__
 #define CUDA_HOST_DEVICE __host__ __device__
 #define CUDA_DEVICE __device__
 #if defined(__CUDA_ARCH__)
-#define CUDA_IS_GPU_CODE
+#define CUDA_IS_DEVICE_CODE
 #endif
 #else
 #define CUDA_HOST_DEVICE
+#define CPP_CODE_ONLY
 #endif
 
-#if defined(CUDA_IS_GPU_CODE)
+#if defined(CUDA_IS_DEVICE_CODE)
 #define CONSTEXPR_VAL __device__ constexpr
 #else
 #define CONSTEXPR_VAL constexpr

@@ -10,7 +10,7 @@ namespace ksc
  */
 static CONSTEXPR_VAL int MAX_SOBOL_DIM = 64;
 // clang-format off
-#ifdef CUDA_IS_GPU_CODE
+#ifdef CUDA_IS_DEVICE_CODE
 __constant__
 #endif
 static constexpr uint32_t sobol_xors[MAX_SOBOL_DIM][32] = {
