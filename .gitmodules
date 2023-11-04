@@ -1,0 +1,18 @@
+[submodule "test/deps/cxxopts"]
+	path = test/deps/cxxopts
+	url = git@github.com:jarro2783/cxxopts.git
+[submodule "test/deps/stb"]
+	path = test/deps/stb
+	url = git@github.com:nothings/stb.git
+[submodule "test/deps/tinyexr"]
+	path = test/deps/tinyexr
+	url = git@github.com:syoyo/tinyexr.git
+[submodule "test/deps/pcg-cpp"]
+	path = test/deps/pcg-cpp
+	url = git@github.com:imneme/pcg-cpp.git
+[submodule "test/deps/tomlplusplus"]
+	path = test/deps/tomlplusplus
+	url = git@github.com:marzer/tomlplusplus.git
+[submodule "test/deps/sol2"]
+	path = test/deps/sol2
+	url = git@github.com:ThePhD/sol2.git
