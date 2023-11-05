@@ -13,6 +13,3 @@
 [submodule "test/deps/tomlplusplus"]
 	path = test/deps/tomlplusplus
 	url = git@github.com:marzer/tomlplusplus.git
-[submodule "test/deps/sol2"]
-	path = test/deps/sol2
-	url = git@github.com:ThePhD/sol2.git
