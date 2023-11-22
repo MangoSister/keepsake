@@ -116,8 +116,9 @@ struct numeric_limits<float>
     static constexpr bool has_infinity = true;
 };
 
+// TODO: weird name to avoid ambiguity with std::swap...
 template <typename T>
-CUDA_HOST_DEVICE inline void swap(T &a, T &b)
+CUDA_HOST_DEVICE inline void _swap(T &a, T &b)
 {
     T tmp = std::move(a);
     a = std::move(b);

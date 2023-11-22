@@ -60,7 +60,7 @@ vec2 equal_area_sphere_to_square(vec3 d)
 
     if (d.z < 0) {
         // southern hemisphere -> mirror u,v
-        ksc::swap(u, v);
+        ksc::_swap(u, v);
         u = 1 - u;
         v = 1 - v;
     }

@@ -1,5 +1,6 @@
 #pragma once
 #include "basic.cuh"
+#include "span.cuh"
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -533,6 +534,60 @@ using cuda_managed_unique_ptr = unique_ptr<T, CudaObjectDeleter<T>>;
 template <typename T>
     requires(!std::is_array_v<T>)
 using cuda_managed_unique_array = unique_ptr<T[], CudaObjectArrayDeleter<T[]>>;
+
+template <typename T>
+    requires(!std::is_array_v<T>)
+struct CudaManagedArray
+{
+    CudaManagedArray() = default;
+    explicit CudaManagedArray(size_t size) : ptr(make_unique_for_overwrite_cuda_managed<T>(size)), size(size) {}
+
+    CudaManagedArray(const CudaManagedArray &other)
+        : ptr(make_unique_for_overwrite_cuda_managed<T>(other.size)), size(other.size)
+    {
+        std::copy_n(other.ptr.get(), size, ptr.get());
+    }
+
+    explicit CudaManagedArray(span<const T> s)
+        : ptr(make_unique_for_overwrite_cuda_managed<T>(s.size())), size(s.size())
+    {
+        std::copy_n(s.data(), size, ptr.get());
+    }
+
+    CudaManagedArray &operator=(const CudaManagedArray &other)
+    {
+        if (this == &other) {
+            return *this;
+        }
+
+        ptr = make_unique_for_overwrite_cuda_managed<T>(other.size);
+        size = other.size;
+        std::copy_n(other.ptr.get(), size, ptr.get());
+    }
+
+    CudaManagedArray(CudaManagedArray &&) = default;
+    CudaManagedArray &operator=(CudaManagedArray &&) = default;
+
+    CUDA_HOST_DEVICE
+    T &operator[](size_t idx)
+    {
+        KSC_ASSERT(idx < size);
+        return ptr[idx];
+    }
+    CUDA_HOST_DEVICE
+    const T &operator[](size_t idx) const
+    {
+        KSC_ASSERT(idx < size);
+        return ptr[idx];
+    }
+    CUDA_HOST_DEVICE
+    explicit operator span<T>() { return MakeSpan(ptr.get(), size); }
+    CUDA_HOST_DEVICE
+    explicit operator span<const T>() const { return MakeConstSpan(ptr.get(), size); }
+
+    unique_ptr<T[], CudaObjectArrayDeleter<T[]>> ptr;
+    size_t size = 0;
+};
 
 template <typename T>
     requires std::is_trivially_destructible_v<T>

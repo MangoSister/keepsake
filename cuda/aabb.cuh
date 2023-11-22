@@ -125,6 +125,22 @@ struct AABB3
     vec3 max = vec3(-inf);
 };
 
+CUDA_HOST_DEVICE inline AABB3 intersect(const AABB3 &b0, const AABB3 &b1)
+{
+    AABB3 ret;
+    ret.min = max(b0.min, b1.min);
+    ret.max = min(b0.max, b1.max);
+    if (ret.min.x > ret.max.x || ret.min.y > ret.max.y || ret.min.z > ret.max.z) {
+        return AABB3();
+    }
+    return ret;
+}
+
+CUDA_HOST_DEVICE inline AABB3 join(const AABB3 &b0, const AABB3 &b1)
+{
+    return AABB3(min(b0.min, b1.min), max(b0.max, b1.max));
+}
+
 CUDA_HOST_DEVICE inline AABB3 transform_aabb(const Transform &t, const AABB3 &b)
 {
     const vec3 *c = (const vec3 *)&b;
@@ -136,10 +152,29 @@ CUDA_HOST_DEVICE inline AABB3 transform_aabb(const Transform &t, const AABB3 &b)
     return out;
 }
 
-CUDA_HOST_DEVICE
-inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_dir, const int dir_is_neg[3],
-                           float thit[2] = nullptr, vec3 phit[2] = nullptr)
+struct RayBoundHelper
 {
+    CUDA_HOST_DEVICE
+    explicit RayBoundHelper(const Ray &ray)
+    {
+        inv_dir = 1.0f / ray.dir;
+        for (int i = 0; i < 3; ++i) {
+            // Actually need to handle negative zeros?
+            dir_is_neg[i] = ray.dir[i] < 0.0f || (ray.dir[i] == 0.0f && signbit(ray.dir[i]));
+        }
+    }
+
+    vec3 inv_dir;
+    vec3i dir_is_neg;
+};
+
+CUDA_HOST_DEVICE
+inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const RayBoundHelper &rb, float thit[2] = nullptr,
+                           vec3 phit[2] = nullptr)
+{
+    const vec3 &inv_dir = rb.inv_dir;
+    const vec3i &dir_is_neg = rb.dir_is_neg;
+
     // Check for ray intersection against $x$ and $y$ slabs
     // Need to avoid 0 multiplied by inf here...
     float tmin = (bounds[dir_is_neg[0]].x - ray.origin.x);
@@ -218,13 +253,7 @@ inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_
 CUDA_HOST_DEVICE
 inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, float thit[2] = nullptr, vec3 phit[2] = nullptr)
 {
-    vec3 inv_dir = 1.0f / ray.dir;
-    int dir_is_neg[3];
-    for (int i = 0; i < 3; ++i) {
-        // Actually need to handle negative zeros?
-        dir_is_neg[i] = ray.dir[i] < 0.0f || (ray.dir[i] == 0.0f && signbit(ray.dir[i]));
-    }
-    return isect_ray_aabb(ray, bounds, inv_dir, dir_is_neg, thit, phit);
+    return isect_ray_aabb(ray, bounds, RayBoundHelper(ray), thit, phit);
 }
 
 } // namespace ksc
