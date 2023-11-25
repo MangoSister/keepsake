@@ -479,26 +479,35 @@ struct TraversalStack
 struct IsectQuery
 {
     CUDA_HOST_DEVICE
-    IsectQuery(const Ray &ray) : ray(ray), rb(RayBoundHelper(ray)), rt(RayTriHelper(ray)) {}
+    IsectQuery(const Ray &ray, const SBVHIsectOption &option)
+        : ray(ray), rb(RayBoundHelper(ray)), rt(RayTriHelper(ray)), option(option)
+    {}
 
     CUDA_HOST_DEVICE
     bool intersect(const AABB3 &bound) const { return isect_ray_aabb(ray, bound, rb); }
     CUDA_HOST_DEVICE
     bool intersect(const array<vec3, 3> &tri, RayTriIsect *isect = nullptr) const
     {
+        float check = dot(ray.dir, cross(tri[1] - tri[0], tri[2] - tri[1]));
+        if (check >= 0.0f && option.culling == SBVHCulling::CullBackface) {
+            return false;
+        } else if (check <= 0.0f && option.culling == SBVHCulling::CullFrontFace) {
+            return false;
+        }
         return isect_ray_tri(ray, rt, tri[0], tri[1], tri[2], isect);
     }
 
     Ray ray;
     RayBoundHelper rb;
     RayTriHelper rt;
+    const SBVHIsectOption &option;
 };
 
-SBVHIsectRecord SBVH::intersect(const Ray &ray) const
+SBVHIsectRecord SBVH::intersect(const Ray &ray, const SBVHIsectOption &option) const
 {
     SBVHIsectRecord record;
 
-    IsectQuery query(ray);
+    IsectQuery query(ray, option);
     TraversalStack stack;
     TraversalStackEntry curr = {0, (uint32_t)primitives.size};
     while (true) {
@@ -544,9 +553,9 @@ SBVHIsectRecord SBVH::intersect(const Ray &ray) const
     return record;
 }
 
-bool SBVH::intersectBool(const Ray &ray) const
+bool SBVH::intersectBool(const Ray &ray, const SBVHIsectOption &option) const
 {
-    IsectQuery query(ray);
+    IsectQuery query(ray, option);
     TraversalStack stack;
     TraversalStackEntry curr = {0, (uint32_t)primitives.size};
     while (true) {

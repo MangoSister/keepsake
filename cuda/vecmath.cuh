@@ -306,6 +306,13 @@ CUDA_HOST_DEVICE inline auto distance_squared(Vector2<T> p1, Vector2<T> p2) -> t
     return length_squared(p1 - p2);
 }
 
+template <typename T>
+    requires std::is_floating_point_v<T>
+CUDA_HOST_DEVICE inline auto cross(Vector2<T> v1, Vector2<T> v2)
+{
+    return difference_of_products(v1.x, v2.y, v1.y, v2.x);
+}
+
 ////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -646,13 +653,13 @@ CUDA_HOST_DEVICE inline Vector3<T> gram_schmidt(Vector3<T> v, Vector3<T> w)
 
 template <typename T>
     requires std::is_floating_point_v<T>
-CUDA_HOST_DEVICE inline void orthonormal_basis(Vector3<T> v1, Vector3<T> &v2, Vector3<T> &v3)
+CUDA_HOST_DEVICE inline void orthonormal_basis(Vector3<T> N, Vector3<T> &X, Vector3<T> &Y)
 {
-    float sign = copysign(float(1), v1.z);
-    float a = -1 / (sign + v1.z);
-    float b = v1.x * v1.y * a;
-    v2 = Vector3<T>(1 + sign * sqr(v1.x) * a, sign * b, -sign * v1.x);
-    v3 = Vector3<T>(b, sign + sqr(v1.y) * a, -v1.y);
+    float sign = copysign(float(1), N.z);
+    float a = -1 / (sign + N.z);
+    float b = N.x * N.y * a;
+    X = Vector3<T>(1 + sign * sqr(N.x) * a, sign * b, -sign * N.x);
+    Y = Vector3<T>(b, sign + sqr(N.y) * a, -N.y);
 }
 
 using vec2 = Vector2<float>;

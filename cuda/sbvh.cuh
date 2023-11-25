@@ -27,6 +27,18 @@ struct alignas(32) SBVHNode
 };
 static_assert(sizeof(SBVHNode) == 32, "Unexpected SBVHNode size.");
 
+enum class SBVHCulling : uint8_t
+{
+    CullBackface,
+    CullFrontFace,
+    None,
+};
+
+struct SBVHIsectOption
+{
+    SBVHCulling culling;
+};
+
 struct SBVHIsectRecord
 {
     CUDA_HOST_DEVICE
@@ -48,9 +60,9 @@ struct SBVH
     SBVH(const SBVHBuildOption &option, span<const vec3> vertices, span<const uint32_t> indices);
     void printStats() const;
     CUDA_HOST_DEVICE
-    SBVHIsectRecord intersect(const Ray &ray) const;
+    SBVHIsectRecord intersect(const Ray &ray, const SBVHIsectOption &option) const;
     CUDA_HOST_DEVICE
-    bool intersectBool(const Ray &ray) const;
+    bool intersectBool(const Ray &ray, const SBVHIsectOption &option) const;
     CUDA_HOST_DEVICE
     AABB3 bound() const { return nodes[0].bound; }
 

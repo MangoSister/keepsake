@@ -81,9 +81,9 @@ inline bool isect_ray_tri(const ksc::Ray &ray, const RayTriHelper &help, const k
     const float T = ksc::dot(bc, sz);
 
     // TODO: Should the >= and <= here be > and < ?
-    if (det < 0.0 && (T >= 0.0 || T <= ray.tmax * det)) {
+    if (det < 0.0 && (T >= ray.tmin * det || T <= ray.tmax * det)) {
         return false;
-    } else if (det > 0.0 && (T <= 0.0 || T >= ray.tmax * det)) {
+    } else if (det > 0.0 && (T <= ray.tmin * det || T >= ray.tmax * det)) {
         return false;
     }
 

@@ -571,13 +571,11 @@ struct CudaManagedArray
     CUDA_HOST_DEVICE
     T &operator[](size_t idx)
     {
-        KSC_ASSERT(idx < size);
         return ptr[idx];
     }
     CUDA_HOST_DEVICE
     const T &operator[](size_t idx) const
     {
-        KSC_ASSERT(idx < size);
         return ptr[idx];
     }
     CUDA_HOST_DEVICE
