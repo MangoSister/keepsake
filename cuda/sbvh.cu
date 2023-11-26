@@ -397,7 +397,12 @@ namespace ksc
 SBVH::SBVH(const SBVHBuildOption &option, span<const vec3> vertices, span<const uint32_t> indices)
     : vertices(vertices), indices(indices)
 {
-    KSC_ASSERT(indices.size() % 3 == 0);
+    build(option);
+}
+
+void SBVH::build(const SBVHBuildOption &option)
+{
+    KSC_ASSERT(indices.size % 3 == 0);
     uint32_t initPrimCount = tri_count();
 
     BuildContext ctx;

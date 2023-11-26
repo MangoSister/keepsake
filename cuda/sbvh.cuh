@@ -58,6 +58,7 @@ struct SBVH
 {
     SBVH() = default;
     SBVH(const SBVHBuildOption &option, span<const vec3> vertices, span<const uint32_t> indices);
+    void build(const SBVHBuildOption &option);
     void printStats() const;
     CUDA_HOST_DEVICE
     SBVHIsectRecord intersect(const Ray &ray, const SBVHIsectOption &option) const;
