@@ -460,6 +460,12 @@ template <typename T>
     requires(!std::is_array_v<T>)
 struct CudaObjectDeleter
 {
+    constexpr CudaObjectDeleter() noexcept = default;
+
+    template <class _Ty2, std::enable_if_t<std::is_convertible_v<_Ty2 *, T *>, int> = 0>
+    inline CudaObjectDeleter(const CudaObjectDeleter<_Ty2> &) noexcept
+    {}
+
     void operator()(T *obj) const
     {
         if (!obj) {
