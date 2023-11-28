@@ -7,6 +7,7 @@
 namespace ksc
 {
 
+// TODO: make these template
 __device__ inline void write_to_render_target_rgbaf32(const Surface2D &rt, ksc::vec2i pixel, ksc::color3 color)
 {
     size_t texel_bytes = (rt.format_desc.x + rt.format_desc.y + rt.format_desc.z + rt.format_desc.w) / 8;
@@ -29,6 +30,13 @@ __device__ inline void write_to_render_target_rgbaf16(const Surface2D &rt, ksc::
     surf2Dwrite(rgba, rt.surf_obj, pixel.x * texel_bytes, pixel.y);
 }
 
+template <typename T>
+__device__ inline void write_to_render_target(const Surface2D &rt, ksc::vec2i pixel, T value)
+{
+    size_t texel_bytes = (rt.format_desc.x + rt.format_desc.y + rt.format_desc.z + rt.format_desc.w) / 8;
+    surf2Dwrite(value, rt.surf_obj, pixel.x * texel_bytes, pixel.y);
+}
+
 __device__ inline ksc::color3 read_from_render_target_rgbaf32(const Surface2D &rt, ksc::vec2i pixel)
 {
     size_t texel_bytes = (rt.format_desc.x + rt.format_desc.y + rt.format_desc.z + rt.format_desc.w) / 8;
@@ -49,6 +57,13 @@ __device__ inline ksc::color3 read_from_render_target_rgbaf16(const Surface2D &r
     rgb.y = __half2float(__ushort_as_half(u16.y));
     rgb.z = __half2float(__ushort_as_half(u16.z));
     return rgb;
+}
+
+template <typename T>
+__device__ inline T read_from_render_target(const Surface2D &rt, ksc::vec2i pixel)
+{
+    size_t texel_bytes = (rt.format_desc.x + rt.format_desc.y + rt.format_desc.z + rt.format_desc.w) / 8;
+    return surf2Dread<T>(rt.surf_obj, pixel.x * texel_bytes, pixel.y);
 }
 
 } // namespace ksc
