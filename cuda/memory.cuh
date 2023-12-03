@@ -575,19 +575,14 @@ struct CudaManagedArray
     CudaManagedArray &operator=(CudaManagedArray &&) = default;
 
     CUDA_HOST_DEVICE
-    T &operator[](size_t idx)
-    {
-        return ptr[idx];
-    }
+    T &operator[](size_t idx) { return ptr[idx]; }
     CUDA_HOST_DEVICE
-    const T &operator[](size_t idx) const
-    {
-        return ptr[idx];
-    }
+    const T &operator[](size_t idx) const { return ptr[idx]; }
+
     CUDA_HOST_DEVICE
-    explicit operator span<T>() { return MakeSpan(ptr.get(), size); }
+    operator span<T>() { return MakeSpan(ptr.get(), size); }
     CUDA_HOST_DEVICE
-    explicit operator span<const T>() const { return MakeConstSpan(ptr.get(), size); }
+    operator span<const T>() const { return MakeConstSpan(ptr.get(), size); }
 
     unique_ptr<T[], CudaObjectArrayDeleter<T[]>> ptr;
     size_t size = 0;
