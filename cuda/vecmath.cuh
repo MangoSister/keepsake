@@ -26,12 +26,10 @@ struct VectorLength<long double>
     using type = long double;
 };
 
-// Tuple2 Definition
 template <typename T>
-class Vector2
+struct Vector2
 {
   public:
-    // Tuple2 Public Methods
     static const int nDimensions = 2;
 
     CUDA_HOST_DEVICE
@@ -106,11 +104,13 @@ class Vector2
     bool operator!=(Vector2<T> c) const { return x != c.x || y != c.y; }
 
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE auto operator*(U s) const -> Vector2<decltype(T{} * U{})>
     {
         return {s * x, s * y};
     }
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE Vector2<T> &operator*=(U s)
     {
         x *= s;
@@ -119,11 +119,13 @@ class Vector2
     }
 
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE auto operator/(U d) const -> Vector2<decltype(T{} / U{})>
     {
         return {x / d, y / d};
     }
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE Vector2<T> &operator/=(U d)
     {
         x /= d;
@@ -146,18 +148,18 @@ class Vector2
         return Vector2<U>((U)x, (U)y);
     }
 
-    // Tuple2 Public Members
     T x{}, y{};
 };
 
-// Tuple2 Inline Functions
 template <typename T, typename U>
+    requires std::is_arithmetic_v<U>
 CUDA_HOST_DEVICE inline auto operator*(U s, Vector2<T> t) -> Vector2<decltype(T{} * U{})>
 {
     return t * s;
 }
 
 template <typename T, typename U>
+    requires std::is_arithmetic_v<U>
 CUDA_HOST_DEVICE inline auto operator/(U s, Vector2<T> t) -> Vector2<decltype(U{} / T{})>
 {
     return {s / t.x, s / t.y};
@@ -316,13 +318,14 @@ CUDA_HOST_DEVICE inline auto cross(Vector2<T> v1, Vector2<T> v2)
 ////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-class Vector3
+struct Vector3
 {
   public:
+    static const int nDimensions = 3;
+
     CUDA_HOST_DEVICE
     static constexpr Vector3 zero() { return Vector3(T(0), T(0), T(0)); }
 
-    // Tuple3 Public Methods
     Vector3() = default;
     CUDA_HOST_DEVICE
     explicit constexpr Vector3(T s) : x(s), y(s), z(s) {}
@@ -355,8 +358,6 @@ class Vector3
         return z;
     }
 
-    static const int nDimensions = 3;
-
     template <typename U>
     CUDA_HOST_DEVICE auto operator+(Vector3<U> c) const -> Vector3<decltype(T{} + U{})>
     {
@@ -377,6 +378,7 @@ class Vector3
     {
         return {x - c.x, y - c.y, z - c.z};
     }
+
     template <typename U>
     CUDA_HOST_DEVICE Vector3<T> &operator-=(Vector3<U> c)
     {
@@ -422,11 +424,13 @@ class Vector3
     bool operator!=(Vector3<T> c) const { return x != c.x || y != c.y || z != c.z; }
 
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE auto operator*(U s) const -> Vector3<decltype(T{} * U{})>
     {
         return {s * x, s * y, s * z};
     }
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE Vector3<T> &operator*=(U s)
     {
         x *= s;
@@ -436,11 +440,13 @@ class Vector3
     }
 
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE auto operator/(U d) const -> Vector3<decltype(T{} / U{})>
     {
         return {x / d, y / d, z / d};
     }
     template <typename U>
+        requires std::is_arithmetic_v<U>
     CUDA_HOST_DEVICE Vector3<T> &operator/=(U d)
     {
         x /= d;
@@ -457,18 +463,18 @@ class Vector3
         return Vector2<U>((U)x, (U)y);
     }
 
-    // Tuple3 Public Members
     T x{}, y{}, z{};
 };
 
-// Tuple3 Inline Functions
 template <typename T, typename U>
+    requires std::is_arithmetic_v<U>
 CUDA_HOST_DEVICE inline auto operator*(U s, Vector3<T> t) -> Vector3<decltype(T{} * U{})>
 {
     return t * s;
 }
 
 template <typename T, typename U>
+    requires std::is_arithmetic_v<U>
 CUDA_HOST_DEVICE inline auto operator/(U s, Vector3<T> t) -> Vector3<decltype(U{} / T{})>
 {
     return {s / t.x, s / t.y, s / t.z};
@@ -541,13 +547,13 @@ CUDA_HOST_DEVICE inline auto lerp(Vector3<T> t, Vector3<T> t0, Vector3<T> t1)
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline T dot(Vector3<T> v, Vector3<T> w)
+CUDA_HOST_DEVICE inline auto dot(Vector3<T> v, Vector3<T> w) -> typename VectorLength<T>::type
 {
     return v.x * w.x + v.y * w.y + v.z * w.z;
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline T abs_dot(Vector3<T> v1, Vector3<T> v2)
+CUDA_HOST_DEVICE inline auto abs_dot(Vector3<T> v1, Vector3<T> v2) -> typename VectorLength<T>::type
 {
     return abs(dot(v1, v2));
 }
@@ -662,6 +668,267 @@ CUDA_HOST_DEVICE inline void orthonormal_basis(Vector3<T> N, Vector3<T> &X, Vect
     Y = Vector3<T>(b, sign + sqr(N.y) * a, -N.y);
 }
 
+///////////////////////
+
+template <typename T>
+struct Vector4
+{
+  public:
+    static constexpr int nDimensions = 4;
+
+    CUDA_HOST_DEVICE
+    static constexpr Vector4 zero() { return Vector4(T(0), T(0), T(0), T(0)); }
+
+    Vector4() = default;
+    CUDA_HOST_DEVICE
+    explicit constexpr Vector4(T s) : x(s), y(s), z(s), w(s) {}
+    CUDA_HOST_DEVICE
+    constexpr Vector4(T x, T y, T z, T w) : x(x), y(y), z(z), w(w) {}
+
+    CUDA_HOST_DEVICE
+    bool has_nan() const { return ::isnan(x) || ::isnan(y) || ::isnan(z) || ::isnan(w); }
+
+    CUDA_HOST_DEVICE
+    bool isfinite() const { return ::isfinite(x) && ::isfinite(y) && ::isfinite(z) && ::isfinite(w); }
+
+    CUDA_HOST_DEVICE
+    T operator[](int i) const
+    {
+        if (i == 0)
+            return x;
+        if (i == 1)
+            return y;
+        if (i == 2)
+            return z;
+        return w;
+    }
+
+    CUDA_HOST_DEVICE
+    T &operator[](int i)
+    {
+        if (i == 0)
+            return x;
+        if (i == 1)
+            return y;
+        if (i == 2)
+            return z;
+        return w;
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE auto operator+(Vector4<U> c) const -> Vector4<decltype(T{} + U{})>
+    {
+        return {x + c.x, y + c.y, z + c.z, w + c.w};
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE Vector4<T> &operator+=(Vector4<U> c)
+    {
+        x += c.x;
+        y += c.y;
+        z += c.z;
+        w += c.w;
+        return static_cast<Vector4<T> &>(*this);
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE auto operator-(Vector4<U> c) const -> Vector4<decltype(T{} - U{})>
+    {
+        return {x - c.x, y - c.y, z - c.z, w - c.w};
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE Vector4<T> &operator-=(Vector4<U> c)
+    {
+        x -= c.x;
+        y -= c.y;
+        z -= c.z;
+        w -= c.w;
+        return static_cast<Vector4<T> &>(*this);
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE auto operator*(Vector4<U> c) const -> Vector4<decltype(T{} + U{})>
+    {
+        return {x * c.x, y * c.y, z * c.z, w * c.w};
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE Vector4<T> &operator*=(Vector4<U> c)
+    {
+        x *= c.x;
+        y *= c.y;
+        z *= c.z;
+        w *= c.w;
+        return static_cast<Vector4<T> &>(*this);
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE auto operator/(Vector4<U> c) const -> Vector4<decltype(T{} + U{})>
+    {
+        return {x / c.x, y / c.y, z / c.z, w / c.w};
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE Vector4<T> &operator/=(Vector4<U> c)
+    {
+        x /= c.x;
+        y /= c.y;
+        z /= c.z;
+        w /= c.w;
+        return static_cast<Vector4<T> &>(*this);
+    }
+
+    CUDA_HOST_DEVICE
+    bool operator==(Vector4<T> c) const { return x == c.x && y == c.y && z == c.z && w == c.w; }
+    CUDA_HOST_DEVICE
+    bool operator!=(Vector4<T> c) const { return x != c.x || y != c.y || z != c.z || w != c.w; }
+
+    template <typename U>
+        requires std::is_arithmetic_v<U>
+    CUDA_HOST_DEVICE auto operator*(U s) const -> Vector4<decltype(T{} * U{})>
+    {
+        return {s * x, s * y, s * z, s * w};
+    }
+
+    template <typename U>
+        requires std::is_arithmetic_v<U>
+    CUDA_HOST_DEVICE Vector4<T> &operator*=(U s)
+    {
+        x *= s;
+        y *= s;
+        z *= s;
+        w *= s;
+        return static_cast<Vector4<T> &>(*this);
+    }
+
+    template <typename U>
+        requires std::is_arithmetic_v<U>
+    CUDA_HOST_DEVICE auto operator/(U d) const -> Vector4<decltype(T{} / U{})>
+    {
+        return {x / d, y / d, z / d, w / d};
+    }
+
+    template <typename U>
+        requires std::is_arithmetic_v<U>
+    CUDA_HOST_DEVICE Vector4<T> &operator/=(U d)
+    {
+        x /= d;
+        y /= d;
+        z /= d;
+        w /= d;
+        return static_cast<Vector4<T> &>(*this);
+    }
+
+    CUDA_HOST_DEVICE
+    Vector4<T> operator-() const { return {-x, -y, -z, -w}; }
+
+    template <typename U>
+    CUDA_HOST_DEVICE explicit operator Vector3<U>() const
+    {
+        return Vector3<U>((U)x, (U)y, (U)z);
+    }
+
+    template <typename U>
+    CUDA_HOST_DEVICE explicit operator Vector2<U>() const
+    {
+        return Vector2<U>((U)x, (U)y);
+    }
+
+    T x{}, y{}, z{}, w{};
+};
+
+template <typename T, typename U>
+    requires std::is_arithmetic_v<U>
+CUDA_HOST_DEVICE inline auto operator*(U s, Vector4<T> t) -> Vector4<decltype(T{} * U{})>
+{
+    return t * s;
+}
+
+template <typename T, typename U>
+    requires std::is_arithmetic_v<U>
+CUDA_HOST_DEVICE inline auto operator/(U s, Vector4<T> t) -> Vector4<decltype(U{} / T{})>
+{
+    return {s / t.x, s / t.y, s / t.z, s / t.w};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline T max_component_value(Vector4<T> t)
+{
+    return max(max(max(t.x, t.y), t.z), t.w);
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline int max_component_index(Vector4<T> t)
+{
+    if (t.x > t.y) {
+        if (t.x > t.z) {
+            if (t.x > t.w) {
+                return 0;
+            } else {
+                return 3;
+            }
+        } else if (t.z > t.w) {
+            return 2;
+        } else {
+            return 3;
+        }
+    } else if (t.y > t.z) {
+        if (t.y > t.w) {
+            return 1;
+        } else {
+            return 3;
+        }
+    } else if (t.z > t.w) {
+        return 2;
+    } else {
+        return 3;
+    }
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector4<T> abs(Vector4<T> t)
+{
+    return {abs(t.x), abs(t.y), abs(t.z), abs(t.w)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline auto dot(Vector4<T> v1, Vector4<T> v2) -> typename VectorLength<T>::type
+{
+    return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z + v1.w * v2.w;
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline auto abs_dot(Vector4<T> v1, Vector4<T> v2) -> typename VectorLength<T>::type
+{
+    return abs(dot(v1, v2));
+}
+
+// floating point only
+
+template <typename T>
+    requires std::is_floating_point_v<T>
+CUDA_HOST_DEVICE inline auto length_squared(Vector4<T> v) -> typename VectorLength<T>::type
+{
+    return sqr(v.x) + sqr(v.y) + sqr(v.z) + sqr(v.w);
+}
+
+template <typename T>
+    requires std::is_floating_point_v<T>
+CUDA_HOST_DEVICE inline auto length(Vector4<T> v) -> typename VectorLength<T>::type
+{
+    return sqrt(length_squared(v));
+}
+
+template <typename T>
+    requires std::is_floating_point_v<T>
+CUDA_HOST_DEVICE inline auto normalize(Vector4<T> v)
+{
+    return v / length(v);
+}
+
+///////////////////////
+
 using vec2 = Vector2<float>;
 using vec2f = Vector2<float>;
 using vec2i = Vector2<int>;
@@ -670,92 +937,14 @@ using vec3 = Vector3<float>;
 using vec3f = Vector3<float>;
 using vec3i = Vector3<int>;
 
+using vec4 = Vector4<float>;
+using vec4f = Vector4<float>;
+using vec4i = Vector4<int>;
+
 using color3 = Vector3<float>;
+using color4 = Vector4<float>;
 
 ///////////////////////
-
-// Quaternion Definition
-class Quaternion
-{
-  public:
-    // Quaternion Public Methods
-    Quaternion() = default;
-
-    CUDA_HOST_DEVICE
-    Quaternion(Vector3<float> v, float w) : v(v), w(w) {}
-
-    CUDA_HOST_DEVICE
-    Quaternion &operator+=(Quaternion q)
-    {
-        v += q.v;
-        w += q.w;
-        return *this;
-    }
-
-    CUDA_HOST_DEVICE
-    Quaternion operator+(Quaternion q) const { return {v + q.v, w + q.w}; }
-    CUDA_HOST_DEVICE
-    Quaternion &operator-=(Quaternion q)
-    {
-        v -= q.v;
-        w -= q.w;
-        return *this;
-    }
-    CUDA_HOST_DEVICE
-    Quaternion operator-() const { return {-v, -w}; }
-    CUDA_HOST_DEVICE
-    Quaternion operator-(Quaternion q) const { return {v - q.v, w - q.w}; }
-    CUDA_HOST_DEVICE
-    Quaternion &operator*=(float f)
-    {
-        v *= f;
-        w *= f;
-        return *this;
-    }
-    CUDA_HOST_DEVICE
-    Quaternion operator*(float f) const { return {v * f, w * f}; }
-    CUDA_HOST_DEVICE
-    Quaternion &operator/=(float f)
-    {
-        v /= f;
-        w /= f;
-        return *this;
-    }
-    CUDA_HOST_DEVICE
-    Quaternion operator/(float f) const { return {v / f, w / f}; }
-
-    // Quaternion Public Members
-    Vector3<float> v;
-    float w = 1;
-};
-
-// Quaternion Inline Functions
-CUDA_HOST_DEVICE
-inline Quaternion operator*(float f, Quaternion q) { return q * f; }
-
-CUDA_HOST_DEVICE inline float dot(Quaternion q1, Quaternion q2) { return dot(q1.v, q2.v) + q1.w * q2.w; }
-
-CUDA_HOST_DEVICE inline float length(Quaternion q) { return std::sqrt(dot(q, q)); }
-CUDA_HOST_DEVICE inline Quaternion normalize(Quaternion q) { return q / length(q); }
-
-CUDA_HOST_DEVICE inline float angle_between(Quaternion q1, Quaternion q2)
-{
-    if (dot(q1, q2) < 0)
-        return pi - 2 * safe_asin(length(q1 + q2) / 2);
-    else
-        return 2 * safe_asin(length(q2 - q1) / 2);
-}
-
-// http://www.plunk.org/~hatch/rightway.html
-CUDA_HOST_DEVICE inline Quaternion slerp(float t, Quaternion q1, Quaternion q2)
-{
-    float theta = angle_between(q1, q2);
-    float sinThetaOverTheta = sinx_over_x(theta);
-    return q1 * (1 - t) * sinx_over_x((1 - t) * theta) / sinThetaOverTheta +
-           q2 * t * sinx_over_x(t * theta) / sinThetaOverTheta;
-}
-
-using quat = Quaternion;
 
 namespace
 {
@@ -786,13 +975,34 @@ CUDA_HOST_DEVICE inline void init_diag(float m[N][N], int i, float v, Args... ar
     init_diag<N>(m, i + 1, args...);
 }
 
+template <int N>
+CUDA_HOST_DEVICE inline void assign_row(float r[N], int i)
+{}
+
+template <int N, typename... Args>
+CUDA_HOST_DEVICE inline void assign_row(float r[N], int i, float v, Args... args)
+{
+    r[i] = v;
+    assign_row<N>(r, i + 1, args...);
+}
+
+template <int N>
+CUDA_HOST_DEVICE inline void assign_col(float m[N][N], int col, int i)
+{}
+
+template <int N, typename... Args>
+CUDA_HOST_DEVICE inline void assign_col(float m[N][N], int col, int i, float v, Args... args)
+{
+    m[i][col] = v;
+    assign_col<N>(m, col, i + 1, args...);
+}
+
 } // namespace
 
 // SquareMatrix Definition
 template <int N>
-class SquareMatrix
+struct SquareMatrix
 {
-  public:
     // SquareMatrix Public Methods
     CUDA_HOST_DEVICE
     static SquareMatrix zero()
@@ -837,7 +1047,7 @@ class SquareMatrix
     {
         static_assert(1 + sizeof...(Args) == N, "Incorrect number of values provided to SquareMatrix::Diag");
         SquareMatrix m;
-        initDiag<N>(m.m, 0, v, args...);
+        init_diag<N>(m.m, 0, v, args...);
         return m;
     }
 
@@ -852,6 +1062,15 @@ class SquareMatrix
     }
 
     CUDA_HOST_DEVICE
+    SquareMatrix &operator+=(const SquareMatrix &m)
+    {
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                this->m[i][j] += m.m[i][j];
+        return *this;
+    }
+
+    CUDA_HOST_DEVICE
     SquareMatrix operator*(float s) const
     {
         SquareMatrix r = *this;
@@ -860,6 +1079,16 @@ class SquareMatrix
                 r.m[i][j] *= s;
         return r;
     }
+
+    CUDA_HOST_DEVICE
+    SquareMatrix &operator*=(float s)
+    {
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                m[i][j] *= s;
+        return *this;
+    }
+
     CUDA_HOST_DEVICE
     SquareMatrix operator/(float s) const
     {
@@ -867,6 +1096,25 @@ class SquareMatrix
         for (int i = 0; i < N; ++i)
             for (int j = 0; j < N; ++j)
                 r.m[i][j] /= s;
+        return r;
+    }
+
+    CUDA_HOST_DEVICE
+    SquareMatrix &operator/=(float s)
+    {
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                m[i][j] /= s;
+        return *this;
+    }
+
+    CUDA_HOST_DEVICE
+    SquareMatrix operator-() const
+    {
+        SquareMatrix r = *this;
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                r.m[i][j] = -r.m[i][j];
         return r;
     }
 
@@ -911,7 +1159,43 @@ class SquareMatrix
     CUDA_HOST_DEVICE
     ksc::span<float> operator[](int i) { return ksc::span<float>(m[i]); }
 
-  private:
+    template <typename T>
+    CUDA_HOST_DEVICE T col(int j) const
+    {
+        T c{};
+        for (int i = 0; i < N; ++i)
+            c[i] = m[i][j];
+        return c;
+    }
+
+    template <typename T>
+    CUDA_HOST_DEVICE void set_row(int row, const T &v)
+    {
+        for (int i = 0; i < N; ++i)
+            m[row][i] = v[i];
+    }
+
+    template <typename T>
+    CUDA_HOST_DEVICE void set_col(int col, const T &v)
+    {
+        for (int i = 0; i < N; ++i)
+            m[i][col] = v[i];
+    }
+
+    template <typename... Args>
+    CUDA_HOST_DEVICE void assign_row(int row, float v, Args... args)
+    {
+        static_assert(1 + sizeof...(Args) == N, "Incorrect number of values provided to SquareMatrix constructor");
+        ksc::assign_row<N>(m[row], 0, v, args...);
+    }
+
+    template <typename... Args>
+    CUDA_HOST_DEVICE void assign_col(int col, float v, Args... args)
+    {
+        static_assert(1 + sizeof...(Args) == N, "Incorrect number of values provided to SquareMatrix constructor");
+        ksc::assign_col<N>(m, col, 0, v, args...);
+    }
+
     float m[N][N];
 };
 
@@ -935,6 +1219,12 @@ template <int N>
 CUDA_HOST_DEVICE inline SquareMatrix<N> operator*(float s, const SquareMatrix<N> &m)
 {
     return m * s;
+}
+
+template <int N, typename T>
+CUDA_HOST_DEVICE inline T operator*(const SquareMatrix<N> &m, const T &v)
+{
+    return mul<T>(m, v);
 }
 
 template <typename Tresult, int N, typename T>
@@ -1005,12 +1295,6 @@ CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<3>> inverse(const SquareMatri
     r[2][2] = invDet * difference_of_products(m[0][0], m[1][1], m[0][1], m[1][0]);
 
     return r;
-}
-
-template <int N, typename T>
-CUDA_HOST_DEVICE inline T operator*(const SquareMatrix<N> &m, const T &v)
-{
-    return mul<T>(m, v);
 }
 
 template <>
@@ -1171,9 +1455,128 @@ using mat2 = SquareMatrix<2>;
 using mat3 = SquareMatrix<3>;
 using mat4 = SquareMatrix<4>;
 
-// extern template class SquareMatrix<2>;
-// extern template class SquareMatrix<3>;
-// extern template class SquareMatrix<4>;
+///////////////////////
+
+// Quaternion Definition
+struct Quaternion
+{
+    CUDA_HOST_DEVICE
+    static Quaternion identity() { return Quaternion(vec3(0.0f), 1.0f); }
+
+    // Quaternion Public Methods
+    Quaternion() = default;
+
+    CUDA_HOST_DEVICE
+    Quaternion(Vector3<float> v, float w) : v(v), w(w) {}
+
+    CUDA_HOST_DEVICE
+    explicit Quaternion(const mat3 &a)
+    {
+        // Assume R is a proper rotation matrix.
+        float trace = a[0][0] + a[1][1] + a[2][2];
+        if (trace > 0) {
+            float s = 0.5f / sqrtf(trace + 1.0f);
+            w = 0.25f / s;
+            v.x = (a[2][1] - a[1][2]) * s;
+            v.y = (a[0][2] - a[2][0]) * s;
+            v.z = (a[1][0] - a[0][1]) * s;
+        } else {
+            if (a[0][0] > a[1][1] && a[0][0] > a[2][2]) {
+                float s = 2.0f * sqrtf(1.0f + a[0][0] - a[1][1] - a[2][2]);
+                w = (a[2][1] - a[1][2]) / s;
+                v.x = 0.25f * s;
+                v.y = (a[0][1] + a[1][0]) / s;
+                v.z = (a[0][2] + a[2][0]) / s;
+            } else if (a[1][1] > a[2][2]) {
+                float s = 2.0f * sqrtf(1.0f + a[1][1] - a[0][0] - a[2][2]);
+                w = (a[0][2] - a[2][0]) / s;
+                v.x = (a[0][1] + a[1][0]) / s;
+                v.y = 0.25f * s;
+                v.z = (a[1][2] + a[2][1]) / s;
+            } else {
+                float s = 2.0f * sqrtf(1.0f + a[2][2] - a[0][0] - a[1][1]);
+                w = (a[1][0] - a[0][1]) / s;
+                v.x = (a[0][2] + a[2][0]) / s;
+                v.y = (a[1][2] + a[2][1]) / s;
+                v.z = 0.25f * s;
+            }
+        }
+    }
+
+    CUDA_HOST_DEVICE
+    Quaternion &operator+=(Quaternion q)
+    {
+        v += q.v;
+        w += q.w;
+        return *this;
+    }
+
+    CUDA_HOST_DEVICE
+    Quaternion operator+(Quaternion q) const { return {v + q.v, w + q.w}; }
+    CUDA_HOST_DEVICE
+    Quaternion &operator-=(Quaternion q)
+    {
+        v -= q.v;
+        w -= q.w;
+        return *this;
+    }
+    CUDA_HOST_DEVICE
+    Quaternion operator-() const { return {-v, -w}; }
+    CUDA_HOST_DEVICE
+    Quaternion operator-(Quaternion q) const { return {v - q.v, w - q.w}; }
+    CUDA_HOST_DEVICE
+    Quaternion &operator*=(float f)
+    {
+        v *= f;
+        w *= f;
+        return *this;
+    }
+    CUDA_HOST_DEVICE
+    Quaternion operator*(float f) const { return {v * f, w * f}; }
+    CUDA_HOST_DEVICE
+    Quaternion &operator/=(float f)
+    {
+        v /= f;
+        w /= f;
+        return *this;
+    }
+    CUDA_HOST_DEVICE
+    Quaternion operator/(float f) const { return {v / f, w / f}; }
+
+    // Quaternion Public Members
+    Vector3<float> v;
+    float w = 1;
+};
+
+// Quaternion Inline Functions
+CUDA_HOST_DEVICE
+inline Quaternion operator*(float f, Quaternion q) { return q * f; }
+
+CUDA_HOST_DEVICE inline float dot(Quaternion q1, Quaternion q2) { return dot(q1.v, q2.v) + q1.w * q2.w; }
+
+CUDA_HOST_DEVICE inline float length(Quaternion q) { return std::sqrt(dot(q, q)); }
+CUDA_HOST_DEVICE inline Quaternion normalize(Quaternion q) { return q / length(q); }
+
+CUDA_HOST_DEVICE inline float angle_between(Quaternion q1, Quaternion q2)
+{
+    if (dot(q1, q2) < 0)
+        return pi - 2 * safe_asin(length(q1 + q2) / 2);
+    else
+        return 2 * safe_asin(length(q2 - q1) / 2);
+}
+
+// http://www.plunk.org/~hatch/rightway.html
+CUDA_HOST_DEVICE inline Quaternion slerp(float t, Quaternion q1, Quaternion q2)
+{
+    float theta = angle_between(q1, q2);
+    float sinThetaOverTheta = sinx_over_x(theta);
+    return q1 * (1 - t) * sinx_over_x((1 - t) * theta) / sinThetaOverTheta +
+           q2 * t * sinx_over_x(t * theta) / sinThetaOverTheta;
+}
+
+using quat = Quaternion;
+
+///////////////////////
 
 // Concentric mapping
 CUDA_HOST_DEVICE inline vec3 concentric_square_to_hemisphere(vec2 u)

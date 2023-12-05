@@ -111,6 +111,8 @@ struct numeric_limits<float>
     CUDA_HOST_DEVICE
     static constexpr float infinity() noexcept { return HUGE_VALF; }
     CUDA_HOST_DEVICE
+    static constexpr float min() noexcept { return FLT_MIN; }
+    CUDA_HOST_DEVICE
     static constexpr float max() noexcept { return FLT_MAX; }
     static constexpr bool is_integer = false;
     static constexpr bool has_infinity = true;
