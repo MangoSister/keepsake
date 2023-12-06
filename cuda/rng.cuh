@@ -212,13 +212,9 @@ CUDA_HOST_DEVICE inline vec3 sample_cosine_hemisphere(const vec2 &u, const vec3 
 }
 
 // Sample a tetrahedron: http://vcg.isti.cnr.it/jgt/tetra.htm
-CUDA_HOST_DEVICE inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, const vec3 &v3,
-                                                const vec3 &xi)
+// Only return barycentric coordiantes
+CUDA_HOST_DEVICE inline vec4 sample_tetrahedron(float s, float t, float u)
 {
-    float s = xi[0];
-    float t = xi[1];
-    float u = xi[2];
-
     if (s + t > 1.0f) { // cut'n fold the cube into a prism
         s = 1.0f - s;
         t = 1.0f - t;
@@ -233,7 +229,18 @@ CUDA_HOST_DEVICE inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, 
         s = 1.0f - t - tmp;
     }
     float a = 1.0f - s - t - u; // a,s,t,u are the barycentric coordinates of the random point.
-    return v0 * a + v1 * s + v2 * t + v3 * u;
+    return vec4(a, s, t, u);
+}
+
+// Return the actual point
+CUDA_HOST_DEVICE inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, const vec3 &v2, const vec3 &v3,
+                                                const vec3 &xi)
+{
+    float s = xi[0];
+    float t = xi[1];
+    float u = xi[2];
+    vec4 coord = sample_tetrahedron(s, t, u);
+    return v0 * coord[0] + v1 * coord[1] + v2 * coord[2] + v3 * coord[3];
 }
 
 CUDA_HOST_DEVICE inline int sample_small_discrete(span<const float> data, float u, float *u_remap = nullptr)
@@ -269,6 +276,16 @@ CUDA_HOST_DEVICE inline int sample_small_discrete(span<const float> data, float 
     }
     KSC_ASSERT(data[selected] > 0.0f);
     return selected;
+}
+
+CUDA_HOST_DEVICE inline quat sample_uniform_rotation(float u, float v, float w)
+{
+    ksc::quat q;
+    q.w = std::sqrt(1 - u) * std::sin(2 * ksc::pi * v);
+    q.v.x = std::sqrt(1 - u) * std::cos(2 * ksc::pi * v);
+    q.v.y = std::sqrt(u) * std::sin(2 * ksc::pi * w);
+    q.v.z = std::sqrt(u) * std::cos(2 * ksc::pi * w);
+    return q;
 }
 
 } // namespace ksc

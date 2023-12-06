@@ -1071,6 +1071,25 @@ struct SquareMatrix
     }
 
     CUDA_HOST_DEVICE
+    SquareMatrix operator-(const SquareMatrix &m) const
+    {
+        SquareMatrix r = *this;
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                r.m[i][j] -= m.m[i][j];
+        return r;
+    }
+
+    CUDA_HOST_DEVICE
+    SquareMatrix &operator-=(const SquareMatrix &m)
+    {
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+                this->m[i][j] -= m.m[i][j];
+        return *this;
+    }
+
+    CUDA_HOST_DEVICE
     SquareMatrix operator*(float s) const
     {
         SquareMatrix r = *this;
@@ -1542,6 +1561,26 @@ struct Quaternion
     }
     CUDA_HOST_DEVICE
     Quaternion operator/(float f) const { return {v / f, w / f}; }
+
+    CUDA_HOST_DEVICE
+    mat3 to_matrix() const
+    {
+        float x2 = v.x * v.x;
+        float y2 = v.y * v.y;
+        float z2 = v.z * v.z;
+        float xy = v.x * v.y;
+        float xz = v.x * v.z;
+        float yz = v.y * v.z;
+        float wx = w * v.x;
+        float wy = w * v.y;
+        float wz = w * v.z;
+        // clang-format off
+        return mat3(
+            1 - 2 * y2 - 2 * z2,    2 * xy - 2 * wz,        2 * xz + 2 * wy,
+            2 * xy + 2 * wz,        1 - 2 * x2 - 2 * z2,    2 * yz - 2 * wx,
+            2 * xz - 2 * wy,        2 * yz + 2 * wx,        1 - 2 * x2 - 2 * y2);
+        // clang-format on
+    }
 
     // Quaternion Public Members
     Vector3<float> v;
