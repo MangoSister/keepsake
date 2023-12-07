@@ -1,5 +1,6 @@
 #pragma once
 
+#include "basic.cuh"
 #include <new>
 #include <type_traits>
 

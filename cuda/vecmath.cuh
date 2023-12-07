@@ -1215,6 +1215,29 @@ struct SquareMatrix
         ksc::assign_col<N>(m, col, 0, v, args...);
     }
 
+    CUDA_HOST_DEVICE float minor() const
+        requires(N == 1)
+    {
+        return m[0][0];
+    }
+
+    CUDA_HOST_DEVICE SquareMatrix<N - 1> minor() const
+        requires(N > 2)
+    {
+        SquareMatrix<N - 1> mi;
+        for (int i = 0; i < N - 1; ++i)
+            for (int j = 0; j < N - 1; ++j) {
+                mi.m[i][j] = m[i][j];
+            }
+        return mi;
+    }
+
+    CUDA_HOST_DEVICE vec3 translation() const
+        requires(N == 4)
+    {
+        return vec3(m[0][3], m[1][3], m[2][3]);
+    }
+
     float m[N][N];
 };
 
@@ -1473,6 +1496,33 @@ CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<4>> inverse(const SquareMatri
 using mat2 = SquareMatrix<2>;
 using mat3 = SquareMatrix<3>;
 using mat4 = SquareMatrix<4>;
+
+CUDA_HOST_DEVICE
+inline mat4 make_affine(const mat3 &linear, const vec3 &translation)
+{
+    mat4 A;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j)
+            A.m[i][j] = linear.m[i][j];
+    }
+    A.m[0][3] = translation[0];
+    A.m[1][3] = translation[1];
+    A.m[2][3] = translation[2];
+
+    A.m[3][0] = 0.0f;
+    A.m[3][1] = 0.0f;
+    A.m[3][2] = 0.0f;
+    A.m[3][3] = 1.0f;
+    return A;
+}
+
+CUDA_HOST_DEVICE
+inline mat4 affine_inverse(const mat4 &A)
+{
+    mat3 minor_inv = invert_or_exit(A.minor());
+    vec3 trans_inv = -minor_inv * A.translation();
+    return make_affine(minor_inv, trans_inv);
+}
 
 ///////////////////////
 
