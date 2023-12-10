@@ -971,7 +971,9 @@ CUDA_HOST_DEVICE inline void init_diag(float m[N][N], int i)
 template <int N, typename... Args>
 CUDA_HOST_DEVICE inline void init_diag(float m[N][N], int i, float v, Args... args)
 {
-    m[i][i] = v;
+    for (int j = 0; j < N; ++j) {
+        m[i][j] = (i == j) ? v : 0.0f;
+    }
     init_diag<N>(m, i + 1, args...);
 }
 
