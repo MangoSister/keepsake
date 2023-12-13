@@ -8,7 +8,7 @@ struct Transform
 {
     Transform() = default;
     CUDA_HOST_DEVICE
-    explicit Transform(const mat4 &m) : m(m), inv(invert_or_exit(m)) {}
+    explicit Transform(const mat4 &m) : m(m), inv(ksc::inverse(m)) {}
     CUDA_HOST_DEVICE
     Transform(const mat4 &m, const mat4 &inv) : m(m), inv(inv) {}
 

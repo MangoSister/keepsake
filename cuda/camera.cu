@@ -79,7 +79,7 @@ Camera::Camera(const Transform &to_world, float vfov, float aspect) : camera_to_
 Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float vfov, float aspect) : orthographic(false)
 {
     mat4 camera_to_world_m = look_at(position, target, up);
-    mat4 world_to_camera_m = invert_or_exit(camera_to_world_m);
+    mat4 world_to_camera_m = inverse(camera_to_world_m);
     mat4 camera_to_proj_m = rev_inf_projection(vfov, aspect);
     proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
@@ -100,7 +100,7 @@ Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float l
     : orthographic(true)
 {
     mat4 camera_to_world_m = look_at(position, target, up);
-    mat4 world_to_camera_m = invert_or_exit(camera_to_world_m);
+    mat4 world_to_camera_m = inverse(camera_to_world_m);
     mat4 camera_to_proj_m = rev_orthographic(left, right, bottom, top, near, far);
     proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();

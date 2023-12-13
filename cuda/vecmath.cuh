@@ -1298,12 +1298,12 @@ CUDA_HOST_DEVICE inline float determinant(const SquareMatrix<3> &m)
 template <int N>
 CUDA_HOST_DEVICE inline SquareMatrix<N> transpose(const SquareMatrix<N> &m);
 template <int N>
-CUDA_HOST_DEVICE ksc::optional<SquareMatrix<N>> inverse(const SquareMatrix<N> &);
+CUDA_HOST_DEVICE ksc::optional<SquareMatrix<N>> try_inverse(const SquareMatrix<N> &);
 
 template <int N>
-CUDA_HOST_DEVICE SquareMatrix<N> invert_or_exit(const SquareMatrix<N> &m)
+CUDA_HOST_DEVICE SquareMatrix<N> inverse(const SquareMatrix<N> &m)
 {
-    ksc::optional<SquareMatrix<N>> inv = inverse(m);
+    ksc::optional<SquareMatrix<N>> inv = try_inverse(m);
     KSC_ASSERT(inv.has_value());
     return *inv;
 }
@@ -1319,7 +1319,7 @@ CUDA_HOST_DEVICE inline SquareMatrix<N> transpose(const SquareMatrix<N> &m)
 }
 
 template <>
-CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<3>> inverse(const SquareMatrix<3> &m)
+CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<3>> try_inverse(const SquareMatrix<3> &m)
 {
     float det = determinant(m);
     if (det == 0)
@@ -1439,7 +1439,7 @@ CUDA_HOST_DEVICE inline float determinant(const SquareMatrix<N> &m)
 }
 
 template <>
-CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<4>> inverse(const SquareMatrix<4> &m)
+CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<4>> try_inverse(const SquareMatrix<4> &m)
 {
     // Via: https://github.com/google/ion/blob/master/ion/math/matrixutils.cc,
     // (c) Google, Apache license.
@@ -1521,7 +1521,7 @@ inline mat4 make_affine(const mat3 &linear, const vec3 &translation)
 CUDA_HOST_DEVICE
 inline mat4 affine_inverse(const mat4 &A)
 {
-    mat3 minor_inv = invert_or_exit(A.minor());
+    mat3 minor_inv = inverse(A.minor());
     vec3 trans_inv = -minor_inv * A.translation();
     return make_affine(minor_inv, trans_inv);
 }
@@ -1777,6 +1777,26 @@ CUDA_HOST_DEVICE inline vec3 to_cartesian(vec2 sph)
     float sin_theta = sin(theta);
     float cos_theta = cos(theta);
     return vec3(cos_phi * sin_theta, sin_phi * sin_theta, cos_theta);
+}
+
+// https://rosettacode.org/wiki/Cholesky_decomposition
+CUDA_HOST_DEVICE
+inline ksc::mat3 cholesky_decompose(const ksc::mat3 &A)
+{
+    // Assume A is SPD (symmetric positive definite)
+    float l11 = sqrt(A.m[0][0]);
+    float l21 = 1 / l11 * A.m[1][0];
+    float l22 = sqrt(A.m[1][1] - ksc::sqr(l21));
+    float l31 = 1 / l11 * A.m[2][0];
+    float l32 = 1 / l22 * (A.m[2][1] - l31 * l21);
+    float l33 = sqrt(A.m[2][2] - (ksc::sqr(l31) + ksc::sqr(l32)));
+    ksc::mat3 L;
+    // clang-format off
+    L.m[0][0] = l11; L.m[0][1] = 0.0f; L.m[0][2] = 0.0f;
+    L.m[1][0] = l21; L.m[1][1] = l22; L.m[1][2] = 0.0f;
+    L.m[2][0] = l31; L.m[2][1] = l32; L.m[2][2] = l33;
+    // clang-format on
+    return L;
 }
 
 } // namespace ksc

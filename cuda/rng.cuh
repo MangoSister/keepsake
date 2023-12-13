@@ -278,6 +278,8 @@ CUDA_HOST_DEVICE inline int sample_small_discrete(span<const float> data, float 
     return selected;
 }
 
+// https://stackoverflow.com/questions/31600717/how-to-generate-a-random-quaternion-quickly
+// h = (sqrt(1 - u) sin(2 \pi v), sqrt(1 - u) cos(2 \pi v), sqrt(u) sin(2 \pi w), sqrt(u) cos(2 \pi w))
 CUDA_HOST_DEVICE inline quat sample_uniform_rotation(float u, float v, float w)
 {
     ksc::quat q;
@@ -286,6 +288,18 @@ CUDA_HOST_DEVICE inline quat sample_uniform_rotation(float u, float v, float w)
     q.v.y = std::sqrt(u) * std::sin(2 * ksc::pi * w);
     q.v.z = std::sqrt(u) * std::cos(2 * ksc::pi * w);
     return q;
+}
+
+// Gammell, Jonathan D., and Timothy D. Barfoot. "The probability density function of a transformation-based
+// hyperellipsoid sampling technique." arXiv preprint arXiv:1404.1347 (2014).
+CUDA_HOST_DEVICE
+inline ksc::vec3 sample_uniform_ellipsoid(const ksc::mat3 &L, ksc::vec3 center, ksc::vec2 u, ksc::vec3 *sph = nullptr)
+{
+    ksc::vec3 p = ksc::sample_uniform_sphere(u);
+    if (sph) {
+        *sph = p;
+    }
+    return L * p + center;
 }
 
 } // namespace ksc
