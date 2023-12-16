@@ -11,7 +11,10 @@ namespace ksc
 
 void *cuda_alloc_managed(size_t size);
 
-void cuda_free_managed(void *ptr);
+void *cuda_alloc_device(size_t size);
+
+// Same for device or managed memory
+void cuda_free(void *ptr);
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // unique_ptr implementation stolen from MSVC but with CUDA_HOST_DEVICE tags
@@ -458,12 +461,12 @@ operator<=>(const unique_ptr<_Ty, _Dx> &_Left, nullptr_t)
 
 template <typename T>
     requires(!std::is_array_v<T>)
-struct CudaObjectDeleter
+struct CudaManagedObjectDeleter
 {
-    constexpr CudaObjectDeleter() noexcept = default;
+    constexpr CudaManagedObjectDeleter() noexcept = default;
 
     template <class _Ty2, std::enable_if_t<std::is_convertible_v<_Ty2 *, T *>, int> = 0>
-    inline CudaObjectDeleter(const CudaObjectDeleter<_Ty2> &) noexcept
+    inline CudaManagedObjectDeleter(const CudaManagedObjectDeleter<_Ty2> &) noexcept
     {}
 
     void operator()(T *obj) const
@@ -472,13 +475,13 @@ struct CudaObjectDeleter
             return;
         }
         std::destroy_at(obj);
-        cuda_free_managed(obj);
+        cuda_free(obj);
     }
 };
 
 template <typename T>
     requires std::is_unbounded_array_v<T>
-struct CudaObjectArrayDeleter
+struct CudaManagedObjectArrayDeleter
 {
     void operator()(T obj) const
     {
@@ -486,17 +489,17 @@ struct CudaObjectArrayDeleter
             return;
         }
         std::destroy_at(obj);
-        cuda_free_managed(obj);
+        cuda_free(obj);
     }
 };
 
 template <typename T, typename... Args>
     requires(!std::is_array_v<T>)
-unique_ptr<T, CudaObjectDeleter<T>> make_unique_cuda_managed(Args &&...args)
+unique_ptr<T, CudaManagedObjectDeleter<T>> make_unique_cuda_managed(Args &&...args)
 {
     void *ptr = cuda_alloc_managed(sizeof(T));
     T *obj = std::construct_at<T>(reinterpret_cast<T *>(ptr), std::forward<Args>(args)...);
-    unique_ptr<T, CudaObjectDeleter<T>> p;
+    unique_ptr<T, CudaManagedObjectDeleter<T>> p;
     p.reset(obj);
     return p;
 }
@@ -511,35 +514,31 @@ void make_unique_cuda_managed(Args &&...args) = delete;
 
 template <typename T>
     requires(!std::is_array_v<T>)
-unique_ptr<T, CudaObjectDeleter<T>> make_unique_for_overwrite_cuda_managed()
+unique_ptr<T, CudaManagedObjectDeleter<T>> make_unique_for_overwrite_cuda_managed()
 {
     void *ptr = cuda_alloc_managed(sizeof(T));
-    unique_ptr<T, CudaObjectDeleter<T>> p;
+    unique_ptr<T, CudaManagedObjectDeleter<T>> p;
     p.reset(ptr);
     return p;
 }
 
 template <typename T>
     requires(!std::is_array_v<T>)
-unique_ptr<T[], CudaObjectArrayDeleter<T[]>> make_unique_for_overwrite_cuda_managed(size_t n)
+unique_ptr<T[], CudaManagedObjectArrayDeleter<T[]>> make_unique_for_overwrite_cuda_managed(size_t n)
 {
     void *ptr = cuda_alloc_managed(sizeof(T) * n);
     T *arr = reinterpret_cast<T *>(ptr);
-    unique_ptr<T[], CudaObjectArrayDeleter<T[]>> p;
+    unique_ptr<T[], CudaManagedObjectArrayDeleter<T[]>> p;
     p.reset(arr);
     return p;
 }
 
-template <typename T, typename... Args>
-    requires std::is_bounded_array_v<T>
-void make_unique_for_overwrite_cuda(Args &&...) = delete;
-
 template <typename T>
     requires(!std::is_array_v<T>)
-using cuda_managed_unique_ptr = unique_ptr<T, CudaObjectDeleter<T>>;
+using cuda_managed_unique_ptr = unique_ptr<T, CudaManagedObjectDeleter<T>>;
 template <typename T>
     requires(!std::is_array_v<T>)
-using cuda_managed_unique_array = unique_ptr<T[], CudaObjectArrayDeleter<T[]>>;
+using cuda_managed_unique_array = unique_ptr<T[], CudaManagedObjectArrayDeleter<T[]>>;
 
 template <typename T>
     requires(!std::is_array_v<T>)
@@ -584,7 +583,93 @@ struct CudaManagedArray
     CUDA_HOST_DEVICE
     operator span<const T>() const { return MakeConstSpan(ptr.get(), size); }
 
-    unique_ptr<T[], CudaObjectArrayDeleter<T[]>> ptr;
+    unique_ptr<T[], CudaManagedObjectArrayDeleter<T[]>> ptr;
+    size_t size = 0;
+};
+
+template <typename T>
+    requires(!std::is_array_v<T>)
+struct CudaDeviceObjectDeleter
+{
+    constexpr CudaDeviceObjectDeleter() noexcept = default;
+
+    template <class _Ty2, std::enable_if_t<std::is_convertible_v<_Ty2 *, T *>, int> = 0>
+    inline CudaDeviceObjectDeleter(const CudaDeviceObjectDeleter<_Ty2> &) noexcept
+    {}
+
+    void operator()(T *obj) const
+    {
+        if (!obj) {
+            return;
+        }
+        cuda_free(obj);
+    }
+};
+
+template <typename T>
+    requires std::is_unbounded_array_v<T>
+struct CudaDeviceObjectArrayDeleter
+{
+    void operator()(T obj) const
+    {
+        if (!obj) {
+            return;
+        }
+        cuda_free(obj);
+    }
+};
+
+template <typename T>
+    requires(!std::is_array_v<T>)
+using cuda_device_unique_ptr = unique_ptr<T, CudaDeviceObjectDeleter<T>>;
+template <typename T>
+    requires(!std::is_array_v<T>)
+using cuda_device_unique_array = unique_ptr<T[], CudaDeviceObjectArrayDeleter<T[]>>;
+
+template <typename T>
+    requires(!std::is_array_v<T>)
+unique_ptr<T, CudaDeviceObjectDeleter<T>> make_unique_for_overwrite_cuda_device()
+{
+    void *ptr = cuda_alloc_device(sizeof(T));
+    unique_ptr<T, CudaDeviceObjectDeleter<T>> p;
+    p.reset(ptr);
+    return p;
+}
+
+template <typename T>
+    requires(!std::is_array_v<T>)
+unique_ptr<T[], CudaDeviceObjectArrayDeleter<T[]>> make_unique_for_overwrite_cuda_device(size_t n)
+{
+    void *ptr = cuda_alloc_device(sizeof(T) * n);
+    T *arr = reinterpret_cast<T *>(ptr);
+    unique_ptr<T[], CudaDeviceObjectArrayDeleter<T[]>> p;
+    p.reset(arr);
+    return p;
+}
+
+template <typename T>
+    requires(!std::is_array_v<T>)
+struct CudaDeviceArray
+{
+    CudaDeviceArray() = default;
+    explicit CudaDeviceArray(size_t size) : ptr(make_unique_for_overwrite_cuda_device<T>(size)), size(size) {}
+
+    // TODO: copying to/from device memory requires cudaMemcpy etc. Maybe add them later.
+    // explicit CudaDeviceArray(span<const T> s)
+    CudaDeviceArray(const CudaDeviceArray &other) = delete;
+    CudaDeviceArray &operator=(const CudaDeviceArray &other) = delete;
+
+    CudaDeviceArray(CudaDeviceArray &&) = default;
+    CudaDeviceArray &operator=(CudaDeviceArray &&) = default;
+
+    // Note: actual memory only accessible from device code or by cuda APIs.
+
+    CUDA_HOST_DEVICE
+    operator span<T>() { return MakeSpan(ptr.get(), size); }
+    CUDA_HOST_DEVICE
+    operator span<const T>() const { return MakeConstSpan(ptr.get(), size); }
+
+    unique_ptr<T[], CudaDeviceObjectArrayDeleter<T[]>> ptr;
     size_t size = 0;
 };
 
