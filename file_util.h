@@ -10,6 +10,30 @@ namespace fs = std::filesystem;
 namespace ks
 {
 
+inline std::vector<std::byte> read_file_as_bytes(const fs::path &path)
+{
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    ASSERT(f);
+    std::streamsize size = f.tellg();
+    f.seekg(0, std::ios::beg);
+    std::vector<std::byte> buffer(size);
+    ASSERT(f.read(reinterpret_cast<char *>(buffer.data()), size));
+    return buffer;
+}
+
+inline std::string read_file_as_string(const fs::path &path)
+{
+    std::ifstream f(path);
+    ASSERT(f);
+    f.seekg(0, std::ios::end);
+    size_t size = f.tellg();
+    std::string buffer;
+    buffer.resize(size);
+    f.seekg(0);
+    f.read(&buffer[0], size);
+    return buffer;
+}
+
 struct BinaryReader
 {
     explicit BinaryReader(const fs::path &path) : stream(path, std::ios::binary) { ASSERT(stream); }
