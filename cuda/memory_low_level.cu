@@ -119,6 +119,10 @@ CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
 
 void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
 {
+    if (!m.dptr) {
+        return;
+    }
+
     CU_CHECK(cuMemUnmap(m.dptr, m.size));
 
 #if defined(__linux__)

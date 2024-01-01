@@ -12,9 +12,9 @@ typedef void *ShareableHandle;
 
 struct CudaShareableLowLevelMemory
 {
-    CUdeviceptr dptr;
-    ShareableHandle shareable_handle;
-    size_t size;
+    CUdeviceptr dptr{};
+    ShareableHandle shareable_handle{};
+    size_t size = 0;
 };
 
 CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device = 0);

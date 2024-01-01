@@ -1,7 +1,9 @@
 #pragma once
 
 #include "basic.cuh"
+#include "memory_low_level.cuh"
 #include "span.cuh"
+#include "vecmath.cuh"
 #include <cstddef>
 #include <vector>
 
@@ -82,6 +84,29 @@ struct Surface2D
 
     cudaArray_t arr = nullptr;
     cudaSurfaceObject_t surf_obj = 0;
+};
+
+struct LowLevelLinearImage2D
+{
+    LowLevelLinearImage2D() = default;
+    LowLevelLinearImage2D(size_t width, size_t height, const cudaChannelFormatDesc &format_desc,
+                          ksc::span<const std::byte> data = {});
+    ~LowLevelLinearImage2D();
+
+    LowLevelLinearImage2D(const LowLevelLinearImage2D &) = delete;
+    LowLevelLinearImage2D &operator=(const LowLevelLinearImage2D &) = delete;
+
+    LowLevelLinearImage2D(LowLevelLinearImage2D &&);
+    LowLevelLinearImage2D &operator=(LowLevelLinearImage2D &&);
+
+    CUDA_DEVICE void write(ksc::vec2i pixel, ksc::color3 color);
+
+    std::vector<std::byte> write_to_host_linear() const;
+
+    size_t width = 0;
+    size_t height = 0;
+    cudaChannelFormatDesc format_desc{};
+    ksc::CudaShareableLowLevelMemory m;
 };
 
 } // namespace ksc

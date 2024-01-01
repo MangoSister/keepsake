@@ -23,6 +23,7 @@ namespace ksc
 #endif
 #else
 #define CUDA_HOST_DEVICE
+#define CUDA_DEVICE
 #define CPP_CODE_ONLY
 #endif
 
