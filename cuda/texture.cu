@@ -232,6 +232,25 @@ std::vector<std::byte> LowLevelLinearImage2D::write_to_host_linear() const
     return dst;
 }
 
+CUDA_DEVICE color3 LowLevelLinearImage2D::read(vec2i pixel)const
+{
+    // TODO: assume rgba float or half...kinda stupid
+    size_t offset = 4 * (pixel.y * width + pixel.x);
+    color3 color;
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        color.x = p[offset + 0];
+        color.y = p[offset + 1];
+        color.z = p[offset + 2];
+    } else if (format_desc.x == sizeof(__half) * 8) {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        color.x = __half2float(p[offset + 0]);
+        color.y = __half2float(p[offset + 1]);
+        color.z = __half2float(p[offset + 2]);
+    }
+    return color;
+}
+
 CUDA_DEVICE void LowLevelLinearImage2D::write(ksc::vec2i pixel, ksc::color3 color)
 {
     // TODO: assume rgba float or half...kinda stupid

@@ -99,6 +99,7 @@ struct LowLevelLinearImage2D
     LowLevelLinearImage2D(LowLevelLinearImage2D &&);
     LowLevelLinearImage2D &operator=(LowLevelLinearImage2D &&);
 
+    CUDA_DEVICE ksc::color3 read(ksc::vec2i pixel) const;
     CUDA_DEVICE void write(ksc::vec2i pixel, ksc::color3 color);
 
     std::vector<std::byte> write_to_host_linear() const;
