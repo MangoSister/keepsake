@@ -932,14 +932,17 @@ CUDA_HOST_DEVICE inline auto normalize(Vector4<T> v)
 using vec2 = Vector2<float>;
 using vec2f = Vector2<float>;
 using vec2i = Vector2<int>;
+using vec2u = Vector2<uint32_t>;
 
 using vec3 = Vector3<float>;
 using vec3f = Vector3<float>;
 using vec3i = Vector3<int>;
+using vec3u = Vector3<uint32_t>;
 
 using vec4 = Vector4<float>;
 using vec4f = Vector4<float>;
 using vec4i = Vector4<int>;
+using vec4u = Vector4<uint32_t>;
 
 using color3 = Vector3<float>;
 using color4 = Vector4<float>;

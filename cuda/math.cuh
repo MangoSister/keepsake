@@ -359,8 +359,6 @@ inline float linear_to_srgb(float x)
     }
 }
 
-CUDA_HOST_DEVICE inline uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
-
 CUDA_HOST_DEVICE inline float fast_exp(float x)
 {
 #ifdef CUDA_IS_DEVICE_CODE
@@ -368,18 +366,6 @@ CUDA_HOST_DEVICE inline float fast_exp(float x)
 #else
     return exp(x);
 #endif
-}
-
-// Combine several hash values for hash tables. Based on the algorithm used in Boost.
-// https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
-inline void hash_combine(std::size_t &seed) {}
-
-template <typename T, typename... Rest>
-inline void hash_combine(std::size_t &seed, const T &v, Rest... rest)
-{
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    hash_combine(seed, rest...);
 }
 
 } // namespace ksc
