@@ -3,6 +3,7 @@
 #include "span.cuh"
 #include <cassert>
 #include <cstdint>
+#include <malloc.h>
 #include <memory>
 #include <type_traits>
 
@@ -15,6 +16,16 @@ void *cuda_alloc_device(size_t size);
 
 // Same for device or managed memory
 void cuda_free(void *ptr);
+
+// Cuda also supports alloca in device code since 11.3.
+// Variable length array on stack. Be very careful about this!!
+#define VLA(PTR, TYPE, COUNT)                                                                                          \
+    static_assert(std::is_trivially_destructible<TYPE>::value, "Don't use VLA for non trivially destructible types."); \
+    TYPE *PTR = (TYPE *)alloca((COUNT) * sizeof(TYPE));                                                                \
+    {                                                                                                                  \
+        for (uint32_t __i = 0; __i < COUNT; ++__i)                                                                     \
+            new (PTR + __i) TYPE();                                                                                    \
+    }
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // unique_ptr implementation stolen from MSVC but with CUDA_HOST_DEVICE tags
@@ -545,7 +556,14 @@ template <typename T>
 struct CudaManagedArray
 {
     CudaManagedArray() = default;
-    explicit CudaManagedArray(size_t size) : ptr(make_unique_for_overwrite_cuda_managed<T>(size)), size(size) {}
+    explicit CudaManagedArray(size_t size) : ptr(make_unique_for_overwrite_cuda_managed<T>(size)), size(size)
+    {
+        if constexpr (!std::is_trivially_default_constructible_v<T>) {
+            for (size_t i = 0; i < size; ++i) {
+                std::construct_at(&ptr[i]);
+            }
+        }
+    }
 
     CudaManagedArray(const CudaManagedArray &other)
         : ptr(make_unique_for_overwrite_cuda_managed<T>(other.size)), size(other.size)
