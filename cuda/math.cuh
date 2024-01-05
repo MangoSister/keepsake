@@ -191,6 +191,13 @@ CUDA_HOST_DEVICE inline std::enable_if_t<std::conjunction_v<std::is_arithmetic<T
     return float(ip);
 }
 
+template <typename T, typename U, typename V>
+    requires std::is_floating_point_v<T> and std::is_floating_point_v<U> and std::is_floating_point_v<V>
+CUDA_HOST_DEVICE inline auto lerp(T t, U t0, V t1)
+{
+    return (1 - t) * t0 + t * t1;
+}
+
 enum class WrapMode
 {
     Repeat,
