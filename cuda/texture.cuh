@@ -105,6 +105,9 @@ struct LowLevelLinearImage2D
     CUDA_DEVICE ksc::vec2 read_vec2(ksc::vec2i pixel) const;
     CUDA_DEVICE void write_vec2(ksc::vec2i pixel, ksc::vec2 v);
 
+    CUDA_DEVICE float read_float(ksc::vec2i pixel) const;
+    CUDA_DEVICE void write_float(ksc::vec2i pixel, float v);
+
     std::vector<std::byte> write_to_host_linear() const;
 
     size_t width = 0;

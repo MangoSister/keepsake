@@ -302,4 +302,30 @@ CUDA_DEVICE void LowLevelLinearImage2D::write_vec2(ksc::vec2i pixel, ksc::vec2 v
     }
 }
 
+CUDA_DEVICE float LowLevelLinearImage2D::read_float(ksc::vec2i pixel) const
+{
+    // TODO: assume rg float or half...kinda stupid
+    size_t offset = pixel.y * width + pixel.x;
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        return p[offset];
+    } else {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        return p[offset];
+    }
+}
+
+CUDA_DEVICE void LowLevelLinearImage2D::write_float(ksc::vec2i pixel, float v)
+{
+    // TODO: assume rg float or half...kinda stupid
+    size_t offset = pixel.y * width + pixel.x;
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        p[offset] = v;
+    } else if (format_desc.x == sizeof(__half) * 8) {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        p[offset] = __float2half(v);
+    }
+}
+
 } // namespace ksc
