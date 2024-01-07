@@ -232,7 +232,7 @@ std::vector<std::byte> LowLevelLinearImage2D::write_to_host_linear() const
     return dst;
 }
 
-CUDA_DEVICE color3 LowLevelLinearImage2D::read(vec2i pixel)const
+CUDA_DEVICE color3 LowLevelLinearImage2D::read_rgb(vec2i pixel) const
 {
     // TODO: assume rgba float or half...kinda stupid
     size_t offset = 4 * (pixel.y * width + pixel.x);
@@ -251,7 +251,7 @@ CUDA_DEVICE color3 LowLevelLinearImage2D::read(vec2i pixel)const
     return color;
 }
 
-CUDA_DEVICE void LowLevelLinearImage2D::write(ksc::vec2i pixel, ksc::color3 color)
+CUDA_DEVICE void LowLevelLinearImage2D::write_rgb(ksc::vec2i pixel, ksc::color3 color)
 {
     // TODO: assume rgba float or half...kinda stupid
     size_t offset = 4 * (pixel.y * width + pixel.x);
@@ -267,6 +267,38 @@ CUDA_DEVICE void LowLevelLinearImage2D::write(ksc::vec2i pixel, ksc::color3 colo
         p[offset + 1] = __float2half(color.y);
         p[offset + 2] = __float2half(color.z);
         p[offset + 3] = __half(1.0);
+    }
+}
+
+CUDA_DEVICE vec2 LowLevelLinearImage2D::read_vec2(vec2i pixel) const
+{
+    // TODO: assume rg float or half...kinda stupid
+    size_t offset = 2 * (pixel.y * width + pixel.x);
+    vec2 v;
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        v.x = p[offset + 0];
+        v.y = p[offset + 1];
+    } else if (format_desc.x == sizeof(__half) * 8) {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        v.x = __half2float(p[offset + 0]);
+        v.y = __half2float(p[offset + 1]);
+    }
+    return v;
+}
+
+CUDA_DEVICE void LowLevelLinearImage2D::write_vec2(ksc::vec2i pixel, ksc::vec2 v)
+{
+    // TODO: assume rg float or half...kinda stupid
+    size_t offset = 2 * (pixel.y * width + pixel.x);
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        p[offset + 0] = v.x;
+        p[offset + 1] = v.y;
+    } else if (format_desc.x == sizeof(__half) * 8) {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        p[offset + 0] = __float2half(v.x);
+        p[offset + 1] = __float2half(v.y);
     }
 }
 
