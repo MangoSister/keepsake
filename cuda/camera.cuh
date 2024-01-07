@@ -35,6 +35,7 @@ struct Camera
         return -normalize(ksc::vec3(camera_to_world.m[0][2], camera_to_world.m[1][2], camera_to_world.m[2][2]));
     }
 
+    ksc::Transform world_to_proj;
     ksc::Transform proj_to_world;
     ksc::Transform proj_to_camera;
     ksc::Transform camera_to_world;

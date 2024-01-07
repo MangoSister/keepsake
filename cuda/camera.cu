@@ -72,7 +72,8 @@ Camera::Camera(const Transform &to_world, float vfov, float aspect) : camera_to_
 {
     mat4 world_to_camera_m = camera_to_world.inverse().m;
     mat4 camera_to_proj_m = rev_inf_projection(vfov, aspect);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
 }
 
@@ -81,7 +82,8 @@ Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float v
     mat4 camera_to_world_m = look_at(position, target, up);
     mat4 world_to_camera_m = inverse(camera_to_world_m);
     mat4 camera_to_proj_m = rev_inf_projection(vfov, aspect);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
     camera_to_world = Transform(camera_to_world_m);
 }
@@ -91,7 +93,8 @@ Camera::Camera(const Transform &to_world, float left, float right, float bottom,
 {
     mat4 world_to_camera_m = camera_to_world.inverse().m;
     mat4 camera_to_proj_m = rev_orthographic(left, right, bottom, top, near, far);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
 }
 
@@ -102,7 +105,8 @@ Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float l
     mat4 camera_to_world_m = look_at(position, target, up);
     mat4 world_to_camera_m = inverse(camera_to_world_m);
     mat4 camera_to_proj_m = rev_orthographic(left, right, bottom, top, near, far);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
     camera_to_world = Transform(camera_to_world_m);
 }
