@@ -41,7 +41,7 @@ struct Vector2
     CUDA_HOST_DEVICE
     constexpr Vector2(T x, T y) : x(x), y(y) {}
     CUDA_HOST_DEVICE
-    bool has_nan() const { return IsNaN(x) || IsNaN(y); }
+    bool has_nan() const { return ::isnan(x) || ::isnan(y); }
 
     CUDA_HOST_DEVICE
     bool isfinite() const { return ::isfinite(x) && ::isfinite(y); }
@@ -73,7 +73,7 @@ struct Vector2
     }
 
     template <typename U>
-    CUDA_HOST_DEVICE auto operator*(Vector2<U> c) const -> Vector2<decltype(T{} + U{})>
+    CUDA_HOST_DEVICE auto operator*(Vector2<U> c) const -> Vector2<decltype(T{} * U{})>
     {
         return {x * c.x, y * c.y};
     }
@@ -86,7 +86,7 @@ struct Vector2
     }
 
     template <typename U>
-    CUDA_HOST_DEVICE auto operator/(Vector2<U> c) const -> Vector2<decltype(T{} + U{})>
+    CUDA_HOST_DEVICE auto operator/(Vector2<U> c) const -> Vector2<decltype(T{} / U{})>
     {
         return {x / c.x, y / c.y};
     }
@@ -217,6 +217,12 @@ template <typename T>
 CUDA_HOST_DEVICE inline Vector2<T> abs(Vector2<T> t)
 {
     return {Abs(t.x), Abs(t.y)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector2<T> sqrt(Vector2<T> t)
+{
+    return {sqrt(t.x), sqrt(t.y)};
 }
 
 template <typename T>
@@ -389,7 +395,7 @@ struct Vector3
     }
 
     template <typename U>
-    CUDA_HOST_DEVICE auto operator*(Vector3<U> c) const -> Vector3<decltype(T{} + U{})>
+    CUDA_HOST_DEVICE auto operator*(Vector3<U> c) const -> Vector3<decltype(T{} * U{})>
     {
         return {x * c.x, y * c.y, z * c.z};
     }
@@ -404,7 +410,7 @@ struct Vector3
     }
 
     template <typename U>
-    CUDA_HOST_DEVICE auto operator/(Vector3<U> c) const -> Vector3<decltype(T{} + U{})>
+    CUDA_HOST_DEVICE auto operator/(Vector3<U> c) const -> Vector3<decltype(T{} / U{})>
     {
         return {x / c.x, y / c.y, z / c.z};
     }
@@ -532,6 +538,12 @@ template <typename T>
 CUDA_HOST_DEVICE inline Vector3<T> abs(Vector3<T> t)
 {
     return {abs(t.x), abs(t.y), abs(t.z)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector3<T> sqrt(Vector3<T> t)
+{
+    return {sqrt(t.x), sqrt(t.y), sqrt(t.z)};
 }
 
 template <typename T>
@@ -748,7 +760,7 @@ struct Vector4
     }
 
     template <typename U>
-    CUDA_HOST_DEVICE auto operator*(Vector4<U> c) const -> Vector4<decltype(T{} + U{})>
+    CUDA_HOST_DEVICE auto operator*(Vector4<U> c) const -> Vector4<decltype(T{} * U{})>
     {
         return {x * c.x, y * c.y, z * c.z, w * c.w};
     }
@@ -764,7 +776,7 @@ struct Vector4
     }
 
     template <typename U>
-    CUDA_HOST_DEVICE auto operator/(Vector4<U> c) const -> Vector4<decltype(T{} + U{})>
+    CUDA_HOST_DEVICE auto operator/(Vector4<U> c) const -> Vector4<decltype(T{} / U{})>
     {
         return {x / c.x, y / c.y, z / c.z, w / c.w};
     }
@@ -890,6 +902,12 @@ template <typename T>
 CUDA_HOST_DEVICE inline Vector4<T> abs(Vector4<T> t)
 {
     return {abs(t.x), abs(t.y), abs(t.z), abs(t.w)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector4<T> sqrt(Vector4<T> t)
+{
+    return {sqrt(t.x), sqrt(t.y), sqrt(t.z), sqrt(t.w)};
 }
 
 template <typename T>

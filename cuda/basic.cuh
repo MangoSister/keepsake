@@ -115,6 +115,9 @@ struct numeric_limits<float>
     static constexpr float min() noexcept { return FLT_MIN; }
     CUDA_HOST_DEVICE
     static constexpr float max() noexcept { return FLT_MAX; }
+    CUDA_HOST_DEVICE
+    static constexpr float nan() noexcept { return NAN; }
+
     static constexpr bool is_integer = false;
     static constexpr bool has_infinity = true;
 };

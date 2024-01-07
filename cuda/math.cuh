@@ -65,6 +65,16 @@ CUDA_HOST_DEVICE inline T ceil(T x)
 #endif
 }
 
+template <typename T>
+CUDA_HOST_DEVICE inline T sqrt(T x)
+{
+#ifdef __CUDACC__
+    return ::sqrt(x);
+#else
+    return std::sqrt(x);
+#endif
+}
+
 template <typename T, typename U, typename V>
 CUDA_HOST_DEVICE inline constexpr T clamp(T val, U low, V high)
 {
