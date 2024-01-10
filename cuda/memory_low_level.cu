@@ -1,4 +1,5 @@
 #include "memory_low_level.cuh"
+#include <cstdio>
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
 #ifndef WIN32_LEAN_AND_MEAN
