@@ -7,6 +7,7 @@
 namespace ksc
 {
 
+// Parameters from Numerical Recipes.
 CUDA_HOST_DEVICE inline uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
 
 // Combine several hash values for hash tables. Based on the algorithm used in Boost.
