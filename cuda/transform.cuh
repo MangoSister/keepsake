@@ -27,6 +27,15 @@ struct Transform
         return vec3(x, y, z);
     }
 
+    CUDA_HOST_DEVICE
+    vec3 inv_point(const vec3 &p) const
+    {
+        float x = inv[0][0] * p.x + inv[0][1] * p.y + inv[0][2] * p.z + inv[0][3];
+        float y = inv[1][0] * p.x + inv[1][1] * p.y + inv[1][2] * p.z + inv[1][3];
+        float z = inv[2][0] * p.x + inv[2][1] * p.y + inv[2][2] * p.z + inv[2][3];
+        return vec3(x, y, z);
+    }
+
     // vec4 hpoint(const vec3 &p) const { return m * p.homogeneous(); }
 
     CUDA_HOST_DEVICE
@@ -34,6 +43,13 @@ struct Transform
     {
         float w = m[3][0] * p.x + m[3][1] * p.y + m[3][2] * p.z + m[3][3];
         return point(p) / w;
+    }
+
+    CUDA_HOST_DEVICE
+    vec3 inv_point_hdiv(const vec3 &p) const
+    {
+        float w = inv[3][0] * p.x + inv[3][1] * p.y + inv[3][2] * p.z + inv[3][3];
+        return inv_point(p) / w;
     }
 
     CUDA_HOST_DEVICE
@@ -46,11 +62,29 @@ struct Transform
     }
 
     CUDA_HOST_DEVICE
+    vec3 inv_direction(const vec3 &v) const
+    {
+        float x = inv[0][0] * v.x + inv[0][1] * v.y + inv[0][2] * v.z;
+        float y = inv[1][0] * v.x + inv[1][1] * v.y + inv[1][2] * v.z;
+        float z = inv[2][0] * v.x + inv[2][1] * v.y + inv[2][2] * v.z;
+        return vec3(x, y, z);
+    }
+
+    CUDA_HOST_DEVICE
     vec3 normal(const vec3 &n) const
     {
         float x = inv[0][0] * n.x + inv[1][0] * n.y + inv[2][0] * n.z;
         float y = inv[0][1] * n.x + inv[1][1] * n.y + inv[2][1] * n.z;
         float z = inv[0][2] * n.x + inv[1][2] * n.y + inv[2][2] * n.z;
+        return vec3(x, y, z);
+    }
+
+    CUDA_HOST_DEVICE
+    vec3 inv_normal(const vec3 &n) const
+    {
+        float x = m[0][0] * n.x + m[1][0] * n.y + m[2][0] * n.z;
+        float y = m[0][1] * n.x + m[1][1] * n.y + m[2][1] * n.z;
+        float z = m[0][2] * n.x + m[1][2] * n.y + m[2][2] * n.z;
         return vec3(x, y, z);
     }
 
