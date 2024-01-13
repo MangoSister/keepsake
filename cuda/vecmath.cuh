@@ -44,7 +44,7 @@ struct Vector2
     bool has_nan() const { return isnan(x) || isnan(y); }
 
     CUDA_HOST_DEVICE
-    bool isfinite() const { return isfinite(x) && isfinite(y); }
+    bool all_finite() const { return isfinite(x) && isfinite(y); }
 
     template <typename U>
     CUDA_HOST_DEVICE auto operator+(Vector2<U> c) const -> Vector2<decltype(T{} + U{})>
@@ -342,7 +342,7 @@ struct Vector3
     bool has_nan() const { return isnan(x) || isnan(y) || isnan(z); }
 
     CUDA_HOST_DEVICE
-    bool isfinite() const { return isfinite(x) && isfinite(y) && isfinite(z); }
+    bool all_finite() const { return isfinite(x) && isfinite(y) && isfinite(z); }
 
     CUDA_HOST_DEVICE
     T operator[](int i) const
@@ -701,7 +701,7 @@ struct Vector4
     bool has_nan() const { return isnan(x) || isnan(y) || isnan(z) || isnan(w); }
 
     CUDA_HOST_DEVICE
-    bool isfinite() const { return isfinite(x) && isfinite(y) && isfinite(z) && isfinite(w); }
+    bool all_finite() const { return isfinite(x) && isfinite(y) && isfinite(z) && isfinite(w); }
 
     CUDA_HOST_DEVICE
     T operator[](int i) const
