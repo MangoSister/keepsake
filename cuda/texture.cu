@@ -1,4 +1,5 @@
 #include "texture.cuh"
+#include <cstring>
 #include <cuda_fp16.h>
 
 namespace ksc

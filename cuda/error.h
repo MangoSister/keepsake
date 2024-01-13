@@ -17,7 +17,7 @@ namespace ksc
 #define KSC_ASSERT_FMT(EXPR, FMT, ...)                                                                                 \
     do {                                                                                                               \
         if (!(EXPR)) {                                                                                                   \
-            printf(FMT, __VA_ARGS__);                                                                                  \
+            printf(FMT, ##__VA_ARGS__);                                                                                  \
         }                                                                                                              \
         assert(EXPR);                                                                                                  \
     } while (false) /* eat semicolon */

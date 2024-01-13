@@ -75,6 +75,46 @@ CUDA_HOST_DEVICE inline T sqrt(T x)
 #endif
 }
 
+template <typename T>
+CUDA_HOST_DEVICE inline T fma(T x, T y, T z)
+{
+#ifdef __CUDACC__
+    return ::fma(x, y, z);
+#else
+    return std::fma(x, y, z);
+#endif
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline bool isnan(T x)
+{
+#ifdef __CUDACC__
+    return ::isnan(x);
+#else
+    return std::isnan(x);
+#endif
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline bool isfinite(T x)
+{
+#ifdef __CUDACC__
+    return ::isfinite(x);
+#else
+    return std::isfinite(x);
+#endif
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline bool signbit(T x)
+{
+#ifdef __CUDACC__
+    return ::signbit(x);
+#else
+    return std::signbit(x);
+#endif
+}
+
 template <typename T, typename U, typename V>
 CUDA_HOST_DEVICE inline constexpr T clamp(T val, U low, V high)
 {
