@@ -2,6 +2,7 @@
 #include "ray_tri.cuh"
 #include "sbvh.cuh"
 #include <algorithm>
+#include <cstring>
 
 using ksc::AABB3;
 using ksc::Primitive;
@@ -444,7 +445,7 @@ void SBVH::printStats() const
     printf("----------------------------------------\n");
     printf("SBVH stats:\n");
     printf("bound: [%.4f, %.4f, %.4f] -> [%.4f, %.4f, %.4f]\n", b.min.x, b.min.y, b.min.x, b.max.x, b.max.y, b.max.x);
-    printf("node count: %llu\n", nodes.size);
+    printf("node count: %lu\n", nodes.size);
     printf("----------------------------------------\n");
 }
 

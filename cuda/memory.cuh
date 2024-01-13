@@ -1,6 +1,7 @@
 #pragma once
 #include "basic.cuh"
 #include "span.cuh"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <malloc.h>

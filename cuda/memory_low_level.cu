@@ -12,6 +12,15 @@
 #include <sddl.h>
 #include <windows.h>
 #include <winternl.h>
+#elif defined(__linux__)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #endif
 
 namespace ksc
@@ -66,7 +75,7 @@ CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
     alloc_prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
     alloc_prop.location.id = device;
     alloc_prop.win32HandleMetaData = nullptr;
-    alloc_prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_WIN32;
+    alloc_prop.requestedHandleTypes = ipc_handle_type_flag;
 
     // Windows-specific LPSECURITYATTRIBUTES is required when
     // CU_MEM_HANDLE_TYPE_WIN32 is used. The security attribute defines the scope
@@ -127,7 +136,7 @@ void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
     CU_CHECK(cuMemUnmap(m.dptr, m.size));
 
 #if defined(__linux__)
-    close(shHandle);
+    close(m.shareable_handle);
 #else
     CloseHandle(m.shareable_handle);
 #endif
