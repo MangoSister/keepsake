@@ -233,6 +233,22 @@ std::vector<std::byte> LowLevelLinearImage2D::write_to_host_linear() const
     return dst;
 }
 
+void LowLevelLinearImage2D::clear_all_u16(uint16_t value)
+{
+    size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
+    KSC_ASSERT(texel_bytes * width * height % sizeof(uint16_t) == 0);
+    size_t N = texel_bytes * width * height / sizeof(uint16_t);
+    CU_CHECK(cuMemsetD16(m.dptr, value, N));
+}
+
+void LowLevelLinearImage2D::clear_all_u32(uint32_t value)
+{
+    size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
+    KSC_ASSERT(texel_bytes * width * height % sizeof(uint32_t) == 0);
+    size_t N = texel_bytes * width * height / sizeof(uint32_t);
+    CU_CHECK(cuMemsetD32(m.dptr, value, N));
+}
+
 CUDA_DEVICE color3 LowLevelLinearImage2D::read_rgb(vec2i pixel) const
 {
     // TODO: assume rgba float or half...kinda stupid

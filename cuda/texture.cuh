@@ -99,6 +99,9 @@ struct LowLevelLinearImage2D
     LowLevelLinearImage2D(LowLevelLinearImage2D &&);
     LowLevelLinearImage2D &operator=(LowLevelLinearImage2D &&);
 
+    void clear_all_u16(uint16_t value);
+    void clear_all_u32(uint32_t value);
+
     CUDA_DEVICE ksc::color3 read_rgb(ksc::vec2i pixel) const;
     CUDA_DEVICE void write_rgb(ksc::vec2i pixel, ksc::color3 color);
 
