@@ -911,6 +911,18 @@ CUDA_HOST_DEVICE inline Vector4<T> sqrt(Vector4<T> t)
 }
 
 template <typename T>
+CUDA_HOST_DEVICE inline auto lerp(float t, Vector4<T> t0, Vector4<T> t1)
+{
+    return (1 - t) * t0 + t * t1;
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline auto lerp(Vector4<T> t, Vector4<T> t0, Vector4<T> t1)
+{
+    return (Vector4<T>(1) - t) * t0 + t * t1;
+}
+
+template <typename T>
 CUDA_HOST_DEVICE inline auto dot(Vector4<T> v1, Vector4<T> v2) -> typename VectorLength<T>::type
 {
     return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z + v1.w * v2.w;

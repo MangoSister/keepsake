@@ -425,4 +425,11 @@ CUDA_HOST_DEVICE inline float fast_exp(float x)
 #endif
 }
 
+// Porting https://registry.khronos.org/OpenGL-Refpages/gl4/html/smoothstep.xhtml
+CUDA_HOST_DEVICE inline float smoothstep(float edge0, float edge1, float x)
+{
+    float t = saturate((x - edge0) / (edge1 - edge0));
+    return t * t * (3.0f - 2.0f * t);
+}
+
 } // namespace ksc
