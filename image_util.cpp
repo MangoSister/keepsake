@@ -111,7 +111,7 @@ std::unique_ptr<float[]> load_from_exr(const fs::path &path, int c, int &w, int 
 
 void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs::path &path)
 {
-    ASSERT(c == 3 || c == 4, "save_to_exr only supports rgb or rgba");
+    ASSERT(c <= 4);
     EXRHeader header;
     InitEXRHeader(&header);
     header.num_channels = c;
@@ -134,8 +134,8 @@ void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs
                 images[j][i * channel_size + k] = data[channel_size * (c * i + j) + k];
 
     std::byte *image_ptr[4];
-    // Must be (A)BGR order, since most of EXR viewers expect this channel order.
     if (c == 4) {
+        // ABGR order for 4-channel image.
         image_ptr[0] = images[3].data(); // A
         image_ptr[1] = images[2].data(); // B
         image_ptr[2] = images[1].data(); // G
@@ -149,7 +149,8 @@ void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs
         header.channels[2].name[strlen("G")] = '\0';
         strncpy(header.channels[3].name, "R", 255);
         header.channels[3].name[strlen("R")] = '\0';
-    } else {
+    } else if (c == 3) {
+        // BGR order for 3-channel image.
         image_ptr[0] = images[2].data(); // B
         image_ptr[1] = images[1].data(); // G
         image_ptr[2] = images[0].data(); // R
@@ -160,6 +161,21 @@ void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs
         header.channels[1].name[strlen("G")] = '\0';
         strncpy(header.channels[2].name, "R", 255);
         header.channels[2].name[strlen("R")] = '\0';
+    } else if (c == 2) {
+        // GR for 2-channel image
+        image_ptr[0] = images[1].data(); // G
+        image_ptr[1] = images[0].data(); // R
+
+        strncpy(header.channels[0].name, "G", 255);
+        header.channels[0].name[strlen("G")] = '\0';
+        strncpy(header.channels[1].name, "R", 255);
+        header.channels[1].name[strlen("R")] = '\0';
+    } else {
+        // R for single-channel image
+        image_ptr[0] = images[0].data(); // R
+
+        strncpy(header.channels[0].name, "R", 255);
+        header.channels[0].name[strlen("R")] = '\0';
     }
     image.images = (unsigned char **)image_ptr;
 
