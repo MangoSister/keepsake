@@ -287,6 +287,46 @@ CUDA_DEVICE void LowLevelLinearImage2D::write_rgb(ksc::vec2i pixel, ksc::color3 
     }
 }
 
+CUDA_DEVICE color4 LowLevelLinearImage2D::read_rgba(vec2i pixel) const
+{
+    // TODO: assume rgba float or half...kinda stupid
+    size_t offset = 4 * (pixel.y * width + pixel.x);
+    color4 color;
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        color.x = p[offset + 0];
+        color.y = p[offset + 1];
+        color.z = p[offset + 2];
+        color.w = p[offset + 3];
+    } else if (format_desc.x == sizeof(__half) * 8) {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        color.x = __half2float(p[offset + 0]);
+        color.y = __half2float(p[offset + 1]);
+        color.z = __half2float(p[offset + 2]);
+        color.w = __half2float(p[offset + 3]);
+    }
+    return color;
+}
+
+CUDA_DEVICE void LowLevelLinearImage2D::write_rgba(ksc::vec2i pixel, ksc::color4 color)
+{
+    // TODO: assume rgba float or half...kinda stupid
+    size_t offset = 4 * (pixel.y * width + pixel.x);
+    if (format_desc.x == sizeof(float) * 8) {
+        float *p = reinterpret_cast<float *>(m.dptr);
+        p[offset + 0] = color.x;
+        p[offset + 1] = color.y;
+        p[offset + 2] = color.z;
+        p[offset + 3] = color.w;
+    } else if (format_desc.x == sizeof(__half) * 8) {
+        __half *p = reinterpret_cast<__half *>(m.dptr);
+        p[offset + 0] = __float2half(color.x);
+        p[offset + 1] = __float2half(color.y);
+        p[offset + 2] = __float2half(color.z);
+        p[offset + 3] = __float2half(color.w);
+    }
+}
+
 CUDA_DEVICE vec2 LowLevelLinearImage2D::read_vec2(vec2i pixel) const
 {
     // TODO: assume rg float or half...kinda stupid

@@ -105,6 +105,9 @@ struct LowLevelLinearImage2D
     CUDA_DEVICE ksc::color3 read_rgb(ksc::vec2i pixel) const;
     CUDA_DEVICE void write_rgb(ksc::vec2i pixel, ksc::color3 color);
 
+    CUDA_DEVICE ksc::color4 read_rgba(ksc::vec2i pixel) const;
+    CUDA_DEVICE void write_rgba(ksc::vec2i pixel, ksc::color4 color);
+
     CUDA_DEVICE ksc::vec2 read_vec2(ksc::vec2i pixel) const;
     CUDA_DEVICE void write_vec2(ksc::vec2i pixel, ksc::vec2 v);
 
