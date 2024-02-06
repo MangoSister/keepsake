@@ -55,4 +55,23 @@ ksc::mat4 rev_inf_projection(float vfov, float aspect, float near_clip = 0.01f);
 CUDA_HOST_DEVICE
 ksc::mat4 rev_orthographic(float left, float right, float bottom, float top, float near, float far);
 
+struct CameraAnimation
+{
+    Camera eval(float time) const;
+
+    // TODO: also support animating FOV? GLTF doesn't support it...
+    bool perspective;
+    float vfov, aspect;
+    float left, right, bottom, top, near, far;
+
+    std::vector<float> translation_keys;
+    std::vector<ksc::vec3> translation_values;
+    std::vector<float> rotation_keys;
+    std::vector<ksc::quat> rotation_values;
+
+#ifdef CPP_CODE_ONLY
+    void load_from_config(const ks::ConfigArgs &args);
+#endif
+};
+
 } // namespace ksc

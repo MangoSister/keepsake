@@ -1,4 +1,5 @@
 #include "camera.cuh"
+#include <algorithm>
 
 namespace ksc
 {
@@ -152,6 +153,53 @@ Ray Camera::spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) cons
         ray.ry_dir = ray.dir + (ray.ry_dir - ray.dir) * scale;
     }
     return ray;
+}
+
+Camera CameraAnimation::eval(float time) const
+{
+    int left, right;
+    if (translation_keys.size() == 1) {
+        left = right = 0;
+    }
+    auto it = std::upper_bound(translation_keys.begin(), translation_keys.end(), time);
+    if (it != translation_keys.end()) {
+        right = *it;
+        left = right - 1;
+    } else {
+        right = (int)translation_keys.size() - 1;
+        left = right - 1;
+    }
+
+    float time_left = translation_keys[left];
+    float time_right = translation_keys[right];
+    float delta = (time - time_left) / (time_right - time_left);
+
+    vec3 translation = lerp(delta, translation_values[left], translation_values[right]);
+
+    if (rotation_keys.size() == 1) {
+        left = right = 0;
+    }
+    it = std::upper_bound(rotation_keys.begin(), rotation_keys.end(), time);
+    if (it != rotation_keys.end()) {
+        right = *it;
+        left = right - 1;
+    } else {
+        right = (int)translation_keys.size() - 1;
+        left = right - 1;
+    }
+
+    time_left = rotation_keys[left];
+    time_right = rotation_keys[right];
+    delta = (time - time_left) / (time_right - time_left);
+
+    quat rotation = slerp(delta, rotation_values[left], rotation_values[right]);
+    mat4 m = make_affine(rotation.to_matrix(), translation);
+    Transform to_world(m, affine_inverse(m));
+    if (perspective) {
+        return Camera(to_world, vfov, aspect);
+    } else {
+        return Camera(to_world, left, right, bottom, top, near, far);
+    }
 }
 
 } // namespace ksc
