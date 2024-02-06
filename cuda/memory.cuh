@@ -587,6 +587,7 @@ struct CudaManagedArray
         ptr = make_unique_for_overwrite_cuda_managed<T>(other.size);
         size = other.size;
         std::copy_n(other.ptr.get(), size, ptr.get());
+        return *this;
     }
 
     CudaManagedArray(CudaManagedArray &&) = default;
