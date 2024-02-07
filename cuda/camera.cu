@@ -163,7 +163,7 @@ Camera CameraAnimation::eval(float time) const
     }
     auto it = std::upper_bound(translation_keys.begin(), translation_keys.end(), time);
     if (it != translation_keys.end()) {
-        right = *it;
+        right = std::distance(translation_keys.begin(), it);
         left = right - 1;
     } else {
         right = (int)translation_keys.size() - 1;
@@ -181,10 +181,10 @@ Camera CameraAnimation::eval(float time) const
     }
     it = std::upper_bound(rotation_keys.begin(), rotation_keys.end(), time);
     if (it != rotation_keys.end()) {
-        right = *it;
+        right = std::distance(rotation_keys.begin(), it);
         left = right - 1;
     } else {
-        right = (int)translation_keys.size() - 1;
+        right = (int)rotation_keys.size() - 1;
         left = right - 1;
     }
 

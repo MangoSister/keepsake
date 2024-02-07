@@ -63,15 +63,18 @@ void CameraAnimation::load_from_config(const ks::ConfigArgs &args)
 {
     fs::path path = args.load_path("path");
     std::string camera_name = args.load_string("camera_name");
-
+    bool convert_y_up_to_z_up = args.load_bool("convert_y_up_to_z_up");
+    if (!convert_y_up_to_z_up) {
+        fprintf(stderr, "Is this data from Blender? Currently Blender GLTF exporter is buggy with non y-up! May want "
+                        "to export as y-up and convert back to z-up.\n");
+    }
     tinygltf::TinyGLTF loader;
     tinygltf::Model model;
     std::string err;
     std::string warn;
     bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
-
-    if (!err.empty()) {
-        fprintf(stderr, "GLTF Loader Error: [%s]\n", err.c_str());
+    if (!ret || !err.empty()) {
+        fprintf(stderr, "GLTF Loader failed to load [%s] with error: [%s]\n", path.string().c_str(), err.c_str());
         std::abort();
     }
     if (!warn.empty()) {
@@ -150,12 +153,14 @@ void CameraAnimation::load_from_config(const ks::ConfigArgs &args)
         }
 
         // Just do linear/slerp for now...
-        translation_input = &accessors[anim.samplers[translation_sampler].input];
-        translation_output = &accessors[anim.samplers[translation_sampler].output];
-
-        rotation_input = &accessors[anim.samplers[rotation_sampler].input];
-        rotation_output = &accessors[anim.samplers[rotation_sampler].output];
-
+        if (translation_sampler >= 0) {
+            translation_input = &accessors[anim.samplers[translation_sampler].input];
+            translation_output = &accessors[anim.samplers[translation_sampler].output];
+        }
+        if (rotation_sampler >= 0) {
+            rotation_input = &accessors[anim.samplers[rotation_sampler].input];
+            rotation_output = &accessors[anim.samplers[rotation_sampler].output];
+        }
         if (translation_sampler >= 0 && rotation_sampler >= 0) {
             break;
         }
@@ -199,11 +204,26 @@ void CameraAnimation::load_from_config(const ks::ConfigArgs &args)
         // NOTE: GLTF rotations are stored as XYZW quaternions
         rotation_values.resize(rotation_output->count);
         copy_accessor_to_linear(buffers, bufferviews, *rotation_output,
-                                reinterpret_cast<uint8_t *>(translation_values.data()));
+                                reinterpret_cast<uint8_t *>(rotation_values.data()));
 
         if (!std::is_sorted(rotation_keys.begin(), rotation_keys.end())) {
             fprintf(stderr, "Rotation keys are not in ascending order.\n");
             std::abort();
+        }
+    }
+
+    if (convert_y_up_to_z_up) {
+        for (auto &v : translation_values) {
+            float x = v.x;
+            float y = v.y;
+            float z = v.z;
+
+            v.y = -z;
+            v.z = y;
+        }
+        quat r(make_rotate_x(90.0f).m.minor());
+        for (auto &q : rotation_values) {
+            q = r * q;
         }
     }
 }

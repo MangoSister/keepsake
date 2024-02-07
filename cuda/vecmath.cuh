@@ -1638,6 +1638,25 @@ struct Quaternion
     CUDA_HOST_DEVICE
     Quaternion operator*(float f) const { return {v * f, w * f}; }
     CUDA_HOST_DEVICE
+    Quaternion &operator*=(Quaternion q)
+    {
+        Quaternion p = *this;
+        // clang-format off
+        w   =   p.w * q.w   - p.v.x * q.v.x - p.v.y * q.v.y - p.v.z * q.v.z;
+        v.x =   p.w * q.v.x + p.v.x * q.w   + p.v.y * q.v.z - p.v.z * q.v.y;
+        v.y =   p.w * q.v.y - p.v.x * q.v.z + p.v.y * q.w   + p.v.z * q.v.x;
+        v.z =   p.w * q.v.z + p.v.x * q.v.y - p.v.y * q.v.x + p.v.z * q.w;
+        // clang-format on
+        return *this;
+    }
+    CUDA_HOST_DEVICE
+    Quaternion operator*(Quaternion q) const
+    {
+        Quaternion p = *this;
+        p *= q;
+        return p;
+    }
+    CUDA_HOST_DEVICE
     Quaternion &operator/=(float f)
     {
         v /= f;
