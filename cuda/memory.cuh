@@ -677,14 +677,14 @@ struct CudaDeviceArray
     explicit CudaDeviceArray(span<const T> data)
         : ptr(make_unique_for_overwrite_cuda_device<T>(data.size())), size(data.size())
     {
-        CUDA_CHECK(cudaMemcpy(ptr.get(), data.data(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
+        cuda_check(cudaMemcpy(ptr.get(), data.data(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
     }
 
     // TODO: copying to/from device memory requires cudaMemcpy etc. Maybe add them later.
     CudaDeviceArray(const CudaDeviceArray &other)
         : ptr(make_unique_for_overwrite_cuda_device<T>(other.size)), size(other.size)
     {
-        CUDA_CHECK(cudaMemcpy(ptr.get(), other.ptr.get(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
+        cuda_check(cudaMemcpy(ptr.get(), other.ptr.get(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
     }
 
     CudaDeviceArray &operator=(const CudaDeviceArray &other)
@@ -695,7 +695,7 @@ struct CudaDeviceArray
 
         ptr = make_unique_for_overwrite_cuda_device<T>(other.size);
         size = other.size;
-        CUDA_CHECK(cudaMemcpy(ptr.get(), other.ptr.get(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
+        cuda_check(cudaMemcpy(ptr.get(), other.ptr.get(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
     }
 
     CudaDeviceArray(CudaDeviceArray &&) = default;
@@ -704,7 +704,7 @@ struct CudaDeviceArray
     std::vector<T> copy_to_host() const
     {
         std::vector<T> vec(size);
-        CUDA_CHECK(cudaMemcpy(vec.data(), ptr.get(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
+        cuda_check(cudaMemcpy(vec.data(), ptr.get(), sizeof(T) * size, cudaMemcpyKind::cudaMemcpyDefault));
         return vec;
     }
 

@@ -1337,7 +1337,7 @@ template <int N>
 CUDA_HOST_DEVICE SquareMatrix<N> inverse(const SquareMatrix<N> &m)
 {
     ksc::optional<SquareMatrix<N>> inv = try_inverse(m);
-    KSC_ASSERT(inv.has_value());
+    CUDA_ASSERT(inv.has_value());
     return *inv;
 }
 
@@ -1410,7 +1410,7 @@ CUDA_HOST_DEVICE inline SquareMatrix<N> operator*(const SquareMatrix<N> &m1, con
 template <int N>
 CUDA_HOST_DEVICE inline SquareMatrix<N>::SquareMatrix(ksc::span<const float> t)
 {
-    KSC_ASSERT(N * N == t.size());
+    CUDA_ASSERT(N * N == t.size());
     for (int i = 0; i < N * N; ++i)
         m[i / N][i % N] = t[i];
 }

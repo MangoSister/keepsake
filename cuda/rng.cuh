@@ -92,7 +92,7 @@ inline uint64_t RNG::Uniform<uint64_t>()
 //     uint32_t v = Uniform<uint32_t>();
 //     if (v <= INT_MAX)
 //         return int32_t(v);
-//     KSC_ASSERT(v >= INT_MIN);
+//     CUDA_ASSERT(v >= INT_MIN);
 //     return int32_t(v - INT_MIN) + INT_MIN;
 // }
 
@@ -142,7 +142,7 @@ inline void RNG::Advance(int64_t idelta)
 CUDA_HOST_DEVICE
 inline int64_t RNG::operator-(const RNG &other) const
 {
-    KSC_ASSERT(inc == other.inc);
+    CUDA_ASSERT(inc == other.inc);
     uint64_t curMult = PCG32_MULT, curPlus = inc, curState = other.state;
     uint64_t theBit = 1u, distance = 0u;
     while (state != curState) {
@@ -150,7 +150,7 @@ inline int64_t RNG::operator-(const RNG &other) const
             curState = curState * curMult + curPlus;
             distance |= theBit;
         }
-        KSC_ASSERT((state & theBit) == (curState & theBit));
+        CUDA_ASSERT((state & theBit) == (curState & theBit));
         theBit <<= 1;
         curPlus = (curMult + 1ULL) * curPlus;
         curMult *= curMult;
@@ -254,7 +254,7 @@ CUDA_HOST_DEVICE inline int sample_small_discrete(span<const float> data, float 
             last_positive = i;
         }
     }
-    KSC_ASSERT(sum_w > 0.0f);
+    CUDA_ASSERT(sum_w > 0.0f);
     float inv_sum_w = 1.0f / sum_w;
 
     float cdf = 0.0f;
@@ -274,7 +274,7 @@ CUDA_HOST_DEVICE inline int sample_small_discrete(span<const float> data, float 
     if (selected == -1) {
         selected = last_positive;
     }
-    KSC_ASSERT(data[selected] > 0.0f);
+    CUDA_ASSERT(data[selected] > 0.0f);
     return selected;
 }
 

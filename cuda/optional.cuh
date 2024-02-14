@@ -91,13 +91,13 @@ class optional
     CUDA_HOST_DEVICE
     T &value()
     {
-        KSC_ASSERT(set);
+        CUDA_ASSERT(set);
         return *ptr();
     }
     CUDA_HOST_DEVICE
     const T &value() const
     {
-        KSC_ASSERT(set);
+        CUDA_ASSERT(set);
         return *ptr();
     }
 

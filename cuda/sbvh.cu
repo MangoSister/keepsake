@@ -165,7 +165,7 @@ static SplitEstimate estimateSpatialSplit(const std::vector<SBVHPrimRef> &refs, 
             chopped.max[dim] = std::min(chopped.max[dim], clipPlanes[b + 1]);
             buckets[b].bounds.expand(chopped);
         }
-        KSC_ASSERT(enter <= exit);
+        CUDA_ASSERT(enter <= exit);
         ++buckets[enter].enterCount;
         ++buckets[exit].exitCount;
     }
@@ -218,7 +218,7 @@ static SplitResult doObjectSplit(std::vector<SBVHPrimRef> &refs, const SplitEsti
     auto mid = std::partition(refs.begin(), refs.end(), [&](const SBVHPrimRef &p) {
         uint32_t b = (uint32_t)std::floor(ctx.option.bucketCount * centroidBounds.offset(p.partialBound.center(), dim));
         b = std::min(b, ctx.option.bucketCount - 1);
-        KSC_ASSERT(b < ctx.option.bucketCount);
+        CUDA_ASSERT(b < ctx.option.bucketCount);
         return b <= est.bucket;
     });
     SplitResult res;
@@ -272,7 +272,7 @@ static SplitResult doSpatialSplit(std::vector<SBVHPrimRef> &refs, const SplitEst
             actualRightBound.expand(currRef.partialBound);
             std::swap(currRef, refs[--rightStart]);
         } else {
-            KSC_ASSERT(minCost == fullSplitCost);
+            CUDA_ASSERT(minCost == fullSplitCost);
             SBVHPrimRef newRef = currRef;
             newRef.partialBound.min[dim] = clipPlane;
             currRef.partialBound.max[dim] = clipPlane;
@@ -294,7 +294,7 @@ static SplitResult doSpatialSplit(std::vector<SBVHPrimRef> &refs, const SplitEst
     res.leftBound = actualLeftBound;
     res.rightBound = actualRightBound;
     res.mid = rightStart;
-    KSC_ASSERT(res.mid > 0 && res.mid < (uint32_t)rightEnd);
+    CUDA_ASSERT(res.mid > 0 && res.mid < (uint32_t)rightEnd);
     return res;
 }
 
@@ -385,7 +385,7 @@ static uint32_t flatten(uint32_t buildIndex, uint32_t &flatIndex, SBVHNode *node
         node.splitAxis = buildNode.splitAxis;
         flatten(buildNode.children[0], flatIndex, nodes, ctx);
         node.rightChildOffset = flatten(buildNode.children[1], flatIndex, nodes, ctx);
-        KSC_ASSERT(node.rightChildOffset < (uint32_t)ctx.buildNodePool.size());
+        CUDA_ASSERT(node.rightChildOffset < (uint32_t)ctx.buildNodePool.size());
     } else {
         node.rightChildOffset = 0;
     }
@@ -403,7 +403,7 @@ SBVH::SBVH(const SBVHBuildOption &option, span<const vec3> vertices, span<const 
 
 void SBVH::build(const SBVHBuildOption &option)
 {
-    KSC_ASSERT(indices.size % 3 == 0);
+    CUDA_ASSERT(indices.size % 3 == 0);
     uint32_t initPrimCount = tri_count();
 
     BuildContext ctx;
@@ -433,7 +433,7 @@ void SBVH::build(const SBVHBuildOption &option)
     nodes = CudaManagedArray<SBVHNode>(ctx.totalNodeCount);
     uint32_t flatIndex = 0;
     flatten(0, flatIndex, nodes.ptr.get(), ctx);
-    KSC_ASSERT(ctx.totalNodeCount == flatIndex);
+    CUDA_ASSERT(ctx.totalNodeCount == flatIndex);
 
     primitives = CudaManagedArray<Primitive>(ctx.orderedPrims.size());
     std::memcpy(primitives.ptr.get(), ctx.orderedPrims.data(), sizeof(Primitive) * primitives.size);
@@ -464,7 +464,7 @@ struct TraversalStack
     CUDA_HOST_DEVICE
     void push(uint32_t nodeIndex, uint32_t primCount)
     {
-        KSC_ASSERT(stackSize < maxStackDepth);
+        CUDA_ASSERT(stackSize < maxStackDepth);
         uint32_t index = stackSize++;
         entries[index].nodeIndex = nodeIndex;
         entries[index].primCount = primCount;
@@ -473,7 +473,7 @@ struct TraversalStack
     CUDA_HOST_DEVICE
     TraversalStackEntry pop()
     {
-        KSC_ASSERT(stackSize > 0);
+        CUDA_ASSERT(stackSize > 0);
         uint32_t index = --stackSize;
         return entries[index];
     }
@@ -541,11 +541,11 @@ SBVHIsectRecord SBVH::intersect(const Ray &ray, const SBVHIsectOption &option) c
         } else {
             // const SBVHNode *left = &nodes[curr.nodeIndex + 1];
             const SBVHNode *right = &nodes[node->rightChildOffset];
-            KSC_ASSERT(right->primOffset > node->primOffset);
+            CUDA_ASSERT(right->primOffset > node->primOffset);
             uint32_t leftPrimCount = right->primOffset - node->primOffset;
-            KSC_ASSERT(leftPrimCount < curr.primCount);
+            CUDA_ASSERT(leftPrimCount < curr.primCount);
             uint32_t rightPrimCount = curr.primCount - leftPrimCount;
-            KSC_ASSERT(leftPrimCount + rightPrimCount == curr.primCount);
+            CUDA_ASSERT(leftPrimCount + rightPrimCount == curr.primCount);
             if (query.rb.dir_is_neg[node->splitAxis]) {
                 stack.push(curr.nodeIndex + 1, leftPrimCount);
                 curr = {node->rightChildOffset, rightPrimCount};
@@ -585,9 +585,9 @@ bool SBVH::intersectBool(const Ray &ray, const SBVHIsectOption &option) const
         } else {
             // const SBVHNode *left = &nodes[curr.nodeIndex + 1];
             const SBVHNode *right = &nodes[node->rightChildOffset];
-            KSC_ASSERT(right->primOffset > node->primOffset);
+            CUDA_ASSERT(right->primOffset > node->primOffset);
             uint32_t leftPrimCount = right->primOffset - node->primOffset;
-            KSC_ASSERT(leftPrimCount < curr.primCount);
+            CUDA_ASSERT(leftPrimCount < curr.primCount);
             uint32_t rightPrimCount = curr.primCount - leftPrimCount;
             if (query.rb.dir_is_neg[node->splitAxis]) {
                 stack.push(curr.nodeIndex + 1, leftPrimCount);

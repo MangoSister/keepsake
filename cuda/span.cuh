@@ -102,12 +102,12 @@ class span
 
     CUDA_HOST_DEVICE T &operator[](size_t i)
     {
-        KSC_ASSERT(i < size());
+        CUDA_ASSERT(i < size());
         return ptr[i];
     }
     CUDA_HOST_DEVICE const T &operator[](size_t i) const
     {
-        KSC_ASSERT(i < size());
+        CUDA_ASSERT(i < size());
         return ptr[i];
     }
 

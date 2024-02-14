@@ -1,13 +1,11 @@
 #pragma once
 
-#include "error.h"
+#include "api_error.h"
 
+#include <cassert>
 #include <cfloat>
 #include <climits>
 #include <cmath>
-
-namespace ksc
-{
 
 // __CUDACC__ defines whether nvcc is steering compilation or not
 // __CUDA_ARCH__ is always undefined when compiling host code, steered by nvcc or not
@@ -32,6 +30,30 @@ namespace ksc
 #else
 #define CONSTEXPR_VAL constexpr
 #endif
+
+#ifdef CUDA_IS_DEVICE_CODE
+#define CUDA_ASSERT(EXPR) assert(EXPR)
+
+#ifndef NDEBUG
+#define CUDA_ASSERT_FMT(EXPR, FMT, ...)                                                                                 \
+    do {                                                                                                               \
+        if (!(EXPR)) {                                                                                                 \
+            printf(FMT, ##__VA_ARGS__);                                                                                \
+        }                                                                                                              \
+        assert(EXPR);                                                                                                  \
+    } while (false) /* eat semicolon */
+#else
+#define CUDA_ASSERT_FMT(EXPR, FMT, ...) (void(0))
+#endif
+
+#else
+#include "../assertion.h"
+#define CUDA_ASSERT ASSERT
+#define CUDA_ASSERT_FMT ASSERT
+#endif
+
+namespace ksc
+{
 
 template <class To, class From>
 constexpr To CUDA_HOST_DEVICE bit_cast(const From &from) noexcept;

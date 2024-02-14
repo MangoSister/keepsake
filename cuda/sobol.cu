@@ -129,7 +129,7 @@ inline int GetMSB(uint32_t v)
 CUDA_HOST_DEVICE
 float GetSobolStatelessIter(int idx, int dim, uint32_t seed, int nd)
 {
-    KSC_ASSERT_FMT(nd <= MAX_SOBOL_DIM, "Sobol only support up to 64 dimensions");
+    CUDA_ASSERT_FMT(nd <= MAX_SOBOL_DIM, "Sobol only support up to 64 dimensions");
     uint32_t bits = HashToRndInt(idx * nd + dim, seed);
     int msb = GetMSB(idx);
     while (idx > 0) {

@@ -9,26 +9,26 @@ Texture2D::Texture2D(size_t width, size_t height, const cudaChannelFormatDesc &f
                      const cudaTextureDesc &tex_desc, span<const std::byte> data)
     : width(width), height(height), format_desc(format_desc), tex_desc(tex_desc)
 {
-    CUDA_CHECK(cudaMallocArray(&arr, &format_desc, width, height));
+    cuda_check(cudaMallocArray(&arr, &format_desc, width, height));
 
     size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
     size_t spitch = width * texel_bytes;
     // width - Width of matrix transfer(columns in bytes)
-    CUDA_CHECK(
+    cuda_check(
         cudaMemcpy2DToArray(arr, 0, 0, data.data(), spitch, width * texel_bytes, height, cudaMemcpyHostToDevice));
 
     cudaResourceDesc resDesc{};
     resDesc.resType = cudaResourceTypeArray;
     resDesc.res.array.array = arr;
 
-    CUDA_CHECK(cudaCreateTextureObject(&tex_obj, &resDesc, &tex_desc, nullptr));
+    cuda_check(cudaCreateTextureObject(&tex_obj, &resDesc, &tex_desc, nullptr));
 }
 
 Texture2D::~Texture2D()
 {
     if (tex_obj) {
-        CUDA_CHECK(cudaDestroyTextureObject(tex_obj));
-        CUDA_CHECK(cudaFreeArray(arr));
+        cuda_check(cudaDestroyTextureObject(tex_obj));
+        cuda_check(cudaFreeArray(arr));
         std::memset(this, 0, sizeof(this));
     }
 }
@@ -45,8 +45,8 @@ Texture2D &Texture2D::operator=(Texture2D &&other)
         return *this;
     }
     if (tex_obj) {
-        CUDA_CHECK(cudaDestroyTextureObject(tex_obj));
-        CUDA_CHECK(cudaFreeArray(arr));
+        cuda_check(cudaDestroyTextureObject(tex_obj));
+        cuda_check(cudaFreeArray(arr));
     }
     std::memcpy(this, &other, sizeof(*this));
     std::memset(&other, 0, sizeof(other));
@@ -58,7 +58,7 @@ Texture3D::Texture3D(size_t width, size_t height, size_t depth, const cudaChanne
                      const cudaTextureDesc &tex_desc, span<const std::byte> data)
     : width(width), height(height), depth(depth), format_desc(format_desc), tex_desc(tex_desc)
 {
-    CUDA_CHECK(cudaMalloc3DArray(&arr, &format_desc, cudaExtent{width, height, depth}));
+    cuda_check(cudaMalloc3DArray(&arr, &format_desc, cudaExtent{width, height, depth}));
 
     size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
 
@@ -71,20 +71,20 @@ Texture3D::Texture3D(size_t width, size_t height, size_t depth, const cudaChanne
     // then the extents are defined in elements of unsigned char.
     p.extent = make_cudaExtent(width, height, depth);
     p.kind = cudaMemcpyHostToDevice;
-    CUDA_CHECK(cudaMemcpy3D(&p));
+    cuda_check(cudaMemcpy3D(&p));
 
     cudaResourceDesc resDesc{};
     resDesc.resType = cudaResourceTypeArray;
     resDesc.res.array.array = arr;
 
-    CUDA_CHECK(cudaCreateTextureObject(&tex_obj, &resDesc, &tex_desc, nullptr));
+    cuda_check(cudaCreateTextureObject(&tex_obj, &resDesc, &tex_desc, nullptr));
 }
 
 Texture3D::~Texture3D()
 {
     if (tex_obj) {
-        CUDA_CHECK(cudaDestroyTextureObject(tex_obj));
-        CUDA_CHECK(cudaFreeArray(arr));
+        cuda_check(cudaDestroyTextureObject(tex_obj));
+        cuda_check(cudaFreeArray(arr));
         std::memset(this, 0, sizeof(*this));
     }
 }
@@ -101,8 +101,8 @@ Texture3D &Texture3D::operator=(Texture3D &&other)
         return *this;
     }
     if (tex_obj) {
-        CUDA_CHECK(cudaDestroyTextureObject(tex_obj));
-        CUDA_CHECK(cudaFreeArray(arr));
+        cuda_check(cudaDestroyTextureObject(tex_obj));
+        cuda_check(cudaFreeArray(arr));
     }
     std::memcpy(this, &other, sizeof(*this));
     std::memset(&other, 0, sizeof(other));
@@ -124,7 +124,7 @@ std::vector<std::byte> Texture3D::write_to_host_linear() const
     // then the extents are defined in elements of unsigned char.
     p.extent = make_cudaExtent(width, height, depth);
     p.kind = cudaMemcpyDeviceToHost;
-    CUDA_CHECK(cudaMemcpy3D(&p));
+    cuda_check(cudaMemcpy3D(&p));
 
     return dst;
 }
@@ -133,27 +133,27 @@ Surface2D::Surface2D(size_t width, size_t height, const cudaChannelFormatDesc &f
                      ksc::span<const std::byte> data)
     : width(width), height(height), format_desc(format_desc)
 {
-    CUDA_CHECK(cudaMallocArray(&arr, &format_desc, width, height, cudaArraySurfaceLoadStore));
+    cuda_check(cudaMallocArray(&arr, &format_desc, width, height, cudaArraySurfaceLoadStore));
 
     if (!data.empty()) {
         size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
         size_t spitch = width * texel_bytes;
         // width - Width of matrix transfer(columns in bytes)
-        CUDA_CHECK(
+        cuda_check(
             cudaMemcpy2DToArray(arr, 0, 0, data.data(), spitch, width * texel_bytes, height, cudaMemcpyHostToDevice));
     }
     cudaResourceDesc resDesc{};
     resDesc.resType = cudaResourceTypeArray;
     resDesc.res.array.array = arr;
 
-    CUDA_CHECK(cudaCreateSurfaceObject(&surf_obj, &resDesc));
+    cuda_check(cudaCreateSurfaceObject(&surf_obj, &resDesc));
 }
 
 Surface2D::~Surface2D()
 {
     if (surf_obj) {
-        CUDA_CHECK(cudaDestroySurfaceObject(surf_obj));
-        CUDA_CHECK(cudaFreeArray(arr));
+        cuda_check(cudaDestroySurfaceObject(surf_obj));
+        cuda_check(cudaFreeArray(arr));
         std::memset(this, 0, sizeof(*this));
     }
 }
@@ -170,8 +170,8 @@ Surface2D &Surface2D::operator=(Surface2D &&other)
         return *this;
     }
     if (surf_obj) {
-        CUDA_CHECK(cudaDestroySurfaceObject(surf_obj));
-        CUDA_CHECK(cudaFreeArray(arr));
+        cuda_check(cudaDestroySurfaceObject(surf_obj));
+        cuda_check(cudaFreeArray(arr));
     }
     std::memcpy(this, &other, sizeof(*this));
     std::memset(&other, 0, sizeof(other));
@@ -184,7 +184,7 @@ std::vector<std::byte> Surface2D::write_to_host_linear() const
     size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
     std::vector<std::byte> dst(texel_bytes * width * height);
     // width -Width of matrix transfer(columns in bytes)
-    CUDA_CHECK(cudaMemcpy2DFromArray(dst.data(), width * texel_bytes, arr, 0, 0, width * texel_bytes, height,
+    cuda_check(cudaMemcpy2DFromArray(dst.data(), width * texel_bytes, arr, 0, 0, width * texel_bytes, height,
                                      cudaMemcpyDeviceToHost));
     return dst;
 }
@@ -199,7 +199,7 @@ LowLevelLinearImage2D::LowLevelLinearImage2D(size_t width, size_t height, const 
     m = cuda_alloc_device_low_level(size);
 
     if (!data.empty()) {
-        CU_CHECK(cuMemcpy(m.dptr, reinterpret_cast<CUdeviceptr>(data.data()), size));
+        cu_check(cuMemcpy(m.dptr, reinterpret_cast<CUdeviceptr>(data.data()), size));
     }
 }
 
@@ -229,24 +229,24 @@ std::vector<std::byte> LowLevelLinearImage2D::write_to_host_linear() const
 {
     size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
     std::vector<std::byte> dst(texel_bytes * width * height);
-    CU_CHECK(cuMemcpy(reinterpret_cast<CUdeviceptr>(dst.data()), m.dptr, dst.size()));
+    cu_check(cuMemcpy(reinterpret_cast<CUdeviceptr>(dst.data()), m.dptr, dst.size()));
     return dst;
 }
 
 void LowLevelLinearImage2D::clear_all_u16(uint16_t value)
 {
     size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
-    KSC_ASSERT(texel_bytes * width * height % sizeof(uint16_t) == 0);
+    CUDA_ASSERT(texel_bytes * width * height % sizeof(uint16_t) == 0);
     size_t N = texel_bytes * width * height / sizeof(uint16_t);
-    CU_CHECK(cuMemsetD16(m.dptr, value, N));
+    cu_check(cuMemsetD16(m.dptr, value, N));
 }
 
 void LowLevelLinearImage2D::clear_all_u32(uint32_t value)
 {
     size_t texel_bytes = (format_desc.x + format_desc.y + format_desc.z + format_desc.w) / 8;
-    KSC_ASSERT(texel_bytes * width * height % sizeof(uint32_t) == 0);
+    CUDA_ASSERT(texel_bytes * width * height % sizeof(uint32_t) == 0);
     size_t N = texel_bytes * width * height / sizeof(uint32_t);
-    CU_CHECK(cuMemsetD32(m.dptr, value, N));
+    cu_check(cuMemsetD32(m.dptr, value, N));
 }
 
 CUDA_DEVICE color3 LowLevelLinearImage2D::read_rgb(vec2i pixel) const

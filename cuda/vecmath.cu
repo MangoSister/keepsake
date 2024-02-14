@@ -4,7 +4,7 @@ namespace ksc
 {
 vec3 equal_area_square_to_sphere(vec2 p)
 {
-    KSC_ASSERT(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
+    CUDA_ASSERT(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
     // Transform _p_ to $[-1,1]^2$ and compute absolute values
     float u = 2 * p.x - 1, v = 2 * p.y - 1;
     float up = abs(u), vp = abs(v);
@@ -28,7 +28,7 @@ vec3 equal_area_square_to_sphere(vec2 p)
 
 vec2 equal_area_sphere_to_square(vec3 d)
 {
-    KSC_ASSERT(length_squared(d) > .999 && length_squared(d) < 1.001);
+    CUDA_ASSERT(length_squared(d) > .999 && length_squared(d) < 1.001);
     float x = abs(d.x), y = abs(d.y), z = abs(d.z);
 
     // Compute the radius r

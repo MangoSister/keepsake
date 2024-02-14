@@ -85,35 +85,35 @@ CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
 
     // Get the recommended granularity for m_cudaDevice.
     size_t granularity = 0;
-    CU_CHECK(cuMemGetAllocationGranularity(&granularity, &alloc_prop, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
+    cu_check(cuMemGetAllocationGranularity(&granularity, &alloc_prop, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
 
     size_t size_rounded = (((size + granularity - 1) / granularity) * granularity);
 
     // Reserve the required contiguous VA space for the allocations
     CUdeviceptr dptr = 0;
-    CU_CHECK(cuMemAddressReserve(&dptr, size_rounded, granularity, 0U, 0));
+    cu_check(cuMemAddressReserve(&dptr, size_rounded, granularity, 0U, 0));
 
     // Create the allocations as a pinned allocation on this device.
     // Create an allocation to store all the positions of points on the xy plane
     // and a second allocation which stores information if the corresponding
     // position is inside the unit circle or not.
     CUmemGenericAllocationHandle handle{};
-    CU_CHECK(cuMemCreate(&handle, size_rounded, &alloc_prop, 0));
+    cu_check(cuMemCreate(&handle, size_rounded, &alloc_prop, 0));
 
     // Export the allocation to a platform-specific handle. The type of handle
     // requested here must match the requestedHandleTypes field in the prop
     // structure passed to cuMemCreate. The handle obtained here will be passed to
     // vulkan to import the allocation.
     ShareableHandle shareable_handle{};
-    CU_CHECK(cuMemExportToShareableHandle((void *)&shareable_handle, handle, ipc_handle_type_flag, 0));
+    cu_check(cuMemExportToShareableHandle((void *)&shareable_handle, handle, ipc_handle_type_flag, 0));
 
-    CU_CHECK(cuMemMap(dptr, size_rounded, 0, handle, 0));
+    cu_check(cuMemMap(dptr, size_rounded, 0, handle, 0));
 
     // Release the handles for the allocation. Since the allocation is currently
     // mapped to a VA range with a previous call to cuMemMap the actual freeing of
     // memory allocation will happen on an eventual call to cuMemUnmap. Thus the
     // allocation will be kept live until it is unmapped.
-    CU_CHECK(cuMemRelease(handle));
+    cu_check(cuMemRelease(handle));
 
     CUmemAccessDesc access_descriptor = {};
     access_descriptor.location.id = device;
@@ -122,7 +122,7 @@ CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
 
     // Apply the access descriptor to the whole VA range. Essentially enables
     // Read-Write access to the range.
-    CU_CHECK(cuMemSetAccess(dptr, size_rounded, &access_descriptor, 1));
+    cu_check(cuMemSetAccess(dptr, size_rounded, &access_descriptor, 1));
 
     return CudaShareableLowLevelMemory{.dptr = dptr, .shareable_handle = shareable_handle, .size = size_rounded};
 }
@@ -133,7 +133,7 @@ void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
         return;
     }
 
-    CU_CHECK(cuMemUnmap(m.dptr, m.size));
+    cu_check(cuMemUnmap(m.dptr, m.size));
 
 #if defined(__linux__)
     close(m.shareable_handle);
@@ -142,7 +142,7 @@ void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
 #endif
 
     // Free the virtual address region.
-    CU_CHECK(cuMemAddressFree(m.dptr, m.size));
+    cu_check(cuMemAddressFree(m.dptr, m.size));
 }
 
 } // namespace ksc

@@ -110,14 +110,14 @@ struct AABB3
     CUDA_HOST_DEVICE
     const vec3 &operator[](uint32_t index) const
     {
-        KSC_ASSERT(index <= 1);
+        CUDA_ASSERT(index <= 1);
         return (reinterpret_cast<const vec3 *>(this))[index];
     }
 
     CUDA_HOST_DEVICE
     vec3 &operator[](uint32_t index)
     {
-        KSC_ASSERT(index <= 1);
+        CUDA_ASSERT(index <= 1);
         return (reinterpret_cast<vec3 *>(this))[index];
     }
 
