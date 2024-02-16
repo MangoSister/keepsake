@@ -38,8 +38,7 @@ namespace vk
 // [Memory allocation]
 //-----------------------------------------------------------------------------
 
-VulkanAllocator::VulkanAllocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queue_family_index,
-                                 VkQueue upload_queue)
+Allocator::Allocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queue_family_index, VkQueue upload_queue)
 {
     device = vma_info.device;
     vk_check(vmaCreateAllocator(&vma_info, &vma));
@@ -57,7 +56,7 @@ VulkanAllocator::VulkanAllocator(const VmaAllocatorCreateInfo &vma_info, uint32_
     min_texel_buffer_offset_alignment = physicalDeviceProps.limits.minTexelBufferOffsetAlignment;
 }
 
-void VulkanAllocator::shutdown()
+void Allocator::shutdown()
 {
     clear_staging_buffer();
 
@@ -65,8 +64,8 @@ void VulkanAllocator::shutdown()
     vmaDestroyAllocator(vma);
 }
 
-Buffer VulkanAllocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                      VmaAllocationCreateFlags flags, const std::byte *data, VkCommandBuffer custom_cb)
+Buffer Allocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+                                const std::byte *data, VkCommandBuffer custom_cb)
 {
     Buffer buf;
     VmaAllocationCreateInfo allocCI{};
@@ -89,10 +88,9 @@ Buffer VulkanAllocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryU
     return buf;
 }
 
-TexelBuffer VulkanAllocator::create_texel_buffer(const VkBufferCreateInfo &info,
-                                                 VkBufferViewCreateInfo &buffer_view_info, VmaMemoryUsage usage,
-                                                 VmaAllocationCreateFlags flags, const std::byte *data,
-                                                 VkCommandBuffer custom_cb)
+TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBufferViewCreateInfo &buffer_view_info,
+                                           VmaMemoryUsage usage, VmaAllocationCreateFlags flags, const std::byte *data,
+                                           VkCommandBuffer custom_cb)
 {
     TexelBuffer tb;
     tb.buffer = create_buffer(info, usage, flags, data, custom_cb);
@@ -101,22 +99,19 @@ TexelBuffer VulkanAllocator::create_texel_buffer(const VkBufferCreateInfo &info,
     return tb;
 }
 
-std::byte *VulkanAllocator::map(VmaAllocation allocation)
+std::byte *Allocator::map(VmaAllocation allocation)
 {
     void *ptr = nullptr;
     vk_check(vmaMapMemory(vma, allocation, &ptr));
     return reinterpret_cast<std::byte *>(ptr);
 }
 
-void VulkanAllocator::unmap(VmaAllocation allocation) { vmaUnmapMemory(vma, allocation); }
+void Allocator::unmap(VmaAllocation allocation) { vmaUnmapMemory(vma, allocation); }
 
-void VulkanAllocator::flush(VmaAllocation allocation)
-{
-    vk_check(vmaFlushAllocation(vma, allocation, 0, VK_WHOLE_SIZE));
-}
+void Allocator::flush(VmaAllocation allocation) { vk_check(vmaFlushAllocation(vma, allocation, 0, VK_WHOLE_SIZE)); }
 
-PerFrameBuffer VulkanAllocator::create_per_frame_buffer(const VkBufferCreateInfo &per_frame_info, VmaMemoryUsage usage,
-                                                        uint32_t num_frames)
+PerFrameBuffer Allocator::create_per_frame_buffer(const VkBufferCreateInfo &per_frame_info, VmaMemoryUsage usage,
+                                                  uint32_t num_frames)
 {
     PerFrameBuffer buf;
     buf.num_frames = num_frames;
@@ -139,14 +134,14 @@ PerFrameBuffer VulkanAllocator::create_per_frame_buffer(const VkBufferCreateInfo
     return buf;
 }
 
-void VulkanAllocator::flush(const PerFrameBuffer &buffer, uint32_t frameIndex)
+void Allocator::flush(const PerFrameBuffer &buffer, uint32_t frameIndex)
 {
     ASSERT(frameIndex < buffer.num_frames);
     VkDeviceSize offset = frameIndex * buffer.per_frame_size;
     vk_check(vmaFlushAllocation(vma, buffer.buffer.allocation, offset, buffer.per_frame_size));
 }
 
-void VulkanAllocator::begin_staging_session()
+void Allocator::begin_staging_session()
 {
     ASSERT(!upload_cb);
 
@@ -164,7 +159,7 @@ void VulkanAllocator::begin_staging_session()
     vk_check(vkBeginCommandBuffer(upload_cb, &beginInfo));
 }
 
-void VulkanAllocator::end_staging_session()
+void Allocator::end_staging_session()
 {
     ASSERT(upload_cb);
     vk_check(vkEndCommandBuffer(upload_cb));
@@ -187,7 +182,7 @@ void VulkanAllocator::end_staging_session()
     clear_staging_buffer();
 }
 
-VkDeviceSize VulkanAllocator::image_size(const VkImageCreateInfo &info) const
+VkDeviceSize Allocator::image_size(const VkImageCreateInfo &info) const
 {
     uint32_t numPixels = 0;
     for (uint32_t i = 0, w = info.extent.width, h = info.extent.height; i < info.mipLevels; ++i) {
@@ -230,7 +225,7 @@ static VkImageViewCreateInfo viewInfoFromImageInfo(const VkImageCreateInfo &imag
     return viewInfo;
 }
 
-Image VulkanAllocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
+Image Allocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
 {
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
@@ -241,8 +236,8 @@ Image VulkanAllocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsag
     return image;
 }
 
-ImageWithView VulkanAllocator::create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                                      VmaMemoryUsage usage)
+ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
+                                                VmaMemoryUsage usage)
 {
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
@@ -254,14 +249,14 @@ ImageWithView VulkanAllocator::create_image_with_view(const VkImageCreateInfo &i
     return image;
 }
 
-ImageWithView VulkanAllocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cubeMap)
+ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cubeMap)
 {
     VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cubeMap);
     return create_image_with_view(info, viewInfo, usage);
 }
 
-ImageWithView VulkanAllocator::create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
-                                                   bool storage)
+ImageWithView Allocator::create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
+                                             bool storage)
 {
     VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -294,7 +289,7 @@ ImageWithView VulkanAllocator::create_color_buffer(uint32_t width, uint32_t heig
     return create_image_with_view(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-ImageWithView VulkanAllocator::create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage)
+ImageWithView Allocator::create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage)
 {
     VkImageCreateInfo depthInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     depthInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -327,8 +322,8 @@ ImageWithView VulkanAllocator::create_depth_buffer(uint32_t width, uint32_t heig
     return create_image_with_view(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-ImageWithView VulkanAllocator::create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                                        VmaMemoryUsage usage, VkImageLayout layout)
+ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
+                                                  VmaMemoryUsage usage, VkImageLayout layout)
 {
     ImageWithView image = create_image_with_view(info, view_info, usage);
 
@@ -355,16 +350,16 @@ ImageWithView VulkanAllocator::create_and_transit_image(const VkImageCreateInfo 
     return image;
 }
 
-ImageWithView VulkanAllocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                        VkImageLayout layout, bool cube_map)
+ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                                  VkImageLayout layout, bool cube_map)
 {
     VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
     return create_and_transit_image(info, viewInfo, usage, layout);
 }
 
-ImageWithView VulkanAllocator::create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                       const std::byte *data, size_t byte_size, VkImageLayout layout,
-                                                       MipmapOption mipmap_option, bool cube_map)
+ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                                 const std::byte *data, size_t byte_size, VkImageLayout layout,
+                                                 MipmapOption mipmap_option, bool cube_map)
 {
     ASSERT(upload_cb);
 
@@ -556,7 +551,7 @@ ImageWithView VulkanAllocator::create_and_upload_image(const VkImageCreateInfo &
     return image;
 }
 
-Texture VulkanAllocator::create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info)
+Texture Allocator::create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info)
 {
     Texture texture;
     texture.image = image;
@@ -564,8 +559,8 @@ Texture VulkanAllocator::create_texture(const ImageWithView &image, const VkSamp
     return texture;
 }
 
-Buffer VulkanAllocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
-                                              bool auto_mapped /*= true*/)
+Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
+                                        bool auto_mapped /*= true*/)
 {
     ASSERT(buffer_size >= data_size);
 
@@ -588,7 +583,7 @@ Buffer VulkanAllocator::create_staging_buffer(VkDeviceSize buffer_size, const st
     return buffer;
 }
 
-void VulkanAllocator::clear_staging_buffer()
+void Allocator::clear_staging_buffer()
 {
     for (auto staging : staging_buffers) {
         destroy(staging);
@@ -596,7 +591,7 @@ void VulkanAllocator::clear_staging_buffer()
     staging_buffers.clear();
 }
 
-void VulkanAllocator::destroy(Buffer &buffer)
+void Allocator::destroy(Buffer &buffer)
 {
     if (buffer.buffer != VK_NULL_HANDLE) {
         vmaDestroyBuffer(vma, buffer.buffer, buffer.allocation);
@@ -604,20 +599,20 @@ void VulkanAllocator::destroy(Buffer &buffer)
     buffer = {};
 }
 
-void VulkanAllocator::destroy(TexelBuffer &texel_buffer)
+void Allocator::destroy(TexelBuffer &texel_buffer)
 {
     vkDestroyBufferView(device, texel_buffer.buffer_view, nullptr);
     texel_buffer.buffer_view = {};
     destroy(texel_buffer.buffer);
 }
 
-void VulkanAllocator::destroy(PerFrameBuffer &per_frame_buffer)
+void Allocator::destroy(PerFrameBuffer &per_frame_buffer)
 {
     destroy(per_frame_buffer.buffer);
     per_frame_buffer.num_frames = per_frame_buffer.per_frame_size = 0;
 }
 
-void VulkanAllocator::destroy(Image &image)
+void Allocator::destroy(Image &image)
 {
     if (image.image != VK_NULL_HANDLE) {
         vmaDestroyImage(vma, image.image, image.allocation);
@@ -625,7 +620,7 @@ void VulkanAllocator::destroy(Image &image)
     image = {};
 }
 
-void VulkanAllocator::destroy(ImageWithView &image)
+void Allocator::destroy(ImageWithView &image)
 {
     if (image.image != VK_NULL_HANDLE) {
         vmaDestroyImage(vma, image.image, image.allocation);
@@ -634,7 +629,7 @@ void VulkanAllocator::destroy(ImageWithView &image)
     image = {};
 }
 
-void VulkanAllocator::destroy(Texture &texture, bool destroy_image)
+void Allocator::destroy(Texture &texture, bool destroy_image)
 {
     vkDestroySampler(device, texture.sampler, nullptr);
     if (destroy_image && texture.image.image != VK_NULL_HANDLE) {
@@ -702,23 +697,23 @@ static void check_required_instance_layers(const std::vector<const char *> &rlay
     }
 }
 
-VulkanContextCreateInfo::~VulkanContextCreateInfo()
+ContextCreateInfo::~ContextCreateInfo()
 {
     for (void *data : device_features_data) {
         free(data);
     }
 }
 
-void VulkanContextCreateInfo::enable_validation()
+void ContextCreateInfo::enable_validation()
 {
     instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     instance_layers.push_back("VK_LAYER_KHRONOS_validation");
     validation = true;
 }
 
-void VulkanContextCreateInfo::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
+void ContextCreateInfo::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
 
-void VulkanContext::shutdown()
+void Context::shutdown()
 {
     allocator.shutdown();
     vkDestroyDevice(device, nullptr);
@@ -731,7 +726,7 @@ void VulkanContext::shutdown()
     vkDestroyInstance(instance, nullptr);
 }
 
-void VulkanContext::create_instance(const VulkanContextCreateInfo &info)
+void Context::create_instance(const ContextCreateInfo &info)
 {
     vk_check(volkInitialize());
 
@@ -857,8 +852,7 @@ static bool find_all_purpose_queue_family_index(VkPhysicalDevice physical_device
     return false;
 }
 
-std::vector<CompatibleDevice> VulkanContext::query_compatible_devices(const VulkanContextCreateInfo &info,
-                                                                      VkSurfaceKHR surface)
+std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextCreateInfo &info, VkSurfaceKHR surface)
 {
     std::vector<const char *> rexts;
     for (const std::string &rext : info.device_extensions) {
@@ -897,7 +891,7 @@ std::vector<CompatibleDevice> VulkanContext::query_compatible_devices(const Vulk
     return compatibles;
 }
 
-void VulkanContext::create_device(const VulkanContextCreateInfo &info, CompatibleDevice compatible)
+void Context::create_device(const ContextCreateInfo &info, CompatibleDevice compatible)
 {
     printf("Selected GPU index: [%u].\n", compatible.physical_device_index);
 
@@ -951,7 +945,7 @@ void VulkanContext::create_device(const VulkanContextCreateInfo &info, Compatibl
     vmaInfo.physicalDevice = physical_device;
     vmaInfo.device = device;
     vmaInfo.instance = instance;
-    allocator = VulkanAllocator(vmaInfo, main_queue_family_index, main_queue);
+    allocator = Allocator(vmaInfo, main_queue_family_index, main_queue);
 }
 
 //-----------------------------------------------------------------------------
@@ -1358,7 +1352,7 @@ VkWriteDescriptorSet DescriptorSetHelper::make_write_array(VkDescriptorSet dst_s
 
 GFX::GFX(const GFXArgs &args)
 {
-    VulkanContextCreateInfo vkctx_args{};
+    ContextCreateInfo vkctx_args{};
     vkctx_args.api_version_major = 1;
     vkctx_args.api_version_minor = 3;
 
@@ -1372,36 +1366,36 @@ GFX::GFX(const GFXArgs &args)
 #endif
     vkctx_args.enable_swapchain();
 
-    vkctx.create_instance(vkctx_args);
+    ctx.create_instance(vkctx_args);
 
-    vk_check(glfwCreateWindowSurface(vkctx.instance, args.window, nullptr, &surface));
+    vk_check(glfwCreateWindowSurface(ctx.instance, args.window, nullptr, &surface));
 
-    auto compatibles = vkctx.query_compatible_devices(vkctx_args, surface);
+    auto compatibles = ctx.query_compatible_devices(vkctx_args, surface);
     if (compatibles.empty()) {
         fprintf(stderr, "No compatible vulkan devices.\n");
         std::abort();
     }
-    vkctx.create_device(vkctx_args, compatibles[0]);
+    ctx.create_device(vkctx_args, compatibles[0]);
 
     SwapchainCreateInfo swapchain_args{};
-    swapchain_args.physical_device = vkctx.physical_device;
-    swapchain_args.device = vkctx.device;
-    swapchain_args.queue = vkctx.main_queue;
+    swapchain_args.physical_device = ctx.physical_device;
+    swapchain_args.device = ctx.device;
+    swapchain_args.queue = ctx.main_queue;
     swapchain_args.surface = surface;
     swapchain_args.width = args.width;
     swapchain_args.height = args.height;
     swapchain_args.max_frames_ahead = 2;
     swapchain = Swapchain(swapchain_args);
 
-    cb_manager = CmdBufManager((uint32_t)swapchain.image_views.size(), vkctx.main_queue_family_index, vkctx.device);
+    cb_manager = CmdBufManager((uint32_t)swapchain.image_views.size(), ctx.main_queue_family_index, ctx.device);
 }
 
 void GFX::shutdown()
 {
     swapchain.shutdown();
     cb_manager.shutdown();
-    vkDestroySurfaceKHR(vkctx.instance, surface, nullptr);
-    vkctx.shutdown();
+    vkDestroySurfaceKHR(ctx.instance, surface, nullptr);
+    ctx.shutdown();
 }
 
 //-----------------------------------------------------------------------------
@@ -1433,7 +1427,7 @@ GUI::GUI(const GUICreateInfo &info) : window(info.window), gfx(info.gfx)
             VkInstance instance = (VkInstance)user_data;
             return vkGetInstanceProcAddr(instance, function_name);
         },
-        gfx->vkctx.instance);
+        gfx->ctx.instance);
     ImGui_ImplGlfw_InitForVulkan(info.window, true);
 
     create_render_pass();
@@ -1457,14 +1451,14 @@ GUI::GUI(const GUICreateInfo &info) : window(info.window), gfx(info.gfx)
                                       .poolSizeCount = (uint32_t)poolSizes.size(),
                                       .pPoolSizes = poolSizes.data()};
 
-    vk_check(vkCreateDescriptorPool(info.gfx->vkctx.device, &poolCI, nullptr, &pool));
+    vk_check(vkCreateDescriptorPool(info.gfx->ctx.device, &poolCI, nullptr, &pool));
 
     ImGui_ImplVulkan_InitInfo initInfo{};
-    initInfo.Instance = info.gfx->vkctx.instance;
-    initInfo.PhysicalDevice = info.gfx->vkctx.physical_device;
-    initInfo.Device = info.gfx->vkctx.device;
-    initInfo.QueueFamily = info.gfx->vkctx.main_queue_family_index;
-    initInfo.Queue = info.gfx->vkctx.main_queue;
+    initInfo.Instance = info.gfx->ctx.instance;
+    initInfo.PhysicalDevice = info.gfx->ctx.physical_device;
+    initInfo.Device = info.gfx->ctx.device;
+    initInfo.QueueFamily = info.gfx->ctx.main_queue_family_index;
+    initInfo.Queue = info.gfx->ctx.main_queue;
     initInfo.MinImageCount = initInfo.ImageCount = (uint32_t)gfx->swapchain.images.size();
     initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     initInfo.DescriptorPool = pool;
@@ -1514,7 +1508,7 @@ void GUI::create_render_pass()
     renderPassCI.pDependencies = &dep;
     renderPassCI.dependencyCount = 1;
 
-    vk_check(vkCreateRenderPass(gfx->vkctx.device, &renderPassCI, nullptr, &render_pass));
+    vk_check(vkCreateRenderPass(gfx->ctx.device, &renderPassCI, nullptr, &render_pass));
 }
 
 void GUI::create_framebuffers()
@@ -1529,7 +1523,7 @@ void GUI::create_framebuffers()
         fbCI.renderPass = render_pass;
         fbCI.width = swapchain.extent.width;
         fbCI.height = swapchain.extent.height;
-        vk_check(vkCreateFramebuffer(gfx->vkctx.device, &fbCI, nullptr, &framebuffers[i]));
+        vk_check(vkCreateFramebuffer(gfx->ctx.device, &fbCI, nullptr, &framebuffers[i]));
     }
 }
 
@@ -1575,15 +1569,15 @@ void GUI::shutdown()
     destroy_framebuffers();
     destroy_render_pass();
 
-    vkDestroyDescriptorPool(gfx->vkctx.device, pool, nullptr);
+    vkDestroyDescriptorPool(gfx->ctx.device, pool, nullptr);
 }
 
-void GUI::destroy_render_pass() { vkDestroyRenderPass(gfx->vkctx.device, render_pass, nullptr); }
+void GUI::destroy_render_pass() { vkDestroyRenderPass(gfx->ctx.device, render_pass, nullptr); }
 
 void GUI::destroy_framebuffers()
 {
     for (auto fb : framebuffers) {
-        vkDestroyFramebuffer(gfx->vkctx.device, fb, nullptr);
+        vkDestroyFramebuffer(gfx->ctx.device, fb, nullptr);
     }
 }
 

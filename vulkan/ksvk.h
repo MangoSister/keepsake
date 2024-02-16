@@ -95,16 +95,16 @@ enum class MipmapOption
     OnlyAllocate,
 };
 
-struct VulkanAllocator
+struct Allocator
 {
-    VulkanAllocator() = default;
-    VulkanAllocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queu_family_index, VkQueue upload_queue);
+    Allocator() = default;
+    Allocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queu_family_index, VkQueue upload_queue);
     void shutdown();
 
-    VulkanAllocator(const VulkanAllocator &other) = delete;
-    VulkanAllocator &operator=(const VulkanAllocator &other) = delete;
-    VulkanAllocator(VulkanAllocator &&other) = default;
-    VulkanAllocator &operator=(VulkanAllocator &&other) = default;
+    Allocator(const Allocator &other) = delete;
+    Allocator &operator=(const Allocator &other) = delete;
+    Allocator(Allocator &&other) = default;
+    Allocator &operator=(Allocator &&other) = default;
 
     // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
     Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO,
@@ -208,9 +208,9 @@ struct VulkanAllocator
 // [Basic vulkan object management]
 //-----------------------------------------------------------------------------
 
-struct VulkanContextCreateInfo
+struct ContextCreateInfo
 {
-    ~VulkanContextCreateInfo();
+    ~ContextCreateInfo();
 
     void enable_validation();
     void enable_swapchain();
@@ -257,19 +257,19 @@ struct CompatibleDevice
     uint32_t queue_family_index;
 };
 
-struct VulkanContext
+struct Context
 {
-    VulkanContext() = default;
+    Context() = default;
     void shutdown();
 
-    VulkanContext(const VulkanContext &other) = delete;
-    VulkanContext &operator=(const VulkanContext &other) = delete;
-    VulkanContext(VulkanContext &&other) = default;
-    VulkanContext &operator=(VulkanContext &&other) = default;
+    Context(const Context &other) = delete;
+    Context &operator=(const Context &other) = delete;
+    Context(Context &&other) = default;
+    Context &operator=(Context &&other) = default;
 
-    void create_instance(const VulkanContextCreateInfo &info);
-    std::vector<CompatibleDevice> query_compatible_devices(const VulkanContextCreateInfo &info, VkSurfaceKHR surface);
-    void create_device(const VulkanContextCreateInfo &info, CompatibleDevice compatible);
+    void create_instance(const ContextCreateInfo &info);
+    std::vector<CompatibleDevice> query_compatible_devices(const ContextCreateInfo &info, VkSurfaceKHR surface);
+    void create_device(const ContextCreateInfo &info, CompatibleDevice compatible);
 
     template <typename TWork>
     void submit_once(const TWork &task);
@@ -291,11 +291,11 @@ struct VulkanContext
     VkQueue main_queue;
 
     // Single allocator
-    VulkanAllocator allocator;
+    Allocator allocator;
 };
 
 template <typename TWork>
-void VulkanContext::submit_once(const TWork &task)
+void Context::submit_once(const TWork &task)
 {
     VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     poolInfo.queueFamilyIndex = main_queue_family_index;
@@ -527,7 +527,7 @@ struct GFX
     Swapchain swapchain;
     CmdBufManager cb_manager;
     VkSurfaceKHR surface;
-    VulkanContext vkctx;
+    Context ctx;
 };
 
 //-----------------------------------------------------------------------------
