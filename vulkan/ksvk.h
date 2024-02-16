@@ -1,6 +1,7 @@
 #pragma once
 #include "../assertion.h"
 
+#include <cstddef>
 #include <functional>
 #include <source_location>
 
@@ -105,14 +106,14 @@ struct VulkanAllocator
     VulkanAllocator(VulkanAllocator &&other) = default;
     VulkanAllocator &operator=(VulkanAllocator &&other) = default;
 
-    Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage);
-    Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
+    // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
+    Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO,
+                         VmaAllocationCreateFlags flags = 0, const std::byte *data = nullptr,
                          VkCommandBuffer custom_cb = VK_NULL_HANDLE);
-    TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                    VkBufferViewCreateInfo &buffer_view_info);
-    TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                    VkBufferViewCreateInfo &buffer_view_info, const uint8_t *data,
-                                    VkCommandBuffer custom_cb = VK_NULL_HANDLE);
+
+    TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VkBufferViewCreateInfo &buffer_view_info,
+                                    VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO, VmaAllocationCreateFlags flags = 0,
+                                    const std::byte *data = nullptr, VkCommandBuffer custom_cb = VK_NULL_HANDLE);
 
     std::byte *map(VmaAllocation allocation);
     void unmap(VmaAllocation allocation);
@@ -170,14 +171,14 @@ struct VulkanAllocator
     ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VkImageLayout layout,
                                            bool cube_map);
     // Regular 2D texture or 2D texture array only (TODO: cube map, 3D texture, etc).
-    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
+    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, const std::byte *data,
                                           size_t byte_size, VkImageLayout layout, MipmapOption mipmap_option,
                                           bool cube_map);
     Texture create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info);
 
   private:
     // Note: delay destruction of staging buffers.
-    Buffer create_staging_buffer(VkDeviceSize buffer_size, const uint8_t *data, VkDeviceSize data_size,
+    Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
                                  bool auto_mapped = true);
     void clear_staging_buffer();
 
@@ -235,7 +236,7 @@ struct VulkanContextCreateInfo
         memset(feature, 0, sizeof(T));
         device_features_data.push_back(feature);
 
-        auto getNext = [](const void *ptr) { return (void *)((uint8_t *)ptr + offsetof(T, pNext)); };
+        auto getNext = [](const void *ptr) { return (void *)((std::byte *)ptr + offsetof(T, pNext)); };
 
         void *ptr = &device_features;
         void *next = getNext(ptr);
@@ -268,7 +269,7 @@ struct VulkanContext
 
     void create_instance(const VulkanContextCreateInfo &info);
     std::vector<CompatibleDevice> query_compatible_devices(const VulkanContextCreateInfo &info, VkSurfaceKHR surface);
-    void create_device(const VulkanContextCreateInfo &info, CompatibleDevice compatible, VkSurfaceKHR surface);
+    void create_device(const VulkanContextCreateInfo &info, CompatibleDevice compatible);
 
     template <typename TWork>
     void submit_once(const TWork &task);
