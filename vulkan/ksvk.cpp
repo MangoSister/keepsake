@@ -38,32 +38,32 @@ namespace vk
 // [Memory allocation]
 //-----------------------------------------------------------------------------
 
-VulkanAllocator::VulkanAllocator(const VmaAllocatorCreateInfo &vmaInfo, uint32_t uploadQueueFamilyIndex,
-                                 VkQueue uploadQueue)
+VulkanAllocator::VulkanAllocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queue_family_index,
+                                 VkQueue upload_queue)
 {
-    device = vmaInfo.device;
-    vk_check(vmaCreateAllocator(&vmaInfo, &vma));
-    this->uploadQueue = uploadQueue;
+    device = vma_info.device;
+    vk_check(vmaCreateAllocator(&vma_info, &vma));
+    this->upload_queue = upload_queue;
     VkCommandPoolCreateInfo cmdPoolCI{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    cmdPoolCI.queueFamilyIndex = uploadQueueFamilyIndex;
+    cmdPoolCI.queueFamilyIndex = upload_queue_family_index;
     cmdPoolCI.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    vk_check(vkCreateCommandPool(device, &cmdPoolCI, nullptr, &uploadCmdPool));
-    uploadCmdBuf = VK_NULL_HANDLE;
+    vk_check(vkCreateCommandPool(device, &cmdPoolCI, nullptr, &upload_cp));
+    upload_cb = VK_NULL_HANDLE;
 
     VkPhysicalDeviceProperties physicalDeviceProps;
-    vkGetPhysicalDeviceProperties(vmaInfo.physicalDevice, &physicalDeviceProps);
-    minUniformBufferOffsetAlignment = physicalDeviceProps.limits.minUniformBufferOffsetAlignment;
-    minStorageBufferOffsetAlignment = physicalDeviceProps.limits.minStorageBufferOffsetAlignment;
-    minTexelBufferOffsetAlignment = physicalDeviceProps.limits.minTexelBufferOffsetAlignment;
+    vkGetPhysicalDeviceProperties(vma_info.physicalDevice, &physicalDeviceProps);
+    min_uniform_buffer_offset_alignment = physicalDeviceProps.limits.minUniformBufferOffsetAlignment;
+    min_storage_buffer_offset_alignment = physicalDeviceProps.limits.minStorageBufferOffsetAlignment;
+    min_texel_buffer_offset_alignment = physicalDeviceProps.limits.minTexelBufferOffsetAlignment;
 }
 
 void VulkanAllocator::shutdown()
 {
-    vkDestroyCommandPool(device, uploadCmdPool, nullptr);
+    vkDestroyCommandPool(device, upload_cp, nullptr);
     vmaDestroyAllocator(vma);
 }
 
-Buffer VulkanAllocator::createBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage)
+Buffer VulkanAllocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage)
 {
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
@@ -72,41 +72,41 @@ Buffer VulkanAllocator::createBuffer(const VkBufferCreateInfo &info, VmaMemoryUs
     return buffer;
 }
 
-Buffer VulkanAllocator::createBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
-                                     VkCommandBuffer customCmdBuf)
+Buffer VulkanAllocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
+                                     VkCommandBuffer custom_cb)
 {
-    ASSERT(customCmdBuf || uploadCmdBuf);
+    ASSERT(custom_cb || upload_cb);
 
-    Buffer buf = createBuffer(info, usage);
+    Buffer buf = create_buffer(info, usage);
 
-    Buffer staging = createStagingBuffer(info.size, data, info.size);
+    Buffer staging = create_staging_buffer(info.size, data, info.size);
     VkBufferCopy region;
     region.srcOffset = 0;
     region.dstOffset = 0;
     region.size = info.size;
-    vkCmdCopyBuffer(customCmdBuf ? customCmdBuf : uploadCmdBuf, staging.buffer, buf.buffer, 1, &region);
+    vkCmdCopyBuffer(custom_cb ? custom_cb : upload_cb, staging.buffer, buf.buffer, 1, &region);
 
     return buf;
 }
 
-TexelBuffer VulkanAllocator::createTexelBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                               VkBufferViewCreateInfo &bufferViewInfo)
+TexelBuffer VulkanAllocator::create_texel_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
+                                               VkBufferViewCreateInfo &buffer_view_info)
 {
     TexelBuffer tb;
-    tb.buffer = createBuffer(info, usage);
-    bufferViewInfo.buffer = tb.buffer.buffer;
-    vk_check(vkCreateBufferView(device, &bufferViewInfo, nullptr, &tb.bufferView));
+    tb.buffer = create_buffer(info, usage);
+    buffer_view_info.buffer = tb.buffer.buffer;
+    vk_check(vkCreateBufferView(device, &buffer_view_info, nullptr, &tb.buffer_view));
     return tb;
 }
 
-TexelBuffer VulkanAllocator::createTexelBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                               VkBufferViewCreateInfo &bufferViewInfo, const uint8_t *data,
-                                               VkCommandBuffer customCmdBuf /*= VK_NULL_HANDLE*/)
+TexelBuffer VulkanAllocator::create_texel_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
+                                               VkBufferViewCreateInfo &buffer_view_info, const uint8_t *data,
+                                               VkCommandBuffer custom_cb /*= VK_NULL_HANDLE*/)
 {
     TexelBuffer tb;
-    tb.buffer = createBuffer(info, usage, data, customCmdBuf);
-    bufferViewInfo.buffer = tb.buffer.buffer;
-    vk_check(vkCreateBufferView(device, &bufferViewInfo, nullptr, &tb.bufferView));
+    tb.buffer = create_buffer(info, usage, data, custom_cb);
+    buffer_view_info.buffer = tb.buffer.buffer;
+    vk_check(vkCreateBufferView(device, &buffer_view_info, nullptr, &tb.buffer_view));
     return tb;
 }
 
@@ -124,79 +124,79 @@ void VulkanAllocator::flush(VmaAllocation allocation)
     vk_check(vmaFlushAllocation(vma, allocation, 0, VK_WHOLE_SIZE));
 }
 
-PerFrameBuffer VulkanAllocator::createPerFrameBuffer(const VkBufferCreateInfo &perFrameInfo, VmaMemoryUsage usage,
-                                                     uint32_t numFrames)
+PerFrameBuffer VulkanAllocator::create_per_frame_buffer(const VkBufferCreateInfo &per_frame_info, VmaMemoryUsage usage,
+                                                     uint32_t num_frames)
 {
     PerFrameBuffer buf;
-    buf.numFrames = numFrames;
+    buf.num_frames = num_frames;
     VkDeviceSize alignment = 0;
-    if (perFrameInfo.usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) {
-        alignment = std::max(alignment, minUniformBufferOffsetAlignment);
+    if (per_frame_info.usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) {
+        alignment = std::max(alignment, min_uniform_buffer_offset_alignment);
     }
-    if (perFrameInfo.usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
-        alignment = std::max(alignment, minStorageBufferOffsetAlignment);
+    if (per_frame_info.usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
+        alignment = std::max(alignment, min_storage_buffer_offset_alignment);
     }
-    if (perFrameInfo.usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT ||
-        perFrameInfo.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
-        alignment = std::max(alignment, minTexelBufferOffsetAlignment);
+    if (per_frame_info.usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT ||
+        per_frame_info.usage & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) {
+        alignment = std::max(alignment, min_texel_buffer_offset_alignment);
     }
-    buf.perFrameSize = (perFrameInfo.size + alignment - 1) / alignment * alignment;
+    buf.per_frame_size = (per_frame_info.size + alignment - 1) / alignment * alignment;
 
-    VkBufferCreateInfo info = perFrameInfo;
-    info.size = buf.perFrameSize * buf.numFrames;
-    buf.buffer = createBuffer(info, usage);
+    VkBufferCreateInfo info = per_frame_info;
+    info.size = buf.per_frame_size * buf.num_frames;
+    buf.buffer = create_buffer(info, usage);
     return buf;
 }
 
 void VulkanAllocator::flush(const PerFrameBuffer &buffer, uint32_t frameIndex)
 {
-    ASSERT(frameIndex < buffer.numFrames);
-    VkDeviceSize offset = frameIndex * buffer.perFrameSize;
-    vk_check(vmaFlushAllocation(vma, buffer.buffer.allocation, offset, buffer.perFrameSize));
+    ASSERT(frameIndex < buffer.num_frames);
+    VkDeviceSize offset = frameIndex * buffer.per_frame_size;
+    vk_check(vmaFlushAllocation(vma, buffer.buffer.allocation, offset, buffer.per_frame_size));
 }
 
-void VulkanAllocator::beginStagingSession()
+void VulkanAllocator::begin_staging_session()
 {
-    ASSERT(!uploadCmdBuf);
+    ASSERT(!upload_cb);
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = uploadCmdPool;
+    allocInfo.commandPool = upload_cp;
     allocInfo.commandBufferCount = 1;
 
-    vk_check(vkAllocateCommandBuffers(device, &allocInfo, &uploadCmdBuf));
+    vk_check(vkAllocateCommandBuffers(device, &allocInfo, &upload_cb));
 
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vk_check(vkBeginCommandBuffer(uploadCmdBuf, &beginInfo));
+    vk_check(vkBeginCommandBuffer(upload_cb, &beginInfo));
 }
 
-void VulkanAllocator::endStagingSession()
+void VulkanAllocator::end_staging_session()
 {
-    ASSERT(uploadCmdBuf);
-    vk_check(vkEndCommandBuffer(uploadCmdBuf));
+    ASSERT(upload_cb);
+    vk_check(vkEndCommandBuffer(upload_cb));
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &uploadCmdBuf;
+    submitInfo.pCommandBuffers = &upload_cb;
 
     VkFenceCreateInfo fenceInfo = {};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VkFence fence;
     vk_check(vkCreateFence(device, &fenceInfo, nullptr, &fence));
-    vk_check(vkQueueSubmit(uploadQueue, 1, &submitInfo, fence));
+    vk_check(vkQueueSubmit(upload_queue, 1, &submitInfo, fence));
     vk_check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
     vkDestroyFence(device, fence, nullptr);
-    vkFreeCommandBuffers(device, uploadCmdPool, 1, &uploadCmdBuf);
+    vkFreeCommandBuffers(device, upload_cp, 1, &upload_cb);
 
-    uploadCmdBuf = VK_NULL_HANDLE;
-    clearStagingBuffers();
+    upload_cb = VK_NULL_HANDLE;
+    clear_staging_buffer();
 }
 
-VkDeviceSize VulkanAllocator::imageSize(const VkImageCreateInfo &info) const
+VkDeviceSize VulkanAllocator::image_size(const VkImageCreateInfo &info) const
 {
     uint32_t numPixels = 0;
     for (uint32_t i = 0, w = info.extent.width, h = info.extent.height; i < info.mipLevels; ++i) {
@@ -209,26 +209,26 @@ VkDeviceSize VulkanAllocator::imageSize(const VkImageCreateInfo &info) const
 
 #include <vulkan/utility/vk_format_utils.h>
 
-static VkImageViewCreateInfo viewInfoFromImageInfo(const VkImageCreateInfo &imageInfo, bool cubeMap)
+static VkImageViewCreateInfo viewInfoFromImageInfo(const VkImageCreateInfo &image_info, bool cubeMap)
 {
     VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     viewInfo.pNext = nullptr;
-    viewInfo.format = imageInfo.format;
+    viewInfo.format = image_info.format;
     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-    if (imageInfo.imageType == VK_IMAGE_TYPE_2D) {
-        if (imageInfo.arrayLayers == 6 && cubeMap) {
+    if (image_info.imageType == VK_IMAGE_TYPE_2D) {
+        if (image_info.arrayLayers == 6 && cubeMap) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-        } else if (imageInfo.arrayLayers > 1) {
+        } else if (image_info.arrayLayers > 1) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         } else {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         }
-    } else if (imageInfo.imageType == VK_IMAGE_TYPE_1D) {
-        if (imageInfo.arrayLayers > 1) {
+    } else if (image_info.imageType == VK_IMAGE_TYPE_1D) {
+        if (image_info.arrayLayers > 1) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D_ARRAY;
         } else {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
@@ -239,7 +239,7 @@ static VkImageViewCreateInfo viewInfoFromImageInfo(const VkImageCreateInfo &imag
     return viewInfo;
 }
 
-Image VulkanAllocator::createImage(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
+Image VulkanAllocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
 {
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
@@ -250,26 +250,26 @@ Image VulkanAllocator::createImage(const VkImageCreateInfo &info, VmaMemoryUsage
     return image;
 }
 
-ImageWithView VulkanAllocator::createImageWithView(const VkImageCreateInfo &info, VkImageViewCreateInfo &viewInfo,
+ImageWithView VulkanAllocator::create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
                                                    VmaMemoryUsage usage)
 {
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
     ImageWithView image;
     vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
-    viewInfo.image = image.image;
-    vk_check(vkCreateImageView(device, &viewInfo, nullptr, &image.view));
+    view_info.image = image.image;
+    vk_check(vkCreateImageView(device, &view_info, nullptr, &image.view));
     image.layout = info.initialLayout;
     return image;
 }
 
-ImageWithView VulkanAllocator::createImageWithView(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cubeMap)
+ImageWithView VulkanAllocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cubeMap)
 {
     VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cubeMap);
-    return createImageWithView(info, viewInfo, usage);
+    return create_image_with_view(info, viewInfo, usage);
 }
 
-ImageWithView VulkanAllocator::createColorBuffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
+ImageWithView VulkanAllocator::create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
                                                  bool storage)
 {
     VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -300,10 +300,10 @@ ImageWithView VulkanAllocator::createColorBuffer(uint32_t width, uint32_t height
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
-    return createImageWithView(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
+    return create_image_with_view(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-ImageWithView VulkanAllocator::createDepthBuffer(uint32_t width, uint32_t height, bool sample, bool storage)
+ImageWithView VulkanAllocator::create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage)
 {
     VkImageCreateInfo depthInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     depthInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -333,15 +333,15 @@ ImageWithView VulkanAllocator::createDepthBuffer(uint32_t width, uint32_t height
     depthViewInfo.subresourceRange.baseArrayLayer = 0;
     depthViewInfo.subresourceRange.layerCount = 1;
 
-    return createImageWithView(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
+    return create_image_with_view(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-ImageWithView VulkanAllocator::createAndTransitImage(const VkImageCreateInfo &info, VkImageViewCreateInfo &viewInfo,
+ImageWithView VulkanAllocator::create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
                                                      VmaMemoryUsage usage, VkImageLayout layout)
 {
-    ImageWithView image = createImageWithView(info, viewInfo, usage);
+    ImageWithView image = create_image_with_view(info, view_info, usage);
 
-    ASSERT(uploadCmdBuf);
+    ASSERT(upload_cb);
 
     VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.oldLayout = info.initialLayout;
@@ -357,30 +357,30 @@ ImageWithView VulkanAllocator::createAndTransitImage(const VkImageCreateInfo &in
     barrier.srcAccessMask = 0;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
 
-    vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+    vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &barrier);
 
     image.layout = layout;
     return image;
 }
 
-ImageWithView VulkanAllocator::createAndTransitImage(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                     VkImageLayout layout, bool cubeMap)
+ImageWithView VulkanAllocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                                     VkImageLayout layout, bool cube_map)
 {
-    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cubeMap);
-    return createAndTransitImage(info, viewInfo, usage, layout);
+    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
+    return create_and_transit_image(info, viewInfo, usage, layout);
 }
 
-ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                    const uint8_t *data, size_t byteSize, VkImageLayout layout,
-                                                    MipmapOption mipmapOption, bool cubeMap)
+ImageWithView VulkanAllocator::create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                                    const uint8_t *data, size_t byte_size, VkImageLayout layout,
+                                                    MipmapOption mipmap_option, bool cube_map)
 {
-    ASSERT(uploadCmdBuf);
+    ASSERT(upload_cb);
 
-    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cubeMap);
-    ImageWithView image = createImageWithView(info, viewInfo, usage);
+    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
+    ImageWithView image = create_image_with_view(info, viewInfo, usage);
 
-    Buffer staging = createStagingBuffer(imageSize(info), data, byteSize);
+    Buffer staging = create_staging_buffer(image_size(info), data, byte_size);
 
     VkImageMemoryBarrier allToDst = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     allToDst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -396,10 +396,10 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
     allToDst.srcAccessMask = 0;
     allToDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
 
-    vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+    vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
                          0, nullptr, 1, &allToDst);
 
-    switch (mipmapOption) {
+    switch (mipmap_option) {
     //////////////////////////////////////////////////////////////////////////
     case MipmapOption::OnlyAllocate: {
         VkBufferImageCopy region{};
@@ -410,7 +410,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
         region.imageOffset = {0, 0, 0};
         region.imageExtent = info.extent;
         region.bufferOffset = 0;
-        vkCmdCopyBufferToImage(uploadCmdBuf, staging.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        vkCmdCopyBufferToImage(upload_cb, staging.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                                &region);
 
         VkImageMemoryBarrier allToReady{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -426,7 +426,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
         allToReady.subresourceRange.layerCount = info.arrayLayers;
         allToReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         allToReady.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+        vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &allToReady);
         break;
     }
@@ -445,7 +445,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
             w = std::max(w / 2, 1u);
             h = std::max(h / 2, 1u);
         }
-        vkCmdCopyBufferToImage(uploadCmdBuf, staging.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        vkCmdCopyBufferToImage(upload_cb, staging.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                (uint32_t)regions.size(), regions.data());
 
         VkImageMemoryBarrier allToReady{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -461,7 +461,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
         allToReady.subresourceRange.layerCount = info.arrayLayers;
         allToReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         allToReady.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+        vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &allToReady);
         break;
     }
@@ -475,7 +475,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
         region.imageOffset = {0, 0, 0};
         region.imageExtent = info.extent;
         region.bufferOffset = 0;
-        vkCmdCopyBufferToImage(uploadCmdBuf, staging.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        vkCmdCopyBufferToImage(upload_cb, staging.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                                &region);
 
         int mipWidth = (int)info.extent.width;
@@ -496,7 +496,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
             lastToSrc.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
             lastToSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
-            vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
+            vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
                                  nullptr, 0, nullptr, 1, &lastToSrc);
 
             VkImageBlit blit = {};
@@ -513,7 +513,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
             blit.dstSubresource.baseArrayLayer = 0;
             blit.dstSubresource.layerCount = info.arrayLayers;
 
-            vkCmdBlitImage(uploadCmdBuf, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image.image,
+            vkCmdBlitImage(upload_cb, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image.image,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 
             VkImageMemoryBarrier lastToReady = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -530,7 +530,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
             lastToReady.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             lastToReady.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 
-            vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+            vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                                  nullptr, 0, nullptr, 1, &lastToReady);
 
             if (mipWidth > 1)
@@ -553,7 +553,7 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
         topToReady.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         topToReady.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 
-        vkCmdPipelineBarrier(uploadCmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+        vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &topToReady);
         break;
     }
@@ -565,44 +565,44 @@ ImageWithView VulkanAllocator::createAndUploadImage(const VkImageCreateInfo &inf
     return image;
 }
 
-Texture VulkanAllocator::createTexture(const ImageWithView &image, const VkSamplerCreateInfo &samplerInfo)
+Texture VulkanAllocator::create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info)
 {
     Texture texture;
     texture.image = image;
-    vk_check(vkCreateSampler(device, &samplerInfo, nullptr, &texture.sampler));
+    vk_check(vkCreateSampler(device, &sampler_info, nullptr, &texture.sampler));
     return texture;
 }
 
-Buffer VulkanAllocator::createStagingBuffer(VkDeviceSize bufferSize, const uint8_t *data, VkDeviceSize dataSize,
-                                            bool autoMapped /*= true*/)
+Buffer VulkanAllocator::create_staging_buffer(VkDeviceSize buffer_size, const uint8_t *data, VkDeviceSize data_size,
+                                            bool auto_mapped /*= true*/)
 {
-    ASSERT(bufferSize >= dataSize);
+    ASSERT(buffer_size >= data_size);
 
     VkBufferCreateInfo bufferCI{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferCI.size = bufferSize;
+    bufferCI.size = buffer_size;
     bufferCI.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-    if (autoMapped) {
+    if (auto_mapped) {
         allocCI.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
     }
     Buffer buffer;
     VmaAllocationInfo info;
     vk_check(vmaCreateBuffer(vma, &bufferCI, &allocCI, &buffer.buffer, &buffer.allocation, &info));
-    memcpy(info.pMappedData, (const void *)data, dataSize);
+    memcpy(info.pMappedData, (const void *)data, data_size);
 
-    stagingBuffers.push_back(buffer);
+    staging_buffers.push_back(buffer);
 
     return buffer;
 }
 
-void VulkanAllocator::clearStagingBuffers()
+void VulkanAllocator::clear_staging_buffer()
 {
-    for (auto staging : stagingBuffers) {
+    for (auto staging : staging_buffers) {
         destroy(staging);
     }
-    stagingBuffers.clear();
+    staging_buffers.clear();
 }
 
 void VulkanAllocator::destroy(Buffer &buffer)
@@ -613,17 +613,17 @@ void VulkanAllocator::destroy(Buffer &buffer)
     buffer = {};
 }
 
-void VulkanAllocator::destroy(TexelBuffer &texelBuffer)
+void VulkanAllocator::destroy(TexelBuffer &texel_buffer)
 {
-    vkDestroyBufferView(device, texelBuffer.bufferView, nullptr);
-    texelBuffer.bufferView = {};
-    destroy(texelBuffer.buffer);
+    vkDestroyBufferView(device, texel_buffer.buffer_view, nullptr);
+    texel_buffer.buffer_view = {};
+    destroy(texel_buffer.buffer);
 }
 
-void VulkanAllocator::destroy(PerFrameBuffer &perFrameBuffer)
+void VulkanAllocator::destroy(PerFrameBuffer &per_frame_buffer)
 {
-    destroy(perFrameBuffer.buffer);
-    perFrameBuffer.numFrames = perFrameBuffer.perFrameSize = 0;
+    destroy(per_frame_buffer.buffer);
+    per_frame_buffer.num_frames = per_frame_buffer.per_frame_size = 0;
 }
 
 void VulkanAllocator::destroy(Image &image)
@@ -643,10 +643,10 @@ void VulkanAllocator::destroy(ImageWithView &image)
     image = {};
 }
 
-void VulkanAllocator::destroy(Texture &texture, bool destroyImage)
+void VulkanAllocator::destroy(Texture &texture, bool destroy_image)
 {
     vkDestroySampler(device, texture.sampler, nullptr);
-    if (destroyImage && texture.image.image != VK_NULL_HANDLE) {
+    if (destroy_image && texture.image.image != VK_NULL_HANDLE) {
         vkDestroyImageView(device, texture.image.view, nullptr);
         vmaDestroyImage(vma, texture.image.image, texture.image.allocation);
     }
@@ -658,12 +658,12 @@ void VulkanAllocator::destroy(Texture &texture, bool destroyImage)
 // [Basic vulkan object management]
 //-----------------------------------------------------------------------------
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                        VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                        const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
-                                                        void *pUserData)
+static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+                                                        VkDebugUtilsMessageTypeFlagsEXT message_type,
+                                                        const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
+                                                        void *user_data)
 {
-    fprintf(stderr, "%s.\n", pCallbackData->pMessage);
+    fprintf(stderr, "%s.\n", callback_data->pMessage);
     return VK_FALSE;
 }
 
@@ -803,12 +803,12 @@ void VulkanContext::create_instance(const VulkanContextCreateInfo &info)
     volkLoadInstance(instance);
 }
 
-static bool has_required_device_extensions(VkPhysicalDevice physicalDevice, const std::vector<const char *> &rexts)
+static bool has_required_device_extensions(VkPhysicalDevice physical_device, const std::vector<const char *> &rexts)
 {
     uint32_t extCount;
-    vk_check(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, nullptr));
+    vk_check(vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extCount, nullptr));
     std::vector<VkExtensionProperties> availableExts(extCount);
-    vk_check(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, availableExts.data()));
+    vk_check(vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extCount, availableExts.data()));
 
     for (const char *rext : rexts) {
         bool currFound = false;
@@ -826,10 +826,10 @@ static bool has_required_device_extensions(VkPhysicalDevice physicalDevice, cons
 }
 
 // TODO: It's much more work to actually check all additional features (VkPhysicalDeviceFeatures2)...
-static bool has_required_device_features(VkPhysicalDevice physicalDevice, const VkPhysicalDeviceFeatures &required)
+static bool has_required_device_features(VkPhysicalDevice physical_device, const VkPhysicalDeviceFeatures &required)
 {
     VkPhysicalDeviceFeatures available;
-    vkGetPhysicalDeviceFeatures(physicalDevice, &available);
+    vkGetPhysicalDeviceFeatures(physical_device, &available);
 
     constexpr uint32_t count = uint32_t(sizeof(VkPhysicalDeviceFeatures) / sizeof(VkBool32));
     using FeatureArray = std::array<VkBool32, count>;
@@ -845,19 +845,19 @@ static bool has_required_device_features(VkPhysicalDevice physicalDevice, const 
     return true;
 }
 
-static bool find_all_purpose_queue_family_index(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t &index)
+static bool find_all_purpose_queue_family_index(VkPhysicalDevice physical_device, VkSurfaceKHR surface, uint32_t &index)
 {
     uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilyProps;
     queueFamilyProps.resize(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilyProps.data());
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queueFamilyCount, queueFamilyProps.data());
     for (uint32_t q = 0; q < (uint32_t)queueFamilyProps.size(); ++q) {
         VkBool32 supported =
             queueFamilyProps[q].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
         if (surface != VK_NULL_HANDLE) {
             VkBool32 presentSupport = false;
-            vk_check(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, q, surface, &presentSupport));
+            vk_check(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, q, surface, &presentSupport));
             supported &= presentSupport;
         }
         if (supported) {
@@ -971,12 +971,12 @@ void VulkanContext::create_device(const VulkanContextCreateInfo &info, Compatibl
 //-----------------------------------------------------------------------------
 
 Swapchain::Swapchain(const SwapchainCreateInfo &info)
-    : physicalDevice(info.physicalDevice), device(info.device), queue(info.queue), surface(info.surface),
-      maxFramesAhead(info.maxFramesAhead), renderAheadIndex(0)
+    : physical_device(info.physical_device), device(info.device), queue(info.queue), surface(info.surface),
+      max_frames_ahead(info.max_frames_ahead), render_ahead_index(0)
 {
-    presentCompleteSemaphores.resize(maxFramesAhead);
-    renderCompleteSemaphores.resize(maxFramesAhead);
-    inFlightFences.resize(maxFramesAhead);
+    present_complete_semaphores.resize(max_frames_ahead);
+    render_complete_semaphores.resize(max_frames_ahead);
+    inflight_fences.resize(max_frames_ahead);
 
     VkSemaphoreCreateInfo semaphoreInfo = {};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -984,45 +984,45 @@ Swapchain::Swapchain(const SwapchainCreateInfo &info)
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    for (uint32_t i = 0; i < maxFramesAhead; i++) {
-        vk_check(vkCreateSemaphore(info.device, &semaphoreInfo, nullptr, &presentCompleteSemaphores[i]));
-        vk_check(vkCreateSemaphore(info.device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]));
-        vk_check(vkCreateFence(info.device, &fenceInfo, nullptr, &inFlightFences[i]));
+    for (uint32_t i = 0; i < max_frames_ahead; i++) {
+        vk_check(vkCreateSemaphore(info.device, &semaphoreInfo, nullptr, &present_complete_semaphores[i]));
+        vk_check(vkCreateSemaphore(info.device, &semaphoreInfo, nullptr, &render_complete_semaphores[i]));
+        vk_check(vkCreateFence(info.device, &fenceInfo, nullptr, &inflight_fences[i]));
     }
 
-    createSwapchainAndImages(info.width, info.height);
+    create_swapchain_and_images(info.width, info.height);
 }
 
 void Swapchain::shutdown()
 {
-    destroySwapchainAndImages();
+    destroy_swapchain_and_images();
 
-    for (uint32_t i = 0; i < maxFramesAhead; i++) {
-        vkDestroySemaphore(device, renderCompleteSemaphores[i], nullptr);
-        vkDestroySemaphore(device, presentCompleteSemaphores[i], nullptr);
-        vkDestroyFence(device, inFlightFences[i], nullptr);
+    for (uint32_t i = 0; i < max_frames_ahead; i++) {
+        vkDestroySemaphore(device, render_complete_semaphores[i], nullptr);
+        vkDestroySemaphore(device, present_complete_semaphores[i], nullptr);
+        vkDestroyFence(device, inflight_fences[i], nullptr);
     }
 }
 
-void Swapchain::createSwapchainAndImages(uint32_t width, uint32_t height)
+void Swapchain::create_swapchain_and_images(uint32_t width, uint32_t height)
 {
     VkSurfaceCapabilitiesKHR capabilities;
-    vk_check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities));
+    vk_check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
 
     std::vector<VkSurfaceFormatKHR> allFormats;
     uint32_t formatCount = 0;
-    vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr));
+    vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, nullptr));
     ASSERT_FATAL(formatCount > 0);
     allFormats.resize(formatCount);
-    vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, allFormats.data()));
+    vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, allFormats.data()));
 
     std::vector<VkPresentModeKHR> allPresentModes;
     uint32_t presentModeCount = 0;
-    vk_check(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr));
+    vk_check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, nullptr));
     ASSERT_FATAL(presentModeCount > 0);
     allPresentModes.resize(presentModeCount);
     vk_check(
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, allPresentModes.data()));
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, allPresentModes.data()));
 
     VkSurfaceFormatKHR surfaceFormat;
     surfaceFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
@@ -1089,9 +1089,9 @@ void Swapchain::createSwapchainAndImages(uint32_t width, uint32_t height)
     vk_check(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr));
     images.resize(imageCount);
     vk_check(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images.data()));
-    ASSERT_FATAL(maxFramesAhead <= imageCount);
+    ASSERT_FATAL(max_frames_ahead <= imageCount);
 
-    imageViews.resize(images.size());
+    image_views.resize(images.size());
     for (uint32_t i = 0; i < (uint32_t)images.size(); i++) {
         VkImageViewCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1107,26 +1107,26 @@ void Swapchain::createSwapchainAndImages(uint32_t width, uint32_t height)
         createInfo.subresourceRange.levelCount = 1;
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
-        vk_check(vkCreateImageView(device, &createInfo, nullptr, &imageViews[i]));
+        vk_check(vkCreateImageView(device, &createInfo, nullptr, &image_views[i]));
     }
 }
 
-void Swapchain::destroySwapchainAndImages()
+void Swapchain::destroy_swapchain_and_images()
 {
     images.clear();
-    for (size_t i = 0; i < imageViews.size(); i++) {
-        vkDestroyImageView(device, imageViews[i], nullptr);
+    for (size_t i = 0; i < image_views.size(); i++) {
+        vkDestroyImageView(device, image_views[i], nullptr);
     }
-    imageViews.clear();
+    image_views.clear();
     vkDestroySwapchainKHR(device, swapchain, nullptr);
 }
 
 bool Swapchain::acquire()
 {
-    vk_check(vkWaitForFences(device, 1, &inFlightFences[renderAheadIndex], VK_TRUE, UINT64_MAX));
+    vk_check(vkWaitForFences(device, 1, &inflight_fences[render_ahead_index], VK_TRUE, UINT64_MAX));
 
-    VkResult ret = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentCompleteSemaphores[renderAheadIndex],
-                                         VK_NULL_HANDLE, &frameIndex);
+    VkResult ret = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, present_complete_semaphores[render_ahead_index],
+                                         VK_NULL_HANDLE, &frame_index);
     if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
         return false;
     }
@@ -1134,36 +1134,36 @@ bool Swapchain::acquire()
     return true;
 }
 
-bool Swapchain::submitAndPresent(const std::vector<VkCommandBuffer> &cmdBufs)
+bool Swapchain::submit_and_present(const std::vector<VkCommandBuffer> &cbs)
 {
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    submitInfo.commandBufferCount = (uint32_t)cmdBufs.size();
-    submitInfo.pCommandBuffers = cmdBufs.data();
+    submitInfo.commandBufferCount = (uint32_t)cbs.size();
+    submitInfo.pCommandBuffers = cbs.data();
 
-    std::array<VkSemaphore, 1> submitWaitSemaphores = {presentCompleteSemaphores[renderAheadIndex]};
+    std::array<VkSemaphore, 1> submitWaitSemaphores = {present_complete_semaphores[render_ahead_index]};
     std::array<VkPipelineStageFlags, 1> submitWaitStages = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.waitSemaphoreCount = (uint32_t)submitWaitSemaphores.size();
     submitInfo.pWaitSemaphores = submitWaitSemaphores.data();
     submitInfo.pWaitDstStageMask = submitWaitStages.data();
-    std::array<VkSemaphore, 1> submitSignalSemaphores = {renderCompleteSemaphores[renderAheadIndex]};
+    std::array<VkSemaphore, 1> submitSignalSemaphores = {render_complete_semaphores[render_ahead_index]};
     submitInfo.signalSemaphoreCount = (uint32_t)submitSignalSemaphores.size();
     submitInfo.pSignalSemaphores = submitSignalSemaphores.data();
 
-    vk_check(vkResetFences(device, 1, &inFlightFences[renderAheadIndex]));
-    vk_check(vkQueueSubmit(queue, 1, &submitInfo, inFlightFences[renderAheadIndex]));
+    vk_check(vkResetFences(device, 1, &inflight_fences[render_ahead_index]));
+    vk_check(vkQueueSubmit(queue, 1, &submitInfo, inflight_fences[render_ahead_index]));
 
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
-    std::array<VkSemaphore, 1> presentWaitSemaphores = {renderCompleteSemaphores[renderAheadIndex]};
+    std::array<VkSemaphore, 1> presentWaitSemaphores = {render_complete_semaphores[render_ahead_index]};
     presentInfo.waitSemaphoreCount = (uint32_t)presentWaitSemaphores.size();
     presentInfo.pWaitSemaphores = presentWaitSemaphores.data();
     std::array<VkSwapchainKHR, 1> swapchains = {swapchain};
     presentInfo.swapchainCount = (uint32_t)swapchains.size();
     presentInfo.pSwapchains = swapchains.data();
-    presentInfo.pImageIndices = &frameIndex;
+    presentInfo.pImageIndices = &frame_index;
     presentInfo.pResults = nullptr; // Optional
 
     VkResult ret = vkQueuePresentKHR(queue, &presentInfo);
@@ -1173,7 +1173,7 @@ bool Swapchain::submitAndPresent(const std::vector<VkCommandBuffer> &cmdBufs)
         vk_check(ret);
     }
 
-    renderAheadIndex = (renderAheadIndex + 1) % maxFramesAhead;
+    render_ahead_index = (render_ahead_index + 1) % max_frames_ahead;
 
     return true;
 }
@@ -1183,8 +1183,8 @@ void Swapchain::resize(uint32_t width, uint32_t height)
     vk_check(vkDeviceWaitIdle(device));
     uint32_t frameCount = (uint32_t)images.size();
 
-    destroySwapchainAndImages();
-    createSwapchainAndImages(width, height);
+    destroy_swapchain_and_images();
+    create_swapchain_and_images(width, height);
 
     ASSERT_FATAL(frameCount == images.size(), "New swapchain has different number of images!");
 }
@@ -1193,13 +1193,13 @@ void Swapchain::resize(uint32_t width, uint32_t height)
 // [Command buffer management]
 //-----------------------------------------------------------------------------
 
-CmdBufManager::CmdBufManager(uint32_t frameCount, uint32_t queueFamilyIndex, VkDevice device) : device(device)
+CmdBufManager::CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, VkDevice device) : device(device)
 {
-    frames.resize(frameCount);
+    frames.resize(frame_count);
     for (auto &frame : frames) {
         VkCommandPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.queueFamilyIndex = queueFamilyIndex;
+        poolInfo.queueFamilyIndex = queue_family_index;
         poolInfo.flags = 0; // Optional
         vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &frame.pool));
     }
@@ -1208,44 +1208,44 @@ CmdBufManager::CmdBufManager(uint32_t frameCount, uint32_t queueFamilyIndex, VkD
 void CmdBufManager::shutdown()
 {
     for (auto &frame : frames) {
-        vkFreeCommandBuffers(device, frame.pool, (uint32_t)frame.cmdBufs.size(), frame.cmdBufs.data());
+        vkFreeCommandBuffers(device, frame.pool, (uint32_t)frame.cbs.size(), frame.cbs.data());
         vkDestroyCommandPool(device, frame.pool, nullptr);
     }
 }
 
-void CmdBufManager::startFrame(uint32_t frameIndex)
+void CmdBufManager::start_frame(uint32_t frame_index)
 {
-    this->frameIndex = frameIndex;
-    vk_check(vkResetCommandPool(device, frames[frameIndex].pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));
-    frames[frameIndex].nextCmdBuf = 0;
+    this->frame_index = frame_index;
+    vk_check(vkResetCommandPool(device, frames[frame_index].pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));
+    frames[frame_index].next_cb = 0;
 }
 
-std::vector<VkCommandBuffer> CmdBufManager::acquireCmdBufs(uint32_t count)
+std::vector<VkCommandBuffer> CmdBufManager::acquire_cbs(uint32_t count)
 {
-    auto &frame = frames[frameIndex];
+    auto &frame = frames[frame_index];
 
-    uint32_t numAvailable = (uint32_t)frame.cmdBufs.size() - frame.nextCmdBuf;
+    uint32_t numAvailable = (uint32_t)frame.cbs.size() - frame.next_cb;
     if (numAvailable < count) {
-        uint32_t oldCount = (uint32_t)frame.cmdBufs.size();
-        frame.cmdBufs.resize(oldCount + count - numAvailable);
+        uint32_t oldCount = (uint32_t)frame.cbs.size();
+        frame.cbs.resize(oldCount + count - numAvailable);
         VkCommandBufferAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = frame.pool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = count;
-        vk_check(vkAllocateCommandBuffers(device, &allocInfo, &frame.cmdBufs[oldCount]));
+        vk_check(vkAllocateCommandBuffers(device, &allocInfo, &frame.cbs[oldCount]));
     }
     std::vector<VkCommandBuffer> ret;
-    ret.insert(ret.end(), frame.cmdBufs.begin() + frame.nextCmdBuf, frame.cmdBufs.begin() + frame.nextCmdBuf + count);
-    frame.nextCmdBuf += count;
+    ret.insert(ret.end(), frame.cbs.begin() + frame.next_cb, frame.cbs.begin() + frame.next_cb + count);
+    frame.next_cb += count;
     return ret;
 }
 
-void encodeCmdNow(VkDevice device, uint32_t queueFamilyIndex, VkQueue queue,
+void encode_cmd_now(VkDevice device, uint32_t queue_family_index, VkQueue queue,
                   const std::function<void(VkCommandBuffer)> &func)
 {
     VkCommandPoolCreateInfo cmdPoolCI{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    cmdPoolCI.queueFamilyIndex = queueFamilyIndex;
+    cmdPoolCI.queueFamilyIndex = queue_family_index;
     cmdPoolCI.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     VkCommandPool cmdPool;
     vk_check(vkCreateCommandPool(device, &cmdPoolCI, nullptr, &cmdPool));
@@ -1289,14 +1289,14 @@ void encodeCmdNow(VkDevice device, uint32_t queueFamilyIndex, VkQueue queue,
 // [Convenience helper for setting up descriptor sets]
 //-----------------------------------------------------------------------------
 
-VkDescriptorPool DescriptorSetHelper::createPool(VkDevice device, uint32_t maxSets) const
+VkDescriptorPool DescriptorSetHelper::create_pool(VkDevice device, uint32_t max_sets) const
 {
     std::vector<VkDescriptorPoolSize> poolSizes;
     for (const auto &b : bindings) {
         bool found = false;
         for (auto it = poolSizes.begin(); it != poolSizes.end(); ++it) {
             if (it->type == b.descriptorType) {
-                it->descriptorCount += b.descriptorCount * maxSets;
+                it->descriptorCount += b.descriptorCount * max_sets;
                 found = true;
                 break;
             }
@@ -1304,7 +1304,7 @@ VkDescriptorPool DescriptorSetHelper::createPool(VkDevice device, uint32_t maxSe
         if (!found) {
             VkDescriptorPoolSize poolSize;
             poolSize.type = b.descriptorType;
-            poolSize.descriptorCount = b.descriptorCount * maxSets;
+            poolSize.descriptorCount = b.descriptorCount * max_sets;
             poolSizes.push_back(poolSize);
         }
     }
@@ -1312,13 +1312,13 @@ VkDescriptorPool DescriptorSetHelper::createPool(VkDevice device, uint32_t maxSe
     VkDescriptorPoolCreateInfo poolCI{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     poolCI.poolSizeCount = (uint32_t)poolSizes.size();
     poolCI.pPoolSizes = poolSizes.data();
-    poolCI.maxSets = maxSets;
+    poolCI.maxSets = max_sets;
     VkDescriptorPool pool;
     vk_check(vkCreateDescriptorPool(device, &poolCI, nullptr, &pool));
     return pool;
 }
 
-VkDescriptorSetLayout DescriptorSetHelper::createSetLayout(VkDevice device) const
+VkDescriptorSetLayout DescriptorSetHelper::create_set_layout(VkDevice device) const
 {
     VkDescriptorSetLayoutCreateInfo setLayoutCI{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     setLayoutCI.bindingCount = (uint32_t)bindings.size();
@@ -1328,15 +1328,15 @@ VkDescriptorSetLayout DescriptorSetHelper::createSetLayout(VkDevice device) cons
     return setLayout;
 }
 
-VkWriteDescriptorSet DescriptorSetHelper::makeWrite(VkDescriptorSet dstSet, uint32_t dstBinding) const
+VkWriteDescriptorSet DescriptorSetHelper::make_write(VkDescriptorSet dst_set, uint32_t dst_binding) const
 {
     VkWriteDescriptorSet writeSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     for (size_t i = 0; i < bindings.size(); i++) {
-        if (bindings[i].binding == dstBinding) {
+        if (bindings[i].binding == dst_binding) {
             writeSet.descriptorCount = bindings[i].descriptorCount;
             writeSet.descriptorType = bindings[i].descriptorType;
-            writeSet.dstBinding = dstBinding;
-            writeSet.dstSet = dstSet;
+            writeSet.dstBinding = dst_binding;
+            writeSet.dstSet = dst_set;
             writeSet.dstArrayElement = 0;
             return writeSet;
         }
@@ -1345,17 +1345,17 @@ VkWriteDescriptorSet DescriptorSetHelper::makeWrite(VkDescriptorSet dstSet, uint
     return writeSet;
 }
 
-VkWriteDescriptorSet DescriptorSetHelper::makeWriteArray(VkDescriptorSet dstSet, uint32_t dstBinding, uint32_t start,
+VkWriteDescriptorSet DescriptorSetHelper::make_write_array(VkDescriptorSet dst_set, uint32_t dst_binding, uint32_t start,
                                                          uint32_t count) const
 {
     VkWriteDescriptorSet writeSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     for (size_t i = 0; i < bindings.size(); i++) {
-        if (bindings[i].binding == dstBinding) {
+        if (bindings[i].binding == dst_binding) {
             ASSERT(start + count <= bindings[i].descriptorCount);
             writeSet.descriptorCount = count;
             writeSet.descriptorType = bindings[i].descriptorType;
-            writeSet.dstBinding = dstBinding;
-            writeSet.dstSet = dstSet;
+            writeSet.dstBinding = dst_binding;
+            writeSet.dstSet = dst_set;
             writeSet.dstArrayElement = start;
             return writeSet;
         }
@@ -1396,22 +1396,22 @@ GFX::GFX(const GFXArgs &args)
     vkctx.create_device(vkctx_args, compatibles[0], surface);
 
     SwapchainCreateInfo swapchain_args{};
-    swapchain_args.physicalDevice = vkctx.physical_device;
+    swapchain_args.physical_device = vkctx.physical_device;
     swapchain_args.device = vkctx.device;
     swapchain_args.queue = vkctx.main_queue;
     swapchain_args.surface = surface;
     swapchain_args.width = args.width;
     swapchain_args.height = args.height;
-    swapchain_args.maxFramesAhead = 2;
+    swapchain_args.max_frames_ahead = 2;
     swapchain = Swapchain(swapchain_args);
 
-    cmdBufManager = CmdBufManager((uint32_t)swapchain.imageViews.size(), vkctx.main_queue_family_index, vkctx.device);
+    cb_manager = CmdBufManager((uint32_t)swapchain.image_views.size(), vkctx.main_queue_family_index, vkctx.device);
 }
 
 void GFX::shutdown()
 {
     swapchain.shutdown();
-    cmdBufManager.shutdown();
+    cb_manager.shutdown();
     vkDestroySurfaceKHR(vkctx.instance, surface, nullptr);
     vkctx.shutdown();
 }
@@ -1448,8 +1448,8 @@ GUI::GUI(const GUICreateInfo &info) : window(info.window), gfx(info.gfx)
         gfx->vkctx.instance);
     ImGui_ImplGlfw_InitForVulkan(info.window, true);
 
-    createRenderPass();
-    createFramebuffers();
+    create_render_pass();
+    create_framebuffers();
 
     std::array<VkDescriptorPoolSize, 11> poolSizes = {{{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
                                                        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
@@ -1482,14 +1482,14 @@ GUI::GUI(const GUICreateInfo &info) : window(info.window), gfx(info.gfx)
     initInfo.DescriptorPool = pool;
     initInfo.CheckVkResultFn = imgui_vk_debug_callback;
 
-    ImGui_ImplVulkan_Init(&initInfo, renderPass);
+    ImGui_ImplVulkan_Init(&initInfo, render_pass);
 
     ImFontConfig font_config;
     font_config.RasterizerDensity = 2.0f;
     io.Fonts->AddFontFromFileTTF((fs::path(DATA_DIR) / "CascadiaCode.ttf").string().c_str(), 16.0f, &font_config);
 }
 
-void GUI::createRenderPass()
+void GUI::create_render_pass()
 {
     const Swapchain &swapchain = gfx->swapchain;
     // TODO: Need to change this based on what is rendered before.
@@ -1526,19 +1526,19 @@ void GUI::createRenderPass()
     renderPassCI.pDependencies = &dep;
     renderPassCI.dependencyCount = 1;
 
-    vk_check(vkCreateRenderPass(gfx->vkctx.device, &renderPassCI, nullptr, &renderPass));
+    vk_check(vkCreateRenderPass(gfx->vkctx.device, &renderPassCI, nullptr, &render_pass));
 }
 
-void GUI::createFramebuffers()
+void GUI::create_framebuffers()
 {
     const Swapchain &swapchain = gfx->swapchain;
     framebuffers.resize(swapchain.images.size());
     for (uint32_t i = 0; i < (uint32_t)swapchain.images.size(); ++i) {
         VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
         fbCI.attachmentCount = 1;
-        fbCI.pAttachments = &swapchain.imageViews[i];
+        fbCI.pAttachments = &swapchain.image_views[i];
         fbCI.layers = 1;
-        fbCI.renderPass = renderPass;
+        fbCI.renderPass = render_pass;
         fbCI.width = swapchain.extent.width;
         fbCI.height = swapchain.extent.height;
         vk_check(vkCreateFramebuffer(gfx->vkctx.device, &fbCI, nullptr, &framebuffers[i]));
@@ -1555,8 +1555,8 @@ void GUI::render(VkCommandBuffer cmdBuf)
     }
 
     VkRenderPassBeginInfo beginInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    beginInfo.renderPass = renderPass;
-    beginInfo.framebuffer = framebuffers[gfx->frameIndex()];
+    beginInfo.renderPass = render_pass;
+    beginInfo.framebuffer = framebuffers[gfx->frame_index()];
     beginInfo.renderArea.extent = gfx->swapchain.extent;
     beginInfo.clearValueCount = 0;
     RenderPassRecorder guiPass(cmdBuf, beginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -1571,11 +1571,11 @@ void GUI::resize()
     const Swapchain &swapchain = gfx->swapchain;
     ImGui_ImplVulkan_SetMinImageCount((uint32_t)swapchain.images.size());
     // recreate render pass
-    destroyRenderPass();
-    createRenderPass();
+    destroy_render_pass();
+    create_render_pass();
     // recreate framebuffer
-    destroyFramebuffers();
-    createFramebuffers();
+    destroy_framebuffers();
+    create_framebuffers();
 }
 
 void GUI::shutdown()
@@ -1584,22 +1584,22 @@ void GUI::shutdown()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    destroyFramebuffers();
-    destroyRenderPass();
+    destroy_framebuffers();
+    destroy_render_pass();
 
     vkDestroyDescriptorPool(gfx->vkctx.device, pool, nullptr);
 }
 
-void GUI::destroyRenderPass() { vkDestroyRenderPass(gfx->vkctx.device, renderPass, nullptr); }
+void GUI::destroy_render_pass() { vkDestroyRenderPass(gfx->vkctx.device, render_pass, nullptr); }
 
-void GUI::destroyFramebuffers()
+void GUI::destroy_framebuffers()
 {
     for (auto fb : framebuffers) {
         vkDestroyFramebuffer(gfx->vkctx.device, fb, nullptr);
     }
 }
 
-void GUI::updateFrame()
+void GUI::upload_frame()
 {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();

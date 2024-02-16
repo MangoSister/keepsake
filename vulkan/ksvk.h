@@ -44,20 +44,20 @@ struct Buffer
 struct TexelBuffer
 {
     Buffer buffer;
-    VkBufferView bufferView = VK_NULL_HANDLE;
+    VkBufferView buffer_view = VK_NULL_HANDLE;
 };
 
 struct PerFrameBuffer
 {
     Buffer buffer;
-    uint32_t perFrameSize;
-    uint32_t numFrames;
+    uint32_t per_frame_size;
+    uint32_t num_frames;
 
-    std::vector<uint32_t> getAllOffsets() const
+    std::vector<uint32_t> get_all_offsets() const
     {
-        std::vector<uint32_t> offsets(numFrames);
-        for (uint32_t f = 0; f < numFrames; ++f)
-            offsets[f] = perFrameSize * f;
+        std::vector<uint32_t> offsets(num_frames);
+        for (uint32_t f = 0; f < num_frames; ++f)
+            offsets[f] = per_frame_size * f;
         return offsets;
     }
 };
@@ -76,7 +76,7 @@ struct ImageWithView
     VkImageView view;
     VkImageLayout layout;
 
-    VkDescriptorImageInfo imageInfo() const { return VkDescriptorImageInfo{VK_NULL_HANDLE, view, layout}; }
+    VkDescriptorImageInfo image_info() const { return VkDescriptorImageInfo{VK_NULL_HANDLE, view, layout}; }
 };
 
 struct Texture
@@ -84,7 +84,7 @@ struct Texture
     ImageWithView image;
     VkSampler sampler;
 
-    VkDescriptorImageInfo imageInfo() const { return VkDescriptorImageInfo{sampler, image.view, image.layout}; }
+    VkDescriptorImageInfo image_info() const { return VkDescriptorImageInfo{sampler, image.view, image.layout}; }
 };
 
 enum class MipmapOption
@@ -97,7 +97,7 @@ enum class MipmapOption
 struct VulkanAllocator
 {
     VulkanAllocator() = default;
-    VulkanAllocator(const VmaAllocatorCreateInfo &vmaInfo, uint32_t uploadQueueFamilyIndex, VkQueue uploadQueue);
+    VulkanAllocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queu_family_index, VkQueue upload_queue);
     void shutdown();
 
     VulkanAllocator(const VulkanAllocator &other) = delete;
@@ -105,14 +105,14 @@ struct VulkanAllocator
     VulkanAllocator(VulkanAllocator &&other) = default;
     VulkanAllocator &operator=(VulkanAllocator &&other) = default;
 
-    Buffer createBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage);
-    Buffer createBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
-                        VkCommandBuffer customCmdBuf = VK_NULL_HANDLE);
-    TexelBuffer createTexelBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                  VkBufferViewCreateInfo &bufferViewInfo);
-    TexelBuffer createTexelBuffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
-                                  VkBufferViewCreateInfo &bufferViewInfo, const uint8_t *data,
-                                  VkCommandBuffer customCmdBuf = VK_NULL_HANDLE);
+    Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage);
+    Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
+                         VkCommandBuffer custom_cb = VK_NULL_HANDLE);
+    TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
+                                    VkBufferViewCreateInfo &buffer_view_info);
+    TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage,
+                                    VkBufferViewCreateInfo &buffer_view_info, const uint8_t *data,
+                                    VkCommandBuffer custom_cb = VK_NULL_HANDLE);
 
     std::byte *map(VmaAllocation allocation);
     void unmap(VmaAllocation allocation);
@@ -129,77 +129,78 @@ struct VulkanAllocator
         unmap(allocation);
     }
 
-    PerFrameBuffer createPerFrameBuffer(const VkBufferCreateInfo &perFrameInfo, VmaMemoryUsage usage,
-                                        uint32_t numFrames);
+    PerFrameBuffer create_per_frame_buffer(const VkBufferCreateInfo &per_frame_info, VmaMemoryUsage usage,
+                                           uint32_t num_frames);
 
     template <typename TWork>
-    void map(const PerFrameBuffer &buffer, uint32_t frameIndex, bool flush, const TWork &work)
+    void map(const PerFrameBuffer &buffer, uint32_t frame_index, bool flush, const TWork &work)
     {
-        ASSERT(frameIndex < buffer.numFrames);
-        std::byte *ptr = map(buffer.buffer.allocation) + frameIndex * buffer.perFrameSize;
+        ASSERT(frame_index < buffer.num_frames);
+        std::byte *ptr = map(buffer.buffer.allocation) + frame_index * buffer.per_frame_size;
         work(ptr);
         if (flush) {
-            this->flush(buffer, frameIndex);
+            this->flush(buffer, frame_index);
         }
         unmap(buffer.buffer.allocation);
     }
 
-    void flush(const PerFrameBuffer &buffer, uint32_t frameIndex);
+    void flush(const PerFrameBuffer &buffer, uint32_t frame_index);
 
     template <typename TWork>
-    void stageSession(const TWork &work)
+    void stage_session(const TWork &work)
     {
-        beginStagingSession();
+        begin_staging_session();
         work(*this);
-        endStagingSession();
+        end_staging_session();
     }
 
-    void beginStagingSession();
-    void endStagingSession();
+    void begin_staging_session();
+    void end_staging_session();
 
-    VkDeviceSize imageSize(const VkImageCreateInfo &info) const;
+    VkDeviceSize image_size(const VkImageCreateInfo &info) const;
 
-    Image createImage(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags);
-    ImageWithView createImageWithView(const VkImageCreateInfo &info, VkImageViewCreateInfo &viewInfo,
-                                      VmaMemoryUsage usage);
-    ImageWithView createImageWithView(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cubeMap);
-    ImageWithView createColorBuffer(uint32_t width, uint32_t height, VkFormat format, bool sample, bool storage);
-    ImageWithView createDepthBuffer(uint32_t width, uint32_t height, bool sample, bool storage);
-    ImageWithView createAndTransitImage(const VkImageCreateInfo &info, VkImageViewCreateInfo &viewInfo,
-                                        VmaMemoryUsage usage, VkImageLayout layout);
-    ImageWithView createAndTransitImage(const VkImageCreateInfo &info, VmaMemoryUsage usage, VkImageLayout layout,
-                                        bool cubeMap);
+    Image create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags);
+    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
+                                         VmaMemoryUsage usage);
+    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cube_map);
+    ImageWithView create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample, bool storage);
+    ImageWithView create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage);
+    ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
+                                           VmaMemoryUsage usage, VkImageLayout layout);
+    ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VkImageLayout layout,
+                                           bool cube_map);
     // Regular 2D texture or 2D texture array only (TODO: cube map, 3D texture, etc).
-    ImageWithView createAndUploadImage(const VkImageCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
-                                       size_t byteSize, VkImageLayout layout, MipmapOption mipmapOption, bool cubeMap);
-    Texture createTexture(const ImageWithView &image, const VkSamplerCreateInfo &samplerInfo);
+    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, const uint8_t *data,
+                                          size_t byte_size, VkImageLayout layout, MipmapOption mipmap_option,
+                                          bool cube_map);
+    Texture create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info);
 
   private:
     // Note: delay destruction of staging buffers.
-    Buffer createStagingBuffer(VkDeviceSize bufferSize, const uint8_t *data, VkDeviceSize dataSize,
-                               bool autoMapped = true);
-    void clearStagingBuffers();
+    Buffer create_staging_buffer(VkDeviceSize buffer_size, const uint8_t *data, VkDeviceSize data_size,
+                                 bool auto_mapped = true);
+    void clear_staging_buffer();
 
   public:
     void destroy(Buffer &buffer);
-    void destroy(TexelBuffer &texelBuffer);
-    void destroy(PerFrameBuffer &perFrameBuffer);
+    void destroy(TexelBuffer &texel_buffer);
+    void destroy(PerFrameBuffer &per_frame_buffer);
     void destroy(Image &image);
     void destroy(ImageWithView &image);
-    void destroy(Texture &texture, bool destroyImage);
+    void destroy(Texture &texture, bool destroy_image);
 
     VkDevice device;
     VmaAllocator vma;
 
-    VkQueue uploadQueue;
-    VkCommandPool uploadCmdPool;
-    VkCommandBuffer uploadCmdBuf;
+    VkQueue upload_queue;
+    VkCommandPool upload_cp;
+    VkCommandBuffer upload_cb;
 
-    std::vector<Buffer> stagingBuffers;
+    std::vector<Buffer> staging_buffers;
 
-    VkDeviceSize minUniformBufferOffsetAlignment;
-    VkDeviceSize minStorageBufferOffsetAlignment;
-    VkDeviceSize minTexelBufferOffsetAlignment;
+    VkDeviceSize min_uniform_buffer_offset_alignment;
+    VkDeviceSize min_storage_buffer_offset_alignment;
+    VkDeviceSize min_texel_buffer_offset_alignment;
 };
 
 //-----------------------------------------------------------------------------
@@ -335,13 +336,13 @@ void VulkanContext::submit_once(const TWork &task)
 
 struct SwapchainCreateInfo
 {
-    VkPhysicalDevice physicalDevice;
+    VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue queue;
     VkSurfaceKHR surface;
     uint32_t width;
     uint32_t height;
-    uint32_t maxFramesAhead;
+    uint32_t max_frames_ahead;
 };
 
 struct Swapchain
@@ -356,16 +357,16 @@ struct Swapchain
     Swapchain &operator=(Swapchain &&other) = default;
 
     bool acquire();
-    bool submitAndPresent(const std::vector<VkCommandBuffer> &cmdBufs);
+    bool submit_and_present(const std::vector<VkCommandBuffer> &cbs);
     void resize(uint32_t width, uint32_t height);
 
-    void createSwapchainAndImages(uint32_t width, uint32_t height);
-    void destroySwapchainAndImages();
+    void create_swapchain_and_images(uint32_t width, uint32_t height);
+    void destroy_swapchain_and_images();
 
-    uint32_t frameCount() const { return (uint32_t)imageViews.size(); }
+    uint32_t frame_count() const { return (uint32_t)image_views.size(); }
     float aspect() const { return (float)extent.width / (float)extent.height; }
 
-    VkPhysicalDevice physicalDevice;
+    VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue queue;
     VkSurfaceKHR surface;
@@ -374,14 +375,14 @@ struct Swapchain
     VkFormat format;
     VkExtent2D extent;
     std::vector<VkImage> images;
-    std::vector<VkImageView> imageViews;
+    std::vector<VkImageView> image_views;
 
-    std::vector<VkSemaphore> presentCompleteSemaphores;
-    std::vector<VkSemaphore> renderCompleteSemaphores;
-    std::vector<VkFence> inFlightFences;
-    uint32_t maxFramesAhead = 0;
-    uint32_t renderAheadIndex = 0;
-    uint32_t frameIndex;
+    std::vector<VkSemaphore> present_complete_semaphores;
+    std::vector<VkSemaphore> render_complete_semaphores;
+    std::vector<VkFence> inflight_fences;
+    uint32_t max_frames_ahead = 0;
+    uint32_t render_ahead_index = 0;
+    uint32_t frame_index;
 };
 
 //-----------------------------------------------------------------------------
@@ -391,7 +392,7 @@ struct Swapchain
 struct CmdBufManager
 {
     CmdBufManager() = default;
-    CmdBufManager(uint32_t frameCount, uint32_t queueFamilyIndex, VkDevice device);
+    CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, VkDevice device);
     void shutdown();
 
     CmdBufManager(const CmdBufManager &other) = delete;
@@ -399,69 +400,69 @@ struct CmdBufManager
     CmdBufManager(CmdBufManager &&other) = default;
     CmdBufManager &operator=(CmdBufManager &&other) = default;
 
-    void startFrame(uint32_t frameIndex);
-    std::vector<VkCommandBuffer> acquireCmdBufs(uint32_t count);
-    std::vector<VkCommandBuffer> allAcquired() const
+    void start_frame(uint32_t frame_index);
+    std::vector<VkCommandBuffer> acquire_cbs(uint32_t count);
+    std::vector<VkCommandBuffer> all_acquired() const
     {
-        auto &frame = frames[frameIndex];
+        auto &frame = frames[frame_index];
         std::vector<VkCommandBuffer> acquired;
-        acquired.insert(acquired.end(), frame.cmdBufs.begin(), frame.cmdBufs.begin() + frame.nextCmdBuf);
+        acquired.insert(acquired.end(), frame.cbs.begin(), frame.cbs.begin() + frame.next_cb);
         return acquired;
     }
-    VkCommandBuffer lastAcquired() const
+    VkCommandBuffer last_acquired() const
     {
-        const auto &frame = frames[frameIndex];
-        return frame.nextCmdBuf > 0 ? frame.cmdBufs[frame.nextCmdBuf - 1] : VK_NULL_HANDLE;
+        const auto &frame = frames[frame_index];
+        return frame.next_cb > 0 ? frame.cbs[frame.next_cb - 1] : VK_NULL_HANDLE;
     }
 
   private:
     struct Frame
     {
         VkCommandPool pool;
-        std::vector<VkCommandBuffer> cmdBufs;
-        uint32_t nextCmdBuf = 0;
+        std::vector<VkCommandBuffer> cbs;
+        uint32_t next_cb = 0;
     };
     std::vector<Frame> frames;
     VkDevice device;
-    uint32_t frameIndex;
+    uint32_t frame_index;
 };
 
-void encodeCmdNow(VkDevice device, uint32_t queueFamilyIndex, VkQueue queue,
-                  const std::function<void(VkCommandBuffer)> &func);
+void encode_cmd_now(VkDevice device, uint32_t queue_family_index, VkQueue queue,
+                    const std::function<void(VkCommandBuffer)> &func);
 
 // Convenience RAII wrappers.
 struct CmdBufRecorder
 {
-    CmdBufRecorder(VkCommandBuffer cmdBuf, const VkCommandBufferBeginInfo &beginInfo) : cmdBuf(cmdBuf)
+    CmdBufRecorder(VkCommandBuffer cb, const VkCommandBufferBeginInfo &begin_info) : cb(cb)
     {
-        vk_check(vkBeginCommandBuffer(cmdBuf, &beginInfo));
+        vk_check(vkBeginCommandBuffer(cb, &begin_info));
     }
-    ~CmdBufRecorder() { vk_check(vkEndCommandBuffer(cmdBuf)); }
+    ~CmdBufRecorder() { vk_check(vkEndCommandBuffer(cb)); }
 
     CmdBufRecorder(const CmdBufRecorder &other) = delete;
     CmdBufRecorder(CmdBufRecorder &&other) = delete;
     CmdBufRecorder &operator=(const CmdBufRecorder &other) = delete;
     CmdBufRecorder &operator=(CmdBufRecorder &&other) = delete;
 
-    VkCommandBuffer cmdBuf;
+    VkCommandBuffer cb;
 };
 
 struct RenderPassRecorder
 {
     RenderPassRecorder(VkCommandBuffer cmdBuf, const VkRenderPassBeginInfo &beginInfo,
                        VkSubpassContents subpassContents)
-        : cmdBuf(cmdBuf)
+        : cb(cmdBuf)
     {
         vkCmdBeginRenderPass(cmdBuf, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
     }
-    ~RenderPassRecorder() { vkCmdEndRenderPass(cmdBuf); }
+    ~RenderPassRecorder() { vkCmdEndRenderPass(cb); }
 
     RenderPassRecorder(const RenderPassRecorder &other) = delete;
     RenderPassRecorder(RenderPassRecorder &&other) = delete;
     RenderPassRecorder &operator=(const RenderPassRecorder &other) = delete;
     RenderPassRecorder &operator=(RenderPassRecorder &&other) = delete;
 
-    VkCommandBuffer cmdBuf;
+    VkCommandBuffer cb;
 };
 
 //-----------------------------------------------------------------------------
@@ -471,11 +472,11 @@ struct RenderPassRecorder
 struct DescriptorSetHelper
 {
     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    VkDescriptorPool createPool(VkDevice device, uint32_t maxSets) const;
-    VkDescriptorSetLayout createSetLayout(VkDevice device) const;
-    VkWriteDescriptorSet makeWrite(VkDescriptorSet dstSet, uint32_t dstBinding) const;
-    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet dstSet, uint32_t dstBinding, uint32_t start,
-                                        uint32_t count) const;
+    VkDescriptorPool create_pool(VkDevice device, uint32_t max_sets) const;
+    VkDescriptorSetLayout create_set_layout(VkDevice device) const;
+    VkWriteDescriptorSet make_write(VkDescriptorSet dst_set, uint32_t dst_binding) const;
+    VkWriteDescriptorSet make_write_array(VkDescriptorSet dst_set, uint32_t dst_binding, uint32_t start,
+                                          uint32_t count) const;
 };
 
 //-----------------------------------------------------------------------------
@@ -499,10 +500,10 @@ struct GFX
     explicit GFX(const GFXArgs &args);
     void shutdown();
 
-    uint32_t frameIndex() const { return swapchain.frameIndex; }
-    uint32_t renderAheadIndex() const { return swapchain.renderAheadIndex; }
+    uint32_t frame_index() const { return swapchain.frame_index; }
+    uint32_t render_ahead_index() const { return swapchain.render_ahead_index; }
 
-    bool acquireFrame()
+    bool acquire_frame()
     {
         if (!swapchain.acquire()) {
             return false;
@@ -510,20 +511,20 @@ struct GFX
         return true;
     }
 
-    void startFrame()
+    void start_frame()
     {
-        uint32_t frameIndex = swapchain.frameIndex;
-        cmdBufManager.startFrame(frameIndex);
+        uint32_t frameIndex = swapchain.frame_index;
+        cb_manager.start_frame(frameIndex);
     }
 
-    bool submitFrame()
+    bool submit_frame()
     {
-        uint32_t frameIndex = swapchain.frameIndex;
-        return swapchain.submitAndPresent(cmdBufManager.allAcquired());
+        uint32_t frameIndex = swapchain.frame_index;
+        return swapchain.submit_and_present(cb_manager.all_acquired());
     }
 
     Swapchain swapchain;
-    CmdBufManager cmdBufManager;
+    CmdBufManager cb_manager;
     VkSurfaceKHR surface;
     VulkanContext vkctx;
 };
@@ -547,18 +548,18 @@ struct GUI
     void render(VkCommandBuffer cmdBuf);
 
     void resize();
-    void createRenderPass();
-    void destroyRenderPass();
-    void createFramebuffers();
-    void destroyFramebuffers();
+    void create_render_pass();
+    void destroy_render_pass();
+    void create_framebuffers();
+    void destroy_framebuffers();
 
-    void updateFrame();
+    void upload_frame();
 
     GLFWwindow *window = nullptr;
     const GFX *gfx = nullptr;
 
     VkDescriptorPool pool;
-    VkRenderPass renderPass;
+    VkRenderPass render_pass;
     std::vector<VkFramebuffer> framebuffers;
 
     std::function<void()> update_fn;
