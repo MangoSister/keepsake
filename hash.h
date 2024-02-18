@@ -1,6 +1,7 @@
 #pragma once
 
 #include "maths.h"
+#include <cstring>
 #include <functional>
 
 namespace ks
@@ -107,16 +108,104 @@ inline arr3 hash33f(arr3u v) { return convert_u32_f01<3>(hash33u(v)); }
 // One-liner linear congruential generator. Quick but low quality.
 constexpr uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
 
-// Combine several hash values for hash tables. Based on the algorithm used in Boost.
-// https://stackoverflow.com/questions/2590677/how-do-i-combine-hash-values-in-c0x
-inline void hash_combine(std::size_t &seed) {}
-
-template <typename T, typename... Rest>
-inline void hash_combine(std::size_t &seed, const T &v, Rest... rest)
+// https://github.com/explosion/murmurhash/blob/master/murmurhash/MurmurHash2.cpp
+inline uint64_t murmur_hash_64A(const unsigned char *key, size_t len, uint64_t seed)
 {
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    hash_combine(seed, rest...);
+    const uint64_t m = 0xc6a4a7935bd1e995ull;
+    const int r = 47;
+
+    uint64_t h = seed ^ (len * m);
+
+    const unsigned char *end = key + 8 * (len / 8);
+
+    while (key != end) {
+        uint64_t k;
+        std::memcpy(&k, key, sizeof(uint64_t));
+        key += 8;
+
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        h ^= k;
+        h *= m;
+    }
+
+    switch (len & 7) {
+    case 7:
+        h ^= uint64_t(key[6]) << 48;
+    case 6:
+        h ^= uint64_t(key[5]) << 40;
+    case 5:
+        h ^= uint64_t(key[4]) << 32;
+    case 4:
+        h ^= uint64_t(key[3]) << 24;
+    case 3:
+        h ^= uint64_t(key[2]) << 16;
+    case 2:
+        h ^= uint64_t(key[1]) << 8;
+    case 1:
+        h ^= uint64_t(key[0]);
+        h *= m;
+    };
+
+    h ^= h >> r;
+    h *= m;
+    h ^= h >> r;
+
+    return h;
+}
+
+// Hashing Inline Functions
+// http://zimbry.blogspot.ch/2011/09/better-bit-mixing-improving-on.html
+inline uint64_t mix_bits(uint64_t v)
+{
+    v ^= (v >> 31);
+    v *= 0x7fb5d329728ea185;
+    v ^= (v >> 27);
+    v *= 0x81dadef4bc2dd44d;
+    v ^= (v >> 33);
+    return v;
+}
+
+template <typename T>
+inline uint64_t hash_buffer(const T *ptr, size_t size, uint64_t seed = 0)
+{
+    return murmur_hash_64A((const unsigned char *)ptr, size, seed);
+}
+
+template <typename... Args>
+inline uint64_t hash(Args... args);
+
+template <typename... Args>
+inline void hash_recursive_copy(char *buf, Args...);
+
+template <>
+inline void hash_recursive_copy(char *buf)
+{}
+
+template <typename T, typename... Args>
+inline void hash_recursive_copy(char *buf, T v, Args... args)
+{
+    std::memcpy(buf, &v, sizeof(T));
+    hash_recursive_copy(buf + sizeof(T), args...);
+}
+
+template <typename... Args>
+inline uint64_t hash(Args... args)
+{
+    // C++, you never cease to amaze: https://stackoverflow.com/a/57246704
+    constexpr size_t sz = (sizeof(Args) + ... + 0);
+    constexpr size_t n = (sz + 7) / 8;
+    uint64_t buf[n];
+    hash_recursive_copy((char *)buf, args...);
+    return murmur_hash_64A((const unsigned char *)buf, sz, 0);
+}
+
+template <typename... Args>
+inline float hash_float(Args... args)
+{
+    return uint32_t(hash(args...)) * 0x1p-32f;
 }
 
 } // namespace ks

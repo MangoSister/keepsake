@@ -1,9 +1,12 @@
 #pragma once
 #include "../assertion.h"
+#include "../hash.h"
 
 #include <cstddef>
 #include <functional>
 #include <source_location>
+#include <unordered_set>
+#include <utility>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -19,9 +22,6 @@ namespace vk
 // See discussions on imgui+custom loader: https://github.com/ocornut/imgui/issues/4854
 // For VMA, we need to specify VmaVulkanFunctions.
 
-// Some structs has destruction logic in shutdown() instead of dtor because we need to specify the order of
-// destruction...
-
 inline void vk_check(VkResult err, const std::source_location location = std::source_location::current())
 {
     if (err == 0)
@@ -32,25 +32,73 @@ inline void vk_check(VkResult err, const std::source_location location = std::so
         std::abort();
 }
 
+// Some structs has destruction logic in shutdown() instead of dtor because we need to specify the order of
+// destruction...shutdown() is guarded by the alive flag so that it is only called once either explicitly or implicitly
+// by the dtor.
+// Need to make sure shutdown() works for default constructed object (can just be an no-op).
+#define SHUTDOWN_DTOR(STRUCT_TYPE)                                                                                     \
+    ~STRUCT_TYPE()                                                                                                     \
+    {                                                                                                                  \
+        shutdown();                                                                                                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    void shutdown()                                                                                                    \
+    {                                                                                                                  \
+        if (alive) {                                                                                                   \
+            shutdown_impl();                                                                                           \
+            alive = false;                                                                                             \
+        }                                                                                                              \
+    }                                                                                                                  \
+    bool alive = true;
+
+#define NO_COPY_AND_SWAP_AS_MOVE(STRUCT_TYPE)                                                                          \
+    STRUCT_TYPE(const STRUCT_TYPE &other) = delete;                                                                    \
+                                                                                                                       \
+    STRUCT_TYPE &operator=(const STRUCT_TYPE &other) = delete;                                                         \
+                                                                                                                       \
+    STRUCT_TYPE(STRUCT_TYPE &&other) noexcept : STRUCT_TYPE()                                                          \
+    {                                                                                                                  \
+        swap(*this, other);                                                                                            \
+    }                                                                                                                  \
+                                                                                                                       \
+    STRUCT_TYPE &operator=(STRUCT_TYPE &&other) noexcept                                                               \
+    {                                                                                                                  \
+        if (this != &other) {                                                                                          \
+            swap(*this, other);                                                                                        \
+        }                                                                                                              \
+        return *this;                                                                                                  \
+    }
+
 //-----------------------------------------------------------------------------
 // [Memory allocation]
 //-----------------------------------------------------------------------------
 
+// These resources are "shallow" with no RAII. Use the allocator to create/destroy.
+// If not destroyed explicitly, the allocator will destroy all remaining resources upon its own destruction.
+
 struct Buffer
 {
+    bool operator==(const Buffer &) const = default;
+
     VkBuffer buffer = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
 };
 
 struct TexelBuffer
 {
-    Buffer buffer;
+    bool operator==(const TexelBuffer &) const = default;
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VmaAllocation allocation = nullptr;
     VkBufferView buffer_view = VK_NULL_HANDLE;
 };
 
 struct PerFrameBuffer
 {
-    Buffer buffer;
+    bool operator==(const PerFrameBuffer &) const = default;
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VmaAllocation allocation = nullptr;
     uint32_t per_frame_size;
     uint32_t num_frames;
 
@@ -65,27 +113,29 @@ struct PerFrameBuffer
 
 struct Image
 {
+    bool operator==(const Image &) const = default;
+
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
-    VkImageLayout layout;
 };
 
 struct ImageWithView
 {
+    bool operator==(const ImageWithView &) const = default;
+
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
     VkImageView view;
-    VkImageLayout layout;
-
-    VkDescriptorImageInfo image_info() const { return VkDescriptorImageInfo{VK_NULL_HANDLE, view, layout}; }
 };
 
 struct Texture
 {
+    bool operator==(const Texture &) const = default;
+
     ImageWithView image;
     VkSampler sampler;
 
-    VkDescriptorImageInfo image_info() const { return VkDescriptorImageInfo{sampler, image.view, image.layout}; }
+    bool own_image;
 };
 
 enum class MipmapOption
@@ -99,12 +149,28 @@ struct Allocator
 {
     Allocator() = default;
     Allocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queu_family_index, VkQueue upload_queue);
-    void shutdown();
 
-    Allocator(const Allocator &other) = delete;
-    Allocator &operator=(const Allocator &other) = delete;
-    Allocator(Allocator &&other) = default;
-    Allocator &operator=(Allocator &&other) = default;
+    SHUTDOWN_DTOR(Allocator)
+
+    void shutdown_impl();
+
+    friend void swap(Allocator &x, Allocator &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.device, y.device);
+        swap(x.vma, y.vma);
+        swap(x.upload_queue, y.upload_queue);
+        swap(x.upload_cp, y.upload_cp);
+        swap(x.upload_cb, y.upload_cb);
+        swap(x.staging_buffers, y.staging_buffers);
+        swap(x.min_uniform_buffer_offset_alignment, y.min_uniform_buffer_offset_alignment);
+        swap(x.min_storage_buffer_offset_alignment, y.min_storage_buffer_offset_alignment);
+        swap(x.min_texel_buffer_offset_alignment, y.min_texel_buffer_offset_alignment);
+        swap(x.allocated, y.allocated);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(Allocator)
 
     // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
     Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO,
@@ -176,32 +242,55 @@ struct Allocator
                                           bool cube_map);
     Texture create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info);
 
+  public:
+    void destroy(const Buffer &buffer);
+    void destroy(const TexelBuffer &texel_buffer);
+    void destroy(const PerFrameBuffer &per_frame_buffer);
+    void destroy(const Image &image);
+    void destroy(const ImageWithView &image);
+    void destroy(const Texture &texture);
+
+    VkDevice device = VK_NULL_HANDLE;
+    VmaAllocator vma = VK_NULL_HANDLE;
+
+    VkQueue upload_queue = VK_NULL_HANDLE;
+    VkCommandPool upload_cp = VK_NULL_HANDLE;
+    VkCommandBuffer upload_cb = VK_NULL_HANDLE;
+
+    std::vector<Buffer> staging_buffers;
+
+    VkDeviceSize min_uniform_buffer_offset_alignment = 0;
+    VkDeviceSize min_storage_buffer_offset_alignment = 0;
+    VkDeviceSize min_texel_buffer_offset_alignment = 0;
+
   private:
     // Note: delay destruction of staging buffers.
     Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
                                  bool auto_mapped = true);
     void clear_staging_buffer();
 
-  public:
-    void destroy(Buffer &buffer);
-    void destroy(TexelBuffer &texel_buffer);
-    void destroy(PerFrameBuffer &per_frame_buffer);
-    void destroy(Image &image);
-    void destroy(ImageWithView &image);
-    void destroy(Texture &texture, bool destroy_image);
+    void destroy_impl(const Buffer &buffer);
+    void destroy_impl(const TexelBuffer &texel_buffer);
+    void destroy_impl(const PerFrameBuffer &per_frame_buffer);
+    void destroy_impl(const Image &image);
+    void destroy_impl(const ImageWithView &image);
+    void destroy_impl(const Texture &texture);
 
-    VkDevice device;
-    VmaAllocator vma;
+    template <typename T>
+    struct ByteHash
+    {
+        std::size_t operator()(const T &obj) const { return ks::hash(obj); }
+    };
 
-    VkQueue upload_queue;
-    VkCommandPool upload_cp;
-    VkCommandBuffer upload_cb;
-
-    std::vector<Buffer> staging_buffers;
-
-    VkDeviceSize min_uniform_buffer_offset_alignment;
-    VkDeviceSize min_storage_buffer_offset_alignment;
-    VkDeviceSize min_texel_buffer_offset_alignment;
+    struct
+    {
+        std::unordered_set<Buffer, ByteHash<Buffer>> buffers;
+        std::unordered_set<TexelBuffer, ByteHash<TexelBuffer>> texel_buffers;
+        std::unordered_set<PerFrameBuffer, ByteHash<PerFrameBuffer>> per_frame_buffers;
+        std::unordered_set<Image, ByteHash<Image>> images;
+        std::unordered_set<ImageWithView, ByteHash<ImageWithView>> images_with_view;
+        std::unordered_set<Texture, ByteHash<Texture>> textures;
+    } allocated;
 };
 
 //-----------------------------------------------------------------------------
@@ -260,12 +349,28 @@ struct CompatibleDevice
 struct Context
 {
     Context() = default;
-    void shutdown();
 
-    Context(const Context &other) = delete;
-    Context &operator=(const Context &other) = delete;
-    Context(Context &&other) = default;
-    Context &operator=(Context &&other) = default;
+    SHUTDOWN_DTOR(Context)
+
+    void shutdown_impl();
+
+    friend void swap(Context &x, Context &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.instance, y.instance);
+        swap(x.validation, y.validation);
+        swap(x.debug_messenger, y.debug_messenger);
+        swap(x.physical_device, y.physical_device);
+        swap(x.physical_device_features, y.physical_device_features);
+        swap(x.physical_device_properties, y.physical_device_properties);
+        swap(x.device, y.device);
+        swap(x.main_queue_family_index, y.main_queue_family_index);
+        swap(x.main_queue, y.main_queue);
+        swap(x.allocator, y.allocator);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(Context)
 
     void create_instance(const ContextCreateInfo &info);
     std::vector<CompatibleDevice> query_compatible_devices(const ContextCreateInfo &info, VkSurfaceKHR surface);
@@ -274,21 +379,21 @@ struct Context
     template <typename TWork>
     void submit_once(const TWork &task);
 
-    VkInstance instance;
-    bool validation;
-    VkDebugUtilsMessengerEXT debug_messenger;
+    VkInstance instance = VK_NULL_HANDLE;
+    bool validation = false;
+    VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
 
     // Single physical/logical device.
-    VkPhysicalDevice physical_device;
-    VkPhysicalDeviceFeatures physical_device_features;
-    VkPhysicalDeviceProperties physical_device_properties;
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+    VkPhysicalDeviceFeatures physical_device_features = {};
+    VkPhysicalDeviceProperties physical_device_properties = {};
 
-    VkDevice device;
+    VkDevice device = VK_NULL_HANDLE;
 
     // Single queue
     // TODO: multi-queue architecture for e.g. async-compute.
-    uint32_t main_queue_family_index;
-    VkQueue main_queue;
+    uint32_t main_queue_family_index = 0;
+    VkQueue main_queue = VK_NULL_HANDLE;
 
     // Single allocator
     Allocator allocator;
@@ -350,12 +455,33 @@ struct Swapchain
 {
     Swapchain() = default;
     explicit Swapchain(const SwapchainCreateInfo &info);
-    void shutdown();
 
-    Swapchain(const Swapchain &other) = delete;
-    Swapchain &operator=(const Swapchain &other) = delete;
-    Swapchain(Swapchain &&other) = default;
-    Swapchain &operator=(Swapchain &&other) = default;
+    SHUTDOWN_DTOR(Swapchain)
+
+    void shutdown_impl();
+
+    friend void swap(Swapchain &x, Swapchain &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.physical_device, y.physical_device);
+        swap(x.device, y.device);
+        swap(x.queue, y.queue);
+        swap(x.surface, y.surface);
+        swap(x.swapchain, y.swapchain);
+        swap(x.format, y.format);
+        swap(x.extent, y.extent);
+        swap(x.images, y.images);
+        swap(x.image_views, y.image_views);
+        swap(x.present_complete_semaphores, y.present_complete_semaphores);
+        swap(x.render_complete_semaphores, y.render_complete_semaphores);
+        swap(x.inflight_fences, y.inflight_fences);
+        swap(x.max_frames_ahead, y.max_frames_ahead);
+        swap(x.render_ahead_index, y.render_ahead_index);
+        swap(x.frame_index, y.frame_index);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(Swapchain);
 
     bool acquire();
     bool submit_and_present(const std::vector<VkCommandBuffer> &cbs);
@@ -367,14 +493,14 @@ struct Swapchain
     uint32_t frame_count() const { return (uint32_t)image_views.size(); }
     float aspect() const { return (float)extent.width / (float)extent.height; }
 
-    VkPhysicalDevice physical_device;
-    VkDevice device;
-    VkQueue queue;
-    VkSurfaceKHR surface;
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue queue = VK_NULL_HANDLE;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
 
-    VkSwapchainKHR swapchain;
-    VkFormat format;
-    VkExtent2D extent;
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkFormat format = {};
+    VkExtent2D extent = {};
     std::vector<VkImage> images;
     std::vector<VkImageView> image_views;
 
@@ -383,7 +509,7 @@ struct Swapchain
     std::vector<VkFence> inflight_fences;
     uint32_t max_frames_ahead = 0;
     uint32_t render_ahead_index = 0;
-    uint32_t frame_index;
+    uint32_t frame_index = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -394,12 +520,21 @@ struct CmdBufManager
 {
     CmdBufManager() = default;
     CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, VkDevice device);
-    void shutdown();
 
-    CmdBufManager(const CmdBufManager &other) = delete;
-    CmdBufManager &operator=(const CmdBufManager &other) = delete;
-    CmdBufManager(CmdBufManager &&other) = default;
-    CmdBufManager &operator=(CmdBufManager &&other) = default;
+    SHUTDOWN_DTOR(CmdBufManager)
+
+    void shutdown_impl();
+
+    friend void swap(CmdBufManager &x, CmdBufManager &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.frames, y.frames);
+        swap(x.device, y.device);
+        swap(x.frame_index, y.frame_index);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(CmdBufManager)
 
     void start_frame(uint32_t frame_index);
     std::vector<VkCommandBuffer> acquire_cbs(uint32_t count);
@@ -424,8 +559,8 @@ struct CmdBufManager
         uint32_t next_cb = 0;
     };
     std::vector<Frame> frames;
-    VkDevice device;
-    uint32_t frame_index;
+    VkDevice device = VK_NULL_HANDLE;
+    uint32_t frame_index = 0;
 };
 
 void encode_cmd_now(VkDevice device, uint32_t queue_family_index, VkQueue queue,
@@ -493,13 +628,23 @@ struct GFXArgs
 struct GFX
 {
     GFX() = default;
-    GFX(const GFX &other) = delete;
-    GFX &operator=(const GFX &other) = delete;
-    GFX(GFX &&other) = default;
-    GFX &operator=(GFX &&other) = default;
-
     explicit GFX(const GFXArgs &args);
-    void shutdown();
+
+    SHUTDOWN_DTOR(GFX)
+
+    void shutdown_impl();
+
+    friend void swap(GFX &x, GFX &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.swapchain, y.swapchain);
+        swap(x.cb_manager, y.cb_manager);
+        swap(x.surface, y.surface);
+        swap(x.ctx, y.ctx);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(GFX)
 
     uint32_t frame_index() const { return swapchain.frame_index; }
     uint32_t render_ahead_index() const { return swapchain.render_ahead_index; }
@@ -526,7 +671,7 @@ struct GFX
 
     Swapchain swapchain;
     CmdBufManager cb_manager;
-    VkSurfaceKHR surface;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
     Context ctx;
 };
 
@@ -544,7 +689,25 @@ struct GUI
 {
     GUI() = default;
     explicit GUI(const GUICreateInfo &info);
-    void shutdown();
+
+    SHUTDOWN_DTOR(GUI)
+
+    void shutdown_impl();
+
+    friend void swap(GUI &x, GUI &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.window, y.window);
+        swap(x.gfx, y.gfx);
+        swap(x.pool, y.pool);
+        swap(x.render_pass, y.render_pass);
+        swap(x.framebuffers, y.framebuffers);
+        swap(x.update_fn, y.update_fn);
+        swap(x.show, y.show);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(GUI)
 
     void render(VkCommandBuffer cmdBuf);
 
@@ -559,8 +722,8 @@ struct GUI
     GLFWwindow *window = nullptr;
     const GFX *gfx = nullptr;
 
-    VkDescriptorPool pool;
-    VkRenderPass render_pass;
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    VkRenderPass render_pass = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> framebuffers;
 
     std::function<void()> update_fn;

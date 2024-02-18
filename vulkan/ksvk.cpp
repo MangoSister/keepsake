@@ -56,9 +56,39 @@ Allocator::Allocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_que
     min_texel_buffer_offset_alignment = physicalDeviceProps.limits.minTexelBufferOffsetAlignment;
 }
 
-void Allocator::shutdown()
+void Allocator::shutdown_impl()
 {
+    if (vma == VK_NULL_HANDLE) {
+        return;
+    }
     clear_staging_buffer();
+
+    auto it = allocated.buffers.begin();
+
+    for (auto it = allocated.buffers.begin(); it != allocated.buffers.end();) {
+        destroy_impl(*it);
+        it = allocated.buffers.erase(it);
+    }
+    for (auto it = allocated.texel_buffers.begin(); it != allocated.texel_buffers.end();) {
+        destroy_impl(*it);
+        it = allocated.texel_buffers.erase(it);
+    }
+    for (auto it = allocated.per_frame_buffers.begin(); it != allocated.per_frame_buffers.end();) {
+        destroy_impl(*it);
+        it = allocated.per_frame_buffers.erase(it);
+    }
+    for (auto it = allocated.images.begin(); it != allocated.images.end();) {
+        destroy_impl(*it);
+        it = allocated.images.erase(it);
+    }
+    for (auto it = allocated.images_with_view.begin(); it != allocated.images_with_view.end();) {
+        destroy_impl(*it);
+        it = allocated.images_with_view.erase(it);
+    }
+    for (auto it = allocated.textures.begin(); it != allocated.textures.end();) {
+        destroy_impl(*it);
+        it = allocated.textures.erase(it);
+    }
 
     vkDestroyCommandPool(device, upload_cp, nullptr);
     vmaDestroyAllocator(vma);
@@ -85,6 +115,8 @@ Buffer Allocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage u
         vkCmdCopyBuffer(custom_cb ? custom_cb : upload_cb, staging.buffer, buf.buffer, 1, &region);
     }
 
+    allocated.buffers.insert(buf);
+
     return buf;
 }
 
@@ -93,9 +125,18 @@ TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBuf
                                            VkCommandBuffer custom_cb)
 {
     TexelBuffer tb;
-    tb.buffer = create_buffer(info, usage, flags, data, custom_cb);
-    buffer_view_info.buffer = tb.buffer.buffer;
+
+    VmaAllocationCreateInfo allocCI{};
+    allocCI.usage = usage;
+    allocCI.flags = flags;
+    Buffer buffer;
+    vk_check(vmaCreateBuffer(vma, &info, &allocCI, &tb.buffer, &tb.allocation, nullptr));
+
+    buffer_view_info.buffer = tb.buffer;
     vk_check(vkCreateBufferView(device, &buffer_view_info, nullptr, &tb.buffer_view));
+
+    allocated.texel_buffers.insert(tb);
+
     return tb;
 }
 
@@ -130,7 +171,11 @@ PerFrameBuffer Allocator::create_per_frame_buffer(const VkBufferCreateInfo &per_
 
     VkBufferCreateInfo info = per_frame_info;
     info.size = buf.per_frame_size * buf.num_frames;
-    buf.buffer = create_buffer(info, usage);
+
+    VmaAllocationCreateInfo allocCI{};
+    allocCI.usage = usage;
+    Buffer buffer;
+    vk_check(vmaCreateBuffer(vma, &info, &allocCI, &buf.buffer, &buf.allocation, nullptr));
     return buf;
 }
 
@@ -138,7 +183,7 @@ void Allocator::flush(const PerFrameBuffer &buffer, uint32_t frameIndex)
 {
     ASSERT(frameIndex < buffer.num_frames);
     VkDeviceSize offset = frameIndex * buffer.per_frame_size;
-    vk_check(vmaFlushAllocation(vma, buffer.buffer.allocation, offset, buffer.per_frame_size));
+    vk_check(vmaFlushAllocation(vma, buffer.allocation, offset, buffer.per_frame_size));
 }
 
 void Allocator::begin_staging_session()
@@ -232,7 +277,9 @@ Image Allocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usag
     allocCI.flags = flags;
     Image image;
     vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
-    image.layout = info.initialLayout;
+
+    allocated.images.insert(image);
+
     return image;
 }
 
@@ -245,7 +292,9 @@ ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, V
     vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
     view_info.image = image.image;
     vk_check(vkCreateImageView(device, &view_info, nullptr, &image.view));
-    image.layout = info.initialLayout;
+
+    allocated.images_with_view.insert(image);
+
     return image;
 }
 
@@ -346,7 +395,6 @@ ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info,
     vkCmdPipelineBarrier(upload_cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &barrier);
 
-    image.layout = layout;
     return image;
 }
 
@@ -547,7 +595,6 @@ ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info, 
         ASSERT(false);
     }
 
-    image.layout = layout;
     return image;
 }
 
@@ -556,6 +603,9 @@ Texture Allocator::create_texture(const ImageWithView &image, const VkSamplerCre
     Texture texture;
     texture.image = image;
     vk_check(vkCreateSampler(device, &sampler_info, nullptr, &texture.sampler));
+
+    allocated.textures.insert(texture);
+
     return texture;
 }
 
@@ -586,58 +636,87 @@ Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byt
 void Allocator::clear_staging_buffer()
 {
     for (auto staging : staging_buffers) {
-        destroy(staging);
+        vmaDestroyBuffer(vma, staging.buffer, staging.allocation);
     }
     staging_buffers.clear();
 }
 
-void Allocator::destroy(Buffer &buffer)
+void Allocator::destroy(const Buffer &buffer)
 {
-    if (buffer.buffer != VK_NULL_HANDLE) {
-        vmaDestroyBuffer(vma, buffer.buffer, buffer.allocation);
+    if (auto it = allocated.buffers.find(buffer); it != allocated.buffers.end()) {
+        destroy_impl(buffer);
+        allocated.buffers.erase(it);
     }
-    buffer = {};
 }
 
-void Allocator::destroy(TexelBuffer &texel_buffer)
+void Allocator::destroy_impl(const Buffer &buffer) { vmaDestroyBuffer(vma, buffer.buffer, buffer.allocation); }
+
+void Allocator::destroy(const TexelBuffer &texel_buffer)
+{
+    if (auto it = allocated.texel_buffers.find(texel_buffer); it != allocated.texel_buffers.end()) {
+        destroy_impl(texel_buffer);
+        allocated.texel_buffers.erase(it);
+    }
+}
+
+void Allocator::destroy_impl(const TexelBuffer &texel_buffer)
 {
     vkDestroyBufferView(device, texel_buffer.buffer_view, nullptr);
-    texel_buffer.buffer_view = {};
-    destroy(texel_buffer.buffer);
+    vmaDestroyBuffer(vma, texel_buffer.buffer, texel_buffer.allocation);
 }
 
-void Allocator::destroy(PerFrameBuffer &per_frame_buffer)
+void Allocator::destroy(const PerFrameBuffer &per_frame_buffer)
 {
-    destroy(per_frame_buffer.buffer);
-    per_frame_buffer.num_frames = per_frame_buffer.per_frame_size = 0;
-}
-
-void Allocator::destroy(Image &image)
-{
-    if (image.image != VK_NULL_HANDLE) {
-        vmaDestroyImage(vma, image.image, image.allocation);
+    if (auto it = allocated.per_frame_buffers.find(per_frame_buffer); it != allocated.per_frame_buffers.end()) {
+        destroy_impl(per_frame_buffer);
+        allocated.per_frame_buffers.erase(it);
     }
-    image = {};
 }
 
-void Allocator::destroy(ImageWithView &image)
+void Allocator::destroy_impl(const PerFrameBuffer &per_frame_buffer)
 {
-    if (image.image != VK_NULL_HANDLE) {
-        vmaDestroyImage(vma, image.image, image.allocation);
-        vkDestroyImageView(device, image.view, nullptr);
-    }
-    image = {};
+    vmaDestroyBuffer(vma, per_frame_buffer.buffer, per_frame_buffer.allocation);
 }
 
-void Allocator::destroy(Texture &texture, bool destroy_image)
+void Allocator::destroy(const Image &image)
+{
+    if (auto it = allocated.images.find(image); it != allocated.images.end()) {
+        destroy_impl(image);
+        allocated.images.erase(it);
+    }
+}
+
+void Allocator::destroy_impl(const Image &image) { vmaDestroyImage(vma, image.image, image.allocation); }
+
+void Allocator::destroy(const ImageWithView &image)
+{
+    if (auto it = allocated.images_with_view.find(image); it != allocated.images_with_view.end()) {
+        destroy_impl(image);
+        allocated.images_with_view.erase(it);
+    }
+}
+
+void Allocator::destroy_impl(const ImageWithView &image)
+{
+    vmaDestroyImage(vma, image.image, image.allocation);
+    vkDestroyImageView(device, image.view, nullptr);
+}
+
+void Allocator::destroy(const Texture &texture)
+{
+    if (auto it = allocated.textures.find(texture); it != allocated.textures.end()) {
+        destroy_impl(texture);
+        allocated.textures.erase(it);
+    }
+}
+
+void Allocator::destroy_impl(const Texture &texture)
 {
     vkDestroySampler(device, texture.sampler, nullptr);
-    if (destroy_image && texture.image.image != VK_NULL_HANDLE) {
+    if (texture.own_image && texture.image.image != VK_NULL_HANDLE) {
         vkDestroyImageView(device, texture.image.view, nullptr);
         vmaDestroyImage(vma, texture.image.image, texture.image.allocation);
     }
-
-    texture = {};
 }
 
 //-----------------------------------------------------------------------------
@@ -713,8 +792,12 @@ void ContextCreateInfo::enable_validation()
 
 void ContextCreateInfo::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
 
-void Context::shutdown()
+void Context::shutdown_impl()
 {
+    if (instance == VK_NULL_HANDLE) {
+        return;
+    }
+
     allocator.shutdown();
     vkDestroyDevice(device, nullptr);
 
@@ -975,7 +1058,7 @@ Swapchain::Swapchain(const SwapchainCreateInfo &info)
     create_swapchain_and_images(info.width, info.height);
 }
 
-void Swapchain::shutdown()
+void Swapchain::shutdown_impl()
 {
     destroy_swapchain_and_images();
 
@@ -1187,7 +1270,7 @@ CmdBufManager::CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, 
     }
 }
 
-void CmdBufManager::shutdown()
+void CmdBufManager::shutdown_impl()
 {
     for (auto &frame : frames) {
         vkFreeCommandBuffers(device, frame.pool, (uint32_t)frame.cbs.size(), frame.cbs.data());
@@ -1390,7 +1473,7 @@ GFX::GFX(const GFXArgs &args)
     cb_manager = CmdBufManager((uint32_t)swapchain.image_views.size(), ctx.main_queue_family_index, ctx.device);
 }
 
-void GFX::shutdown()
+void GFX::shutdown_impl()
 {
     swapchain.shutdown();
     cb_manager.shutdown();
@@ -1560,7 +1643,7 @@ void GUI::resize()
     create_framebuffers();
 }
 
-void GUI::shutdown()
+void GUI::shutdown_impl()
 {
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
