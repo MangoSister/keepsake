@@ -320,19 +320,18 @@ struct ContextCreateInfo
     template <typename T>
     T &add_device_feature()
     {
-
         T *feature = (T *)malloc(sizeof(T));
         memset(feature, 0, sizeof(T));
         device_features_data.push_back(feature);
 
-        auto getNext = [](const void *ptr) { return (void *)((std::byte *)ptr + offsetof(T, pNext)); };
+        auto get_next = [](const void *ptr) { return (void *)((std::byte *)ptr + offsetof(T, pNext)); };
 
         void *ptr = &device_features;
-        void *next = getNext(ptr);
+        void *next = get_next(ptr);
         constexpr void *null = nullptr;
         while (memcmp(next, &null, sizeof(void *))) {
             memcpy(&ptr, next, sizeof(void *));
-            next = getNext(ptr);
+            next = get_next(ptr);
         }
         memcpy(next, &feature, sizeof(T *));
         return *feature;
