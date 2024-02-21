@@ -56,39 +56,12 @@ Allocator::Allocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_que
     min_texel_buffer_offset_alignment = physicalDeviceProps.limits.minTexelBufferOffsetAlignment;
 }
 
-void Allocator::shutdown_impl()
+Allocator::~Allocator()
 {
     if (vma == VK_NULL_HANDLE) {
         return;
     }
     clear_staging_buffer();
-
-    auto it = allocated.buffers.begin();
-
-    for (auto it = allocated.buffers.begin(); it != allocated.buffers.end();) {
-        destroy_impl(*it);
-        it = allocated.buffers.erase(it);
-    }
-    for (auto it = allocated.texel_buffers.begin(); it != allocated.texel_buffers.end();) {
-        destroy_impl(*it);
-        it = allocated.texel_buffers.erase(it);
-    }
-    for (auto it = allocated.per_frame_buffers.begin(); it != allocated.per_frame_buffers.end();) {
-        destroy_impl(*it);
-        it = allocated.per_frame_buffers.erase(it);
-    }
-    for (auto it = allocated.images.begin(); it != allocated.images.end();) {
-        destroy_impl(*it);
-        it = allocated.images.erase(it);
-    }
-    for (auto it = allocated.images_with_view.begin(); it != allocated.images_with_view.end();) {
-        destroy_impl(*it);
-        it = allocated.images_with_view.erase(it);
-    }
-    for (auto it = allocated.textures.begin(); it != allocated.textures.end();) {
-        destroy_impl(*it);
-        it = allocated.textures.erase(it);
-    }
 
     vkDestroyCommandPool(device, upload_cp, nullptr);
     vmaDestroyAllocator(vma);
@@ -115,8 +88,6 @@ Buffer Allocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage u
         vkCmdCopyBuffer(custom_cb ? custom_cb : upload_cb, staging.buffer, buf.buffer, 1, &region);
     }
 
-    allocated.buffers.insert(buf);
-
     return buf;
 }
 
@@ -134,8 +105,6 @@ TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBuf
 
     buffer_view_info.buffer = tb.buffer;
     vk_check(vkCreateBufferView(device, &buffer_view_info, nullptr, &tb.buffer_view));
-
-    allocated.texel_buffers.insert(tb);
 
     return tb;
 }
@@ -278,8 +247,6 @@ Image Allocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usag
     Image image;
     vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
 
-    allocated.images.insert(image);
-
     return image;
 }
 
@@ -292,8 +259,6 @@ ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, V
     vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
     view_info.image = image.image;
     vk_check(vkCreateImageView(device, &view_info, nullptr, &image.view));
-
-    allocated.images_with_view.insert(image);
 
     return image;
 }
@@ -604,8 +569,6 @@ Texture Allocator::create_texture(const ImageWithView &image, const VkSamplerCre
     texture.image = image;
     vk_check(vkCreateSampler(device, &sampler_info, nullptr, &texture.sampler));
 
-    allocated.textures.insert(texture);
-
     return texture;
 }
 
@@ -641,25 +604,56 @@ void Allocator::clear_staging_buffer()
     staging_buffers.clear();
 }
 
-void Allocator::destroy(const Buffer &buffer)
-{
-    if (auto it = allocated.buffers.find(buffer); it != allocated.buffers.end()) {
-        destroy_impl(buffer);
-        allocated.buffers.erase(it);
-    }
-}
+// Buffer::~Buffer()
+//{
+//     if (allocator) {
+//         vmaDestroyBuffer(allocator->vma, buffer, allocation);
+//     }
+// }
+//
+// TexelBuffer::~TexelBuffer()
+//{
+//     if (allocator) {
+//         vmaDestroyBuffer(allocator->vma, buffer, allocation);
+//     }
+// }
+//
+// PerFrameBuffer::~PerFrameBuffer()
+//{
+//     if (allocator) {
+//         vmaDestroyBuffer(allocator->vma, buffer, allocation);
+//     }
+// }
+//
+// Image::~Image()
+//{
+//     if (allocator) {
+//         vmaDestroyImage(allocator->vma, image, allocation);
+//     }
+// }
+//
+// ImageWithView::~ImageWithView()
+//{
+//     if (allocator) {
+//         vmaDestroyImage(allocator->vma, image, allocation);
+//         vkDestroyImageView(allocator->device, view, nullptr);
+//     }
+// }
+//
+// Texture::~Texture()
+//{
+//     if (allocator) {
+//         vkDestroySampler(allocator->device, sampler, nullptr);
+//         if (own_image && image.image != VK_NULL_HANDLE) {
+//             vkDestroyImageView(allocator->device, image.view, nullptr);
+//             vmaDestroyImage(allocator->vma, image.image, image.allocation);
+//         }
+//     }
+// }
 
-void Allocator::destroy_impl(const Buffer &buffer) { vmaDestroyBuffer(vma, buffer.buffer, buffer.allocation); }
+void Allocator::destroy(const Buffer &buffer) { vmaDestroyBuffer(vma, buffer.buffer, buffer.allocation); }
 
 void Allocator::destroy(const TexelBuffer &texel_buffer)
-{
-    if (auto it = allocated.texel_buffers.find(texel_buffer); it != allocated.texel_buffers.end()) {
-        destroy_impl(texel_buffer);
-        allocated.texel_buffers.erase(it);
-    }
-}
-
-void Allocator::destroy_impl(const TexelBuffer &texel_buffer)
 {
     vkDestroyBufferView(device, texel_buffer.buffer_view, nullptr);
     vmaDestroyBuffer(vma, texel_buffer.buffer, texel_buffer.allocation);
@@ -667,50 +661,18 @@ void Allocator::destroy_impl(const TexelBuffer &texel_buffer)
 
 void Allocator::destroy(const PerFrameBuffer &per_frame_buffer)
 {
-    if (auto it = allocated.per_frame_buffers.find(per_frame_buffer); it != allocated.per_frame_buffers.end()) {
-        destroy_impl(per_frame_buffer);
-        allocated.per_frame_buffers.erase(it);
-    }
-}
-
-void Allocator::destroy_impl(const PerFrameBuffer &per_frame_buffer)
-{
     vmaDestroyBuffer(vma, per_frame_buffer.buffer, per_frame_buffer.allocation);
 }
 
-void Allocator::destroy(const Image &image)
-{
-    if (auto it = allocated.images.find(image); it != allocated.images.end()) {
-        destroy_impl(image);
-        allocated.images.erase(it);
-    }
-}
-
-void Allocator::destroy_impl(const Image &image) { vmaDestroyImage(vma, image.image, image.allocation); }
+void Allocator::destroy(const Image &image) { vmaDestroyImage(vma, image.image, image.allocation); }
 
 void Allocator::destroy(const ImageWithView &image)
-{
-    if (auto it = allocated.images_with_view.find(image); it != allocated.images_with_view.end()) {
-        destroy_impl(image);
-        allocated.images_with_view.erase(it);
-    }
-}
-
-void Allocator::destroy_impl(const ImageWithView &image)
 {
     vmaDestroyImage(vma, image.image, image.allocation);
     vkDestroyImageView(device, image.view, nullptr);
 }
 
 void Allocator::destroy(const Texture &texture)
-{
-    if (auto it = allocated.textures.find(texture); it != allocated.textures.end()) {
-        destroy_impl(texture);
-        allocated.textures.erase(it);
-    }
-}
-
-void Allocator::destroy_impl(const Texture &texture)
 {
     vkDestroySampler(device, texture.sampler, nullptr);
     if (texture.own_image && texture.image.image != VK_NULL_HANDLE) {
@@ -792,13 +754,13 @@ void ContextCreateInfo::enable_validation()
 
 void ContextCreateInfo::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
 
-void Context::shutdown_impl()
+Context::~Context()
 {
     if (instance == VK_NULL_HANDLE) {
         return;
     }
 
-    allocator.shutdown();
+    allocator = {};
     vkDestroyDevice(device, nullptr);
 
     if (validation) {
@@ -1028,7 +990,7 @@ void Context::create_device(const ContextCreateInfo &info, CompatibleDevice comp
     vmaInfo.physicalDevice = physical_device;
     vmaInfo.device = device;
     vmaInfo.instance = instance;
-    allocator = Allocator(vmaInfo, main_queue_family_index, main_queue);
+    allocator = std::make_shared<Allocator>(vmaInfo, main_queue_family_index, main_queue);
 }
 
 //-----------------------------------------------------------------------------
@@ -1058,7 +1020,7 @@ Swapchain::Swapchain(const SwapchainCreateInfo &info)
     create_swapchain_and_images(info.width, info.height);
 }
 
-void Swapchain::shutdown_impl()
+Swapchain::~Swapchain()
 {
     destroy_swapchain_and_images();
 
@@ -1270,7 +1232,7 @@ CmdBufManager::CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, 
     }
 }
 
-void CmdBufManager::shutdown_impl()
+CmdBufManager::~CmdBufManager()
 {
     for (auto &frame : frames) {
         vkFreeCommandBuffers(device, frame.pool, (uint32_t)frame.cbs.size(), frame.cbs.data());
@@ -1354,6 +1316,13 @@ void encode_cmd_now(VkDevice device, uint32_t queue_family_index, VkQueue queue,
 // [Convenience helper for setting up descriptor sets]
 //-----------------------------------------------------------------------------
 
+void DescriptorSetHelper::add_binding(std::string name, VkDescriptorSetLayoutBinding binding)
+{
+    bindings.push_back(std::move(binding));
+    auto res = name_map.insert({std::move(name), (uint32_t)bindings.size() - 1});
+    ASSERT(res.second, "Duplicated binding name!");
+}
+
 VkDescriptorPool DescriptorSetHelper::create_pool(VkDevice device, uint32_t max_sets) const
 {
     std::vector<VkDescriptorPoolSize> poolSizes;
@@ -1410,6 +1379,22 @@ VkWriteDescriptorSet DescriptorSetHelper::make_write(VkDescriptorSet dst_set, ui
     return writeSet;
 }
 
+VkWriteDescriptorSet DescriptorSetHelper::make_write(VkDescriptorSet dst_set, const std::string &binding_name) const
+{
+    auto it = name_map.find(binding_name);
+    ASSERT(it != name_map.end(), "binding with name [%s] not found!", binding_name.c_str());
+    auto &b = bindings[it->second];
+    VkWriteDescriptorSet writeSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = dst_set,
+        .dstBinding = b.binding,
+        .dstArrayElement = 0,
+        .descriptorCount = b.descriptorCount,
+        .descriptorType = b.descriptorType,
+    };
+    return writeSet;
+}
+
 VkWriteDescriptorSet DescriptorSetHelper::make_write_array(VkDescriptorSet dst_set, uint32_t dst_binding,
                                                            uint32_t start, uint32_t count) const
 {
@@ -1427,6 +1412,80 @@ VkWriteDescriptorSet DescriptorSetHelper::make_write_array(VkDescriptorSet dst_s
     }
     ASSERT(false, "binding not found");
     return writeSet;
+}
+
+VkWriteDescriptorSet DescriptorSetHelper::make_write_array(VkDescriptorSet dst_set, const std::string &binding_name,
+                                                           uint32_t start, uint32_t count) const
+{
+    auto it = name_map.find(binding_name);
+    ASSERT(it != name_map.end(), "binding with name [%s] not found!", binding_name.c_str());
+    auto &b = bindings[it->second];
+    ASSERT(start + count <= b.descriptorCount);
+    VkWriteDescriptorSet writeSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = dst_set,
+        .dstBinding = b.binding,
+        .dstArrayElement = start,
+        .descriptorCount = count,
+        .descriptorType = b.descriptorType,
+    };
+    return writeSet;
+}
+
+ParameterBlockMeta::ParameterBlockMeta(VkDevice device, uint32_t max_sets, DescriptorSetHelper &&helper)
+    : desc_set_helper(std::move(helper)), device(device), max_sets(max_sets)
+{
+    desc_pool = desc_set_helper.create_pool(device, max_sets);
+    desc_set_layout = desc_set_helper.create_set_layout(device);
+    allocated_sets = 0;
+}
+
+ParameterBlockMeta::~ParameterBlockMeta()
+{
+    if (desc_pool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(device, desc_set_layout, nullptr);
+        vkDestroyDescriptorPool(device, desc_pool, nullptr);
+    }
+}
+
+void ParameterBlockMeta::allocate_blocks(uint32_t num, std::span<ParameterBlock> out)
+{
+    ASSERT(allocated_sets + num <= max_sets, "Exceeds max sets!");
+    allocated_sets += num;
+
+    VkDescriptorSetAllocateInfo allocInfo{.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                          .descriptorPool = desc_pool,
+                                          .descriptorSetCount = num,
+                                          .pSetLayouts = &desc_set_layout};
+    std::vector<VkDescriptorSet> sets(num);
+    vk_check(vkAllocateDescriptorSets(device, &allocInfo, sets.data()));
+    for (uint32_t i = 0; i < num; ++i) {
+        out[i].desc_set = sets[i];
+        out[i].meta = this;
+    }
+}
+
+ParameterWrite ParameterBlock::write(const std::string &binding_name,
+                                     const std::optional<VkDescriptorBufferInfo> buffer_info,
+                                     const std::optional<VkDescriptorImageInfo> image_info,
+                                     VkBufferView texel_buffer_view) const
+{
+    ParameterWrite write;
+    write.write = meta->desc_set_helper.make_write(desc_set, binding_name);
+
+    if (buffer_info) {
+        write.buffer_info = std::make_unique<VkDescriptorBufferInfo>(*buffer_info);
+        write.write.pBufferInfo = write.buffer_info.get();
+    }
+    if (image_info) {
+        write.image_info = std::make_unique<VkDescriptorImageInfo>(*image_info);
+        write.write.pImageInfo = write.image_info.get();
+    }
+    if (texel_buffer_view != VK_NULL_HANDLE) {
+        write.texel_buffer_view = std::make_unique<VkBufferView>(texel_buffer_view);
+        write.write.pTexelBufferView = write.texel_buffer_view.get();
+    }
+    return write;
 }
 
 //-----------------------------------------------------------------------------
@@ -1451,9 +1510,10 @@ GFX::GFX(const GFXArgs &args)
 
     ctx.create_instance(vkctx_args);
 
-    vk_check(glfwCreateWindowSurface(ctx.instance, args.window, nullptr, &surface));
+    vk_check(glfwCreateWindowSurface(ctx.instance, args.window, nullptr, &surface.surface));
+    surface.instance = ctx.instance;
 
-    auto compatibles = ctx.query_compatible_devices(vkctx_args, surface);
+    auto compatibles = ctx.query_compatible_devices(vkctx_args, surface.surface);
     if (compatibles.empty()) {
         fprintf(stderr, "No compatible vulkan devices.\n");
         std::abort();
@@ -1464,7 +1524,7 @@ GFX::GFX(const GFXArgs &args)
     swapchain_args.physical_device = ctx.physical_device;
     swapchain_args.device = ctx.device;
     swapchain_args.queue = ctx.main_queue;
-    swapchain_args.surface = surface;
+    swapchain_args.surface = surface.surface;
     swapchain_args.width = args.width;
     swapchain_args.height = args.height;
     swapchain_args.max_frames_ahead = 2;
@@ -1473,12 +1533,12 @@ GFX::GFX(const GFXArgs &args)
     cb_manager = CmdBufManager((uint32_t)swapchain.image_views.size(), ctx.main_queue_family_index, ctx.device);
 }
 
-void GFX::shutdown_impl()
+GFX::~GFX()
 {
-    swapchain.shutdown();
-    cb_manager.shutdown();
-    vkDestroySurfaceKHR(ctx.instance, surface, nullptr);
-    ctx.shutdown();
+    // swapchain.shutdown();
+    // cb_manager.shutdown();
+    // vkDestroySurfaceKHR(ctx.instance, surface, nullptr);
+    // ctx.shutdown();
 }
 
 //-----------------------------------------------------------------------------
@@ -1643,7 +1703,7 @@ void GUI::resize()
     create_framebuffers();
 }
 
-void GUI::shutdown_impl()
+GUI::~GUI()
 {
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();

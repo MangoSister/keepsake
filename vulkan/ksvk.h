@@ -2,9 +2,15 @@
 #include "../assertion.h"
 #include "../hash.h"
 
+#include <array>
 #include <cstddef>
 #include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
 #include <source_location>
+#include <span>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -32,25 +38,6 @@ inline void vk_check(VkResult err, const std::source_location location = std::so
         std::abort();
 }
 
-// Some structs has destruction logic in shutdown() instead of dtor because we need to specify the order of
-// destruction...shutdown() is guarded by the alive flag so that it is only called once either explicitly or implicitly
-// by the dtor.
-// Need to make sure shutdown() works for default constructed object (can just be an no-op).
-#define SHUTDOWN_DTOR(STRUCT_TYPE)                                                                                     \
-    ~STRUCT_TYPE()                                                                                                     \
-    {                                                                                                                  \
-        shutdown();                                                                                                    \
-    }                                                                                                                  \
-                                                                                                                       \
-    void shutdown()                                                                                                    \
-    {                                                                                                                  \
-        if (alive) {                                                                                                   \
-            shutdown_impl();                                                                                           \
-            alive = false;                                                                                             \
-        }                                                                                                              \
-    }                                                                                                                  \
-    bool alive = true;
-
 #define NO_COPY_AND_SWAP_AS_MOVE(STRUCT_TYPE)                                                                          \
     STRUCT_TYPE(const STRUCT_TYPE &other) = delete;                                                                    \
                                                                                                                        \
@@ -73,21 +60,16 @@ inline void vk_check(VkResult err, const std::source_location location = std::so
 // [Memory allocation]
 //-----------------------------------------------------------------------------
 
-// These resources are "shallow" with no RAII. Use the allocator to create/destroy.
-// If not destroyed explicitly, the allocator will destroy all remaining resources upon its own destruction.
+struct Allocator;
 
 struct Buffer
 {
-    bool operator==(const Buffer &) const = default;
-
     VkBuffer buffer = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
 };
 
 struct TexelBuffer
 {
-    bool operator==(const TexelBuffer &) const = default;
-
     VkBuffer buffer = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
     VkBufferView buffer_view = VK_NULL_HANDLE;
@@ -95,13 +77,6 @@ struct TexelBuffer
 
 struct PerFrameBuffer
 {
-    bool operator==(const PerFrameBuffer &) const = default;
-
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VmaAllocation allocation = nullptr;
-    uint32_t per_frame_size;
-    uint32_t num_frames;
-
     std::vector<uint32_t> get_all_offsets() const
     {
         std::vector<uint32_t> offsets(num_frames);
@@ -109,20 +84,21 @@ struct PerFrameBuffer
             offsets[f] = per_frame_size * f;
         return offsets;
     }
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VmaAllocation allocation = nullptr;
+    uint32_t per_frame_size;
+    uint32_t num_frames;
 };
 
 struct Image
 {
-    bool operator==(const Image &) const = default;
-
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
 };
 
 struct ImageWithView
 {
-    bool operator==(const ImageWithView &) const = default;
-
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
     VkImageView view;
@@ -130,8 +106,6 @@ struct ImageWithView
 
 struct Texture
 {
-    bool operator==(const Texture &) const = default;
-
     ImageWithView image;
     VkSampler sampler;
 
@@ -149,10 +123,7 @@ struct Allocator
 {
     Allocator() = default;
     Allocator(const VmaAllocatorCreateInfo &vma_info, uint32_t upload_queu_family_index, VkQueue upload_queue);
-
-    SHUTDOWN_DTOR(Allocator)
-
-    void shutdown_impl();
+    ~Allocator();
 
     friend void swap(Allocator &x, Allocator &y) noexcept
     {
@@ -167,7 +138,6 @@ struct Allocator
         swap(x.min_uniform_buffer_offset_alignment, y.min_uniform_buffer_offset_alignment);
         swap(x.min_storage_buffer_offset_alignment, y.min_storage_buffer_offset_alignment);
         swap(x.min_texel_buffer_offset_alignment, y.min_texel_buffer_offset_alignment);
-        swap(x.allocated, y.allocated);
     }
 
     NO_COPY_AND_SWAP_AS_MOVE(Allocator)
@@ -242,14 +212,34 @@ struct Allocator
                                           bool cube_map);
     Texture create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info);
 
-  public:
+    template <typename T, typename... Args>
+        requires(std::same_as<T, Buffer> || std::same_as<T, TexelBuffer> || std::same_as<T, PerFrameBuffer> ||
+                 std::same_as<T, Image> || std::same_as<T, ImageWithView> || std::same_as<T, Texture>)
+    T create(Args &&...args)
+    {
+        if constexpr (std::is_same_v<T, Buffer>) {
+            return create_buffer(std::forward<Args>(args)...);
+        } else if constexpr (std::is_same_v<T, TexelBuffer>) {
+            return create_texel_buffer(std::forward<Args>(args)...);
+        } else if constexpr (std::is_same_v<T, PerFrameBuffer>) {
+            return create_per_frame_buffer(std::forward<Args>(args)...);
+        } else if constexpr (std::is_same_v<T, Image>) {
+            return create_image(std::forward<Args>(args)...);
+        } else if constexpr (std::is_same_v<T, ImageWithView>) {
+            return create_image_with_view(std::forward<Args>(args)...);
+        } else {
+            return create_texture(std::forward<Args>(args)...);
+        }
+    }
+
     void destroy(const Buffer &buffer);
     void destroy(const TexelBuffer &texel_buffer);
     void destroy(const PerFrameBuffer &per_frame_buffer);
     void destroy(const Image &image);
-    void destroy(const ImageWithView &image);
+    void destroy(const ImageWithView &image_with_view);
     void destroy(const Texture &texture);
 
+  public:
     VkDevice device = VK_NULL_HANDLE;
     VmaAllocator vma = VK_NULL_HANDLE;
 
@@ -268,29 +258,39 @@ struct Allocator
     Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
                                  bool auto_mapped = true);
     void clear_staging_buffer();
+};
 
-    void destroy_impl(const Buffer &buffer);
-    void destroy_impl(const TexelBuffer &texel_buffer);
-    void destroy_impl(const PerFrameBuffer &per_frame_buffer);
-    void destroy_impl(const Image &image);
-    void destroy_impl(const ImageWithView &image);
-    void destroy_impl(const Texture &texture);
+template <typename T>
+struct AutoRelease
+{
+    AutoRelease() = default;
 
-    template <typename T>
-    struct ByteHash
+    template <typename... Args>
+    AutoRelease(std::shared_ptr<Allocator> allocator, Args &&...args)
+        : allocator(allocator), obj(allocator->create<T>(std::forward<Args>(args)...))
+    {}
+
+    ~AutoRelease()
     {
-        std::size_t operator()(const T &obj) const { return ks::hash(obj); }
-    };
+        if (allocator) {
+            allocator->destroy(obj);
+        }
+    }
 
-    struct
+    friend void swap(AutoRelease &x, AutoRelease &y)
     {
-        std::unordered_set<Buffer, ByteHash<Buffer>> buffers;
-        std::unordered_set<TexelBuffer, ByteHash<TexelBuffer>> texel_buffers;
-        std::unordered_set<PerFrameBuffer, ByteHash<PerFrameBuffer>> per_frame_buffers;
-        std::unordered_set<Image, ByteHash<Image>> images;
-        std::unordered_set<ImageWithView, ByteHash<ImageWithView>> images_with_view;
-        std::unordered_set<Texture, ByteHash<Texture>> textures;
-    } allocated;
+        using std::swap;
+        swap(x.obj, y.obj);
+        swap(x.allocator, y.allocator);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(AutoRelease)
+
+    T *operator->() { return &obj; }
+    const T *operator->() const { return &obj; }
+
+    T obj;
+    std::shared_ptr<Allocator> allocator;
 };
 
 //-----------------------------------------------------------------------------
@@ -348,10 +348,7 @@ struct CompatibleDevice
 struct Context
 {
     Context() = default;
-
-    SHUTDOWN_DTOR(Context)
-
-    void shutdown_impl();
+    ~Context();
 
     friend void swap(Context &x, Context &y) noexcept
     {
@@ -395,7 +392,8 @@ struct Context
     VkQueue main_queue = VK_NULL_HANDLE;
 
     // Single allocator
-    Allocator allocator;
+    // Shared ptr to allow auto release...
+    std::shared_ptr<Allocator> allocator;
 };
 
 template <typename TWork>
@@ -454,10 +452,7 @@ struct Swapchain
 {
     Swapchain() = default;
     explicit Swapchain(const SwapchainCreateInfo &info);
-
-    SHUTDOWN_DTOR(Swapchain)
-
-    void shutdown_impl();
+    ~Swapchain();
 
     friend void swap(Swapchain &x, Swapchain &y) noexcept
     {
@@ -519,10 +514,7 @@ struct CmdBufManager
 {
     CmdBufManager() = default;
     CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, VkDevice device);
-
-    SHUTDOWN_DTOR(CmdBufManager)
-
-    void shutdown_impl();
+    ~CmdBufManager();
 
     friend void swap(CmdBufManager &x, CmdBufManager &y) noexcept
     {
@@ -606,13 +598,162 @@ struct RenderPassRecorder
 
 struct DescriptorSetHelper
 {
-    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    void add_binding(std::string name, VkDescriptorSetLayoutBinding binding);
     VkDescriptorPool create_pool(VkDevice device, uint32_t max_sets) const;
     VkDescriptorSetLayout create_set_layout(VkDevice device) const;
     VkWriteDescriptorSet make_write(VkDescriptorSet dst_set, uint32_t dst_binding) const;
+    VkWriteDescriptorSet make_write(VkDescriptorSet dst_set, const std::string &binding_name) const;
     VkWriteDescriptorSet make_write_array(VkDescriptorSet dst_set, uint32_t dst_binding, uint32_t start,
                                           uint32_t count) const;
+    VkWriteDescriptorSet make_write_array(VkDescriptorSet dst_set, const std::string &binding_name, uint32_t start,
+                                          uint32_t count) const;
+
+    // TODO: ultimately to be figured out automatically via reflection...
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    std::unordered_map<std::string, uint32_t> name_map;
 };
+
+struct ParameterBlockMeta;
+
+struct ParameterWrite
+{
+    VkWriteDescriptorSet write{};
+    std::unique_ptr<VkDescriptorBufferInfo> buffer_info;
+    std::unique_ptr<VkDescriptorImageInfo> image_info;
+    std::unique_ptr<VkBufferView> texel_buffer_view;
+};
+
+struct ParameterWriteArray
+{
+    static void make_recurse(ParameterWriteArray &arr) {}
+
+    template <std::same_as<ParameterWrite>... W>
+    static void make_recurse(ParameterWriteArray &arr, ParameterWrite &&w, W &&...args)
+    {
+        arr.writes.emplace_back(std::move(w.write));
+        arr.buffer_infos.emplace_back(std::move(w.buffer_info));
+        arr.image_infos.emplace_back(std::move(w.image_info));
+        arr.texel_buffer_views.emplace_back(std::move(w.texel_buffer_view));
+
+        make_recurse(arr, std::forward<W>(args)...);
+    }
+
+    template <std::same_as<ParameterWrite>... W>
+    static ParameterWriteArray make(W &&...writes)
+    {
+        constexpr size_t N = (sizeof(writes) + ... + 0) / sizeof(ParameterWrite);
+        ParameterWriteArray arr;
+        arr.writes.reserve(N);
+        arr.buffer_infos.reserve(N);
+        arr.image_infos.reserve(N);
+        arr.texel_buffer_views.reserve(N);
+
+        make_recurse(arr, std::forward<W>(writes)...);
+        return arr;
+    }
+
+    std::vector<VkWriteDescriptorSet> writes;
+    std::vector<std::unique_ptr<VkDescriptorBufferInfo>> buffer_infos;
+    std::vector<std::unique_ptr<VkDescriptorImageInfo>> image_infos;
+    std::vector<std::unique_ptr<VkBufferView>> texel_buffer_views;
+};
+
+struct ParameterBlock
+{
+    ParameterWrite write(const std::string &binding_name, const std::optional<VkDescriptorBufferInfo> buffer_info = {},
+                         const std::optional<VkDescriptorImageInfo> image_info = {},
+                         VkBufferView texel_buffer_view = VK_NULL_HANDLE) const;
+
+    VkDescriptorSet desc_set = VK_NULL_HANDLE;
+    ParameterBlockMeta *meta = nullptr;
+};
+
+struct ParameterBlockMeta
+{
+    ParameterBlockMeta() = default;
+    ParameterBlockMeta(VkDevice device, uint32_t max_sets, DescriptorSetHelper &&helper);
+    ~ParameterBlockMeta();
+
+    friend void swap(ParameterBlockMeta &x, ParameterBlockMeta &y) noexcept
+    {
+        using std::swap;
+
+        swap(x.desc_set_helper, y.desc_set_helper);
+        swap(x.desc_set_layout, y.desc_set_layout);
+        swap(x.desc_pool, y.desc_pool);
+        swap(x.device, y.device);
+        swap(x.max_sets, y.max_sets);
+        swap(x.allocated_sets, y.allocated_sets);
+    }
+
+    NO_COPY_AND_SWAP_AS_MOVE(ParameterBlockMeta)
+
+    ParameterBlock allocate_block()
+    {
+        ParameterBlock block;
+        allocate_blocks(1, {&block, 1});
+        return block;
+    }
+    void allocate_blocks(uint32_t num, std::span<ParameterBlock> out);
+
+    DescriptorSetHelper desc_set_helper;
+    VkDescriptorSetLayout desc_set_layout = VK_NULL_HANDLE;
+    // TODO: so far never really need multiple pools...
+    // TODO: so far never really need to use vkFreeDescriptorSets()...
+    VkDescriptorPool desc_pool = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+
+    uint32_t max_sets = 0;
+    uint32_t allocated_sets = 0;
+};
+
+//-----------------------------------------------------------------------------
+// [Other convenience wrappers]
+//-----------------------------------------------------------------------------
+
+template <uint32_t DIM_X, uint32_t DIM_Y, uint32_t DIM_Z>
+void dispatch_compute(VkCommandBuffer cb, ks::arr3u n_elements)
+{
+    uint32_t nx = (uint32_t)ceil((float)n_elements.x() / (float)DIM_X);
+    uint32_t ny = (uint32_t)ceil((float)n_elements.y() / (float)DIM_Y);
+    uint32_t nz = (uint32_t)ceil((float)n_elements.z() / (float)DIM_Z);
+    vkCmdDispatch(cb, nx, ny, nz);
+}
+
+inline void pipeline_barrier(VkCommandBuffer cb, //
+                             VkPipelineStageFlags src_stage_mask, VkPipelineStageFlags dst_stage_mask,
+                             VkDependencyFlags dependency_flags, std::span<const VkMemoryBarrier> memory_barriers,
+                             std::span<const VkBufferMemoryBarrier> buffer_barriers,
+                             std::span<const VkImageMemoryBarrier> image_barriers)
+{
+    vkCmdPipelineBarrier(cb, src_stage_mask, dst_stage_mask, dependency_flags, memory_barriers.size(),
+                         memory_barriers.data(), buffer_barriers.size(), buffer_barriers.data(), image_barriers.size(),
+                         image_barriers.data());
+}
+
+// For debug only
+inline void full_pipeline_barrier(VkCommandBuffer cb)
+{
+    VkMemoryBarrier debug_barrier = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_INDEX_READ_BIT |
+                         VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT |
+                         VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                         VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                         VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT |
+                         VK_ACCESS_HOST_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_INDEX_READ_BIT |
+                         VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT |
+                         VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                         VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                         VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT |
+                         VK_ACCESS_HOST_WRITE_BIT};
+
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         (VkDependencyFlags)0, 1, &debug_barrier, 0, nullptr, 0, nullptr);
+}
 
 //-----------------------------------------------------------------------------
 // [Top wrapper class for graphics services and resources]
@@ -628,10 +769,7 @@ struct GFX
 {
     GFX() = default;
     explicit GFX(const GFXArgs &args);
-
-    SHUTDOWN_DTOR(GFX)
-
-    void shutdown_impl();
+    ~GFX();
 
     friend void swap(GFX &x, GFX &y) noexcept
     {
@@ -668,10 +806,35 @@ struct GFX
         return swapchain.submit_and_present(cb_manager.all_acquired());
     }
 
+    struct SurfaceWrapper
+    {
+        SurfaceWrapper() = default;
+
+        ~SurfaceWrapper()
+        {
+            if (instance != VK_NULL_HANDLE) {
+                vkDestroySurfaceKHR(instance, surface, nullptr);
+            }
+        }
+
+        friend void swap(SurfaceWrapper &x, SurfaceWrapper &y)
+        {
+            using std::swap;
+            swap(x.surface, y.surface);
+            swap(x.instance, y.instance);
+        }
+
+        NO_COPY_AND_SWAP_AS_MOVE(SurfaceWrapper)
+
+        VkSurfaceKHR surface = VK_NULL_HANDLE;
+        VkInstance instance = VK_NULL_HANDLE;
+    };
+
+    // Note the destruction order...
+    Context ctx;
+    SurfaceWrapper surface;
     Swapchain swapchain;
     CmdBufManager cb_manager;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    Context ctx;
 };
 
 //-----------------------------------------------------------------------------
@@ -688,10 +851,7 @@ struct GUI
 {
     GUI() = default;
     explicit GUI(const GUICreateInfo &info);
-
-    SHUTDOWN_DTOR(GUI)
-
-    void shutdown_impl();
+    ~GUI();
 
     friend void swap(GUI &x, GUI &y) noexcept
     {
