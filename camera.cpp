@@ -77,50 +77,47 @@ mat4 rev_orthographic(float left, float right, float bottom, float top, float ne
     return proj;
 }
 
-Camera::Camera(const Transform &to_world, float vfov, float aspect) : camera_to_world(to_world)
+Camera::Camera(const Transform &to_world, float vfov, float aspect) : camera_to_world(to_world), orthographic(false)
 {
-    camera_position = to_world.m.col(3).head(3);
-    mat4 world_to_camera_m = camera_to_world.inverse().m;
+    mat4 world_to_camera_m = camera_to_world.inv;
     mat4 camera_to_proj_m = rev_inf_projection(vfov, aspect);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
-    ortho_dir = vec3::Zero();
 }
 
-Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float vfov, float aspect)
-    : camera_position(position)
+Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float vfov, float aspect) : orthographic(false)
 {
-    mat4 camera_to_world_m = look_at(camera_position, target, up);
+    mat4 camera_to_world_m = look_at(position, target, up);
     mat4 world_to_camera_m = camera_to_world_m.inverse();
     mat4 camera_to_proj_m = rev_inf_projection(vfov, aspect);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
     camera_to_world = Transform(camera_to_world_m);
-    ortho_dir = vec3::Zero();
 }
 
 Camera::Camera(const Transform &to_world, float left, float right, float bottom, float top, float near, float far)
-    : camera_to_world(to_world)
+    : camera_to_world(to_world), orthographic(true)
 {
-    camera_position = to_world.m.col(3).head(3);
-    mat4 world_to_camera_m = camera_to_world.inverse().m;
+    mat4 world_to_camera_m = camera_to_world.inv;
     mat4 camera_to_proj_m = rev_orthographic(left, right, bottom, top, near, far);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
-    ortho_dir = -to_world.m.col(2).head(3).normalized();
 }
 
 Camera::Camera(const vec3 &position, const vec3 &target, const vec3 &up, float left, float right, float bottom,
                float top, float near, float far)
-    : camera_position(position)
+    : orthographic(true)
 {
-    mat4 camera_to_world_m = look_at(camera_position, target, up);
+    mat4 camera_to_world_m = look_at(position, target, up);
     mat4 world_to_camera_m = camera_to_world_m.inverse();
     mat4 camera_to_proj_m = rev_orthographic(left, right, bottom, top, near, far);
-    proj_to_world = Transform(camera_to_proj_m * world_to_camera_m).inverse();
+    world_to_proj = Transform(camera_to_proj_m * world_to_camera_m);
+    proj_to_world = world_to_proj.inverse();
     proj_to_camera = Transform(camera_to_proj_m).inverse();
     camera_to_world = Transform(camera_to_world_m);
-    ortho_dir = (target - position).normalized();
 }
 
 Ray Camera::spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) const
@@ -136,7 +133,8 @@ Ray Camera::spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) cons
     vec3 camera_dy = up - mid;
     camera_dy = camera_to_world.direction(camera_dy);
 
-    if (ortho_dir == vec3::Zero()) {
+    if (!orthographic) {
+        vec3 camera_position = position();
         vec3 world_pos = proj_to_world.point_hdiv(ndc_pos);
         vec3 ray_dir = (world_pos - camera_position).normalized();
         ray = Ray(camera_position, ray_dir, 0.0f, inf);
@@ -145,6 +143,7 @@ Ray Camera::spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) cons
         ray.rx_dir = (world_pos + camera_dx - camera_position).normalized();
         ray.ry_dir = (world_pos + camera_dy - camera_position).normalized();
     } else {
+        vec3 ortho_dir = direction();
         vec3 origin = proj_to_world.point_hdiv(ndc_pos);
         // TODO: ray diff in this case?
         ray = Ray(origin, ortho_dir, 0.0f, inf);

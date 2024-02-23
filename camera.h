@@ -17,12 +17,18 @@ struct Camera
 
     Ray spawn_ray(const vec2 &film_pos, const vec2i &film_res, int spp) const;
 
-    vec3 camera_position;
-    vec3 ortho_dir;
+    vec3 position() const { return vec3(camera_to_world.m(0, 3), camera_to_world.m(1, 3), camera_to_world.m(2, 3)); }
 
+    vec3 direction() const
+    {
+        return -(vec3(camera_to_world.m(0, 2), camera_to_world.m(1, 2), camera_to_world.m(2, 2))).normalized();
+    }
+
+    Transform world_to_proj;
     Transform proj_to_world;
     Transform proj_to_camera;
     Transform camera_to_world;
+    bool orthographic = false;
 };
 
 ks::mat4 look_at(const ks::vec3 &position, const ks::vec3 &target, ks::vec3 up);
@@ -32,6 +38,5 @@ ks::mat4 rev_orthographic(float left, float right, float bottom, float top, floa
 
 struct ConfigArgs;
 std::unique_ptr<Camera> create_camera(const ConfigArgs &args);
-
 
 } // namespace ks
