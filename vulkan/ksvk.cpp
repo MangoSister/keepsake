@@ -68,7 +68,7 @@ Allocator::~Allocator()
 }
 
 Buffer Allocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
-                                const std::byte *data, VkCommandBuffer custom_cb)
+                                const std::byte *data)
 {
     Buffer buf;
     VmaAllocationCreateInfo allocCI{};
@@ -78,30 +78,39 @@ Buffer Allocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage u
     vk_check(vmaCreateBuffer(vma, &info, &allocCI, &buf.buffer, &buf.allocation, nullptr));
 
     if (data) {
-        ASSERT(custom_cb || upload_cb);
+        ASSERT(upload_cb);
 
         Buffer staging = create_staging_buffer(info.size, data, info.size);
         VkBufferCopy region;
         region.srcOffset = 0;
         region.dstOffset = 0;
         region.size = info.size;
-        vkCmdCopyBuffer(custom_cb ? custom_cb : upload_cb, staging.buffer, buf.buffer, 1, &region);
+        vkCmdCopyBuffer(upload_cb, staging.buffer, buf.buffer, 1, &region);
     }
 
     return buf;
 }
 
 TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBufferViewCreateInfo &buffer_view_info,
-                                           VmaMemoryUsage usage, VmaAllocationCreateFlags flags, const std::byte *data,
-                                           VkCommandBuffer custom_cb)
+                                           VmaMemoryUsage usage, VmaAllocationCreateFlags flags, const std::byte *data)
 {
     TexelBuffer tb;
 
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
     allocCI.flags = flags;
-    Buffer buffer;
     vk_check(vmaCreateBuffer(vma, &info, &allocCI, &tb.buffer, &tb.allocation, nullptr));
+
+    if (data) {
+        ASSERT(upload_cb);
+
+        Buffer staging = create_staging_buffer(info.size, data, info.size);
+        VkBufferCopy region;
+        region.srcOffset = 0;
+        region.dstOffset = 0;
+        region.size = info.size;
+        vkCmdCopyBuffer(upload_cb, staging.buffer, tb.buffer, 1, &region);
+    }
 
     buffer_view_info.buffer = tb.buffer;
     vk_check(vkCreateBufferView(device, &buffer_view_info, nullptr, &tb.buffer_view));
@@ -572,8 +581,7 @@ Texture Allocator::create_texture(const ImageWithView &image, const VkSamplerCre
     return texture;
 }
 
-Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
-                                        bool auto_mapped /*= true*/)
+Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size)
 {
     ASSERT(buffer_size >= data_size);
 
@@ -583,13 +591,14 @@ Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byt
 
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = VMA_MEMORY_USAGE_AUTO;
-    if (auto_mapped) {
-        allocCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    }
+    allocCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
     Buffer buffer;
     VmaAllocationInfo info;
     vk_check(vmaCreateBuffer(vma, &bufferCI, &allocCI, &buffer.buffer, &buffer.allocation, &info));
+
     memcpy(info.pMappedData, (const void *)data, data_size);
+    vk_check(vmaFlushAllocation(vma, buffer.allocation, 0, VK_WHOLE_SIZE));
 
     staging_buffers.push_back(buffer);
 
@@ -603,53 +612,6 @@ void Allocator::clear_staging_buffer()
     }
     staging_buffers.clear();
 }
-
-// Buffer::~Buffer()
-//{
-//     if (allocator) {
-//         vmaDestroyBuffer(allocator->vma, buffer, allocation);
-//     }
-// }
-//
-// TexelBuffer::~TexelBuffer()
-//{
-//     if (allocator) {
-//         vmaDestroyBuffer(allocator->vma, buffer, allocation);
-//     }
-// }
-//
-// PerFrameBuffer::~PerFrameBuffer()
-//{
-//     if (allocator) {
-//         vmaDestroyBuffer(allocator->vma, buffer, allocation);
-//     }
-// }
-//
-// Image::~Image()
-//{
-//     if (allocator) {
-//         vmaDestroyImage(allocator->vma, image, allocation);
-//     }
-// }
-//
-// ImageWithView::~ImageWithView()
-//{
-//     if (allocator) {
-//         vmaDestroyImage(allocator->vma, image, allocation);
-//         vkDestroyImageView(allocator->device, view, nullptr);
-//     }
-// }
-//
-// Texture::~Texture()
-//{
-//     if (allocator) {
-//         vkDestroySampler(allocator->device, sampler, nullptr);
-//         if (own_image && image.image != VK_NULL_HANDLE) {
-//             vkDestroyImageView(allocator->device, image.view, nullptr);
-//             vmaDestroyImage(allocator->vma, image.image, image.allocation);
-//         }
-//     }
-// }
 
 void Allocator::destroy(const Buffer &buffer) { vmaDestroyBuffer(vma, buffer.buffer, buffer.allocation); }
 

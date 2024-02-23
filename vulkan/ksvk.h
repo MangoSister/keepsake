@@ -144,12 +144,11 @@ struct Allocator
 
     // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
     Buffer create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO,
-                         VmaAllocationCreateFlags flags = 0, const std::byte *data = nullptr,
-                         VkCommandBuffer custom_cb = VK_NULL_HANDLE);
+                         VmaAllocationCreateFlags flags = 0, const std::byte *data = nullptr);
 
     TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VkBufferViewCreateInfo &buffer_view_info,
                                     VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO, VmaAllocationCreateFlags flags = 0,
-                                    const std::byte *data = nullptr, VkCommandBuffer custom_cb = VK_NULL_HANDLE);
+                                    const std::byte *data = nullptr);
 
     std::byte *map(VmaAllocation allocation);
     void unmap(VmaAllocation allocation);
@@ -255,8 +254,7 @@ struct Allocator
 
   private:
     // Note: delay destruction of staging buffers.
-    Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size,
-                                 bool auto_mapped = true);
+    Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size);
     void clear_staging_buffer();
 };
 
