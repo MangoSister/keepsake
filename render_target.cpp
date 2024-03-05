@@ -16,12 +16,12 @@ void RenderTarget::save_to_png(const fs::path &path) const
 
 void RenderTarget::save_to_hdr(const fs::path &path) const
 {
-    ks::save_to_hdr((const float *)pixels.data(), width, height, 3, path);
+    ks::save_to_hdr(reinterpret_cast<const float *>(pixels.data()), width, height, 3, path);
 }
 
 void RenderTarget::save_to_exr(const fs::path &path) const
 {
-    ks::save_to_exr((const float *)pixels.data(), width, height, 3, path);
+    ks::save_to_exr(reinterpret_cast<const std::byte *>(pixels.data()), false, width, height, 3, path);
 }
 
 } // namespace ks
