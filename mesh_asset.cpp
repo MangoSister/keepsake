@@ -46,9 +46,7 @@ struct IndexHash
 {
     std::size_t operator()(const tinyobj::index_t &t) const
     {
-        std::size_t ret = 0;
-        hash_combine(ret, t.vertex_index, t.normal_index, t.texcoord_index);
-        return ret;
+        return hash(t.vertex_index, t.normal_index, t.texcoord_index);
     }
 };
 struct IndexEqual
