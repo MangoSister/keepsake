@@ -984,6 +984,9 @@ Swapchain::Swapchain(const SwapchainCreateInfo &info)
 
 Swapchain::~Swapchain()
 {
+    if (physical_device == VK_NULL_HANDLE) {
+        return;
+    }
     destroy_swapchain_and_images();
 
     for (uint32_t i = 0; i < max_frames_ahead; i++) {
@@ -1667,6 +1670,9 @@ void GUI::resize()
 
 GUI::~GUI()
 {
+    if (!gfx) {
+        return;
+    }
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

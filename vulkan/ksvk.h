@@ -287,6 +287,9 @@ struct AutoRelease
     T *operator->() { return &obj; }
     const T *operator->() const { return &obj; }
 
+    T &operator*() { return obj; }
+    const T *&operator*() const { return obj; }
+
     T obj;
     std::shared_ptr<Allocator> allocator;
 };
