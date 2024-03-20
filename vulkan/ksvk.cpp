@@ -1418,10 +1418,12 @@ void ParameterBlockMeta::allocate_blocks(uint32_t num, std::span<ParameterBlock>
     ASSERT(allocated_sets + num <= max_sets, "Exceeds max sets!");
     allocated_sets += num;
 
+    std::vector<VkDescriptorSetLayout> set_layouts(num, desc_set_layout);
+
     VkDescriptorSetAllocateInfo allocInfo{.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                                           .descriptorPool = desc_pool,
                                           .descriptorSetCount = num,
-                                          .pSetLayouts = &desc_set_layout};
+                                          .pSetLayouts = set_layouts.data()};
     std::vector<VkDescriptorSet> sets(num);
     vk_check(vkAllocateDescriptorSets(device, &allocInfo, sets.data()));
     for (uint32_t i = 0; i < num; ++i) {
