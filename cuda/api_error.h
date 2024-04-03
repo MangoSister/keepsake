@@ -4,6 +4,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+/*
 #include <source_location>
 
 inline void cuda_check(cudaError_t error, const std::source_location location = std::source_location::current())
@@ -23,6 +24,25 @@ inline void cu_check(CUresult result, const std::source_location location = std:
         ASSERT(CUDA_SUCCESS == get_error_str_result);
         ASSERT(false, "[File: %s (%u:%u), in `%s`] CUDA Driver API error: %s\n", location.file_name(), location.line(),
                location.column(), location.function_name(), str);
+        std::abort();
+    }
+}
+*/
+inline void cuda_check(cudaError_t error)
+{
+    if (error != cudaSuccess) {
+        ASSERT(false, "CUDA Runtime API error: %s\n", cudaGetErrorString(error));
+        std::abort();
+    }
+}
+
+inline void cu_check(CUresult result)
+{
+    if (result != CUDA_SUCCESS) {
+        const char *str;
+        CUresult get_error_str_result = cuGetErrorString(result, &str);
+        ASSERT(CUDA_SUCCESS == get_error_str_result);
+        ASSERT(false, "CUDA Driver API error: %s\n", str);
         std::abort();
     }
 }
