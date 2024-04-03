@@ -7,12 +7,13 @@
 namespace ks
 {
 
-struct AABB2
+template<typename T>
+struct AABB2_t
 {
-    AABB2() = default;
-    AABB2(const vec2 &min, const vec2 &max) : min(min), max(max) {}
+    AABB2_t() = default;
+    AABB2_t(const Eigen::Vector2<T> &min, const Eigen::Vector2<T> &max) : min(min), max(max) {}
 
-    void expand(const vec2 &point)
+    void expand(const Eigen::Vector2<T> &point)
     {
         min.x() = std::min(min.x(), point.x());
         min.y() = std::min(min.y(), point.y());
@@ -20,7 +21,7 @@ struct AABB2
         max.y() = std::max(max.y(), point.y());
     }
 
-    void expand(const AABB2 &aabb)
+    void expand(const AABB2_t &aabb)
     {
         min.x() = std::min(min.x(), aabb.min.x());
         min.y() = std::min(min.y(), aabb.min.y());
@@ -29,12 +30,12 @@ struct AABB2
         max.y() = std::max(max.y(), aabb.max.y());
     }
 
-    bool contain(const vec2 &point) const
+    bool contain(const Eigen::Vector2<T> &point) const
     {
         return point.x() >= min.x() && point.x() <= max.x() && point.y() >= min.y() && point.y() <= max.y();
     }
 
-    bool contain(const AABB2 &bound) const
+    bool contain(const AABB2_t &bound) const
     {
         return bound.min.x() >= min.x() && bound.max.x() <= max.x() && bound.min.y() >= min.y() &&
                bound.max.y() <= max.y();
@@ -42,17 +43,17 @@ struct AABB2
 
     bool isEmpty() const { return min.x() > max.x() || min.y() > max.y(); }
 
-    vec2 center() const { return 0.5f * (min + max); }
+    Eigen::Vector2<T> center() const { return T(0.5) * (min + max); }
 
-    vec2 extents() const
+    Eigen::Vector2<T> extents() const
     {
         if (isEmpty()) {
-            return vec2::Zero();
+            return Eigen::Vector2<T>::Zero();
         }
         return max - min;
     }
 
-    float offset(const vec2 &point, uint32_t dim) const
+    float offset(const Eigen::Vector2<T> &point, uint32_t dim) const
     {
         float ext = extents()[dim];
         if (ext == 0.0) {
@@ -61,10 +62,10 @@ struct AABB2
         return (point[dim] - min[dim]) / ext;
     }
 
-    vec2 offset(const vec2 &point) const
+    Eigen::Vector2<T> offset(const Eigen::Vector2<T> &point) const
     {
-        vec2 ext = extents();
-        vec2 o = (point - min).cwiseQuotient(ext);
+        Eigen::Vector2<T> ext = extents();
+        Eigen::Vector2<T> o = (point - min).cwiseQuotient(ext);
         for (int i = 0; i < 2; ++i) {
             if (ext[i] == 0.0f)
                 o[i] = 0.0f;
@@ -72,14 +73,14 @@ struct AABB2
         return o;
     }
 
-    vec2 lerp(const vec2 &t) const
+    Eigen::Vector2<T> lerp(const Eigen::Vector2<T> &t) const
     {
-        return vec2(std::lerp(min.x(), max.x(), t.x()), std::lerp(min.y(), max.y(), t.y()));
+        return Eigen::Vector2<T>(std::lerp(min.x(), max.x(), t.x()), std::lerp(min.y(), max.y(), t.y()));
     }
 
     uint32_t largestAxis() const
     {
-        vec2 exts = extents();
+        Eigen::Vector2<T> exts = extents();
         if (exts.x() >= exts.y())
             return 0;
         else
@@ -88,62 +89,69 @@ struct AABB2
 
     float area() const
     {
-        vec2 exts = extents();
+        Eigen::Vector2<T> exts = extents();
         return exts.x() * exts.y();
     }
 
-    const vec2 &operator[](uint32_t index) const
+    const Eigen::Vector2<T> &operator[](uint32_t index) const
     {
         ASSERT(index <= 1);
-        return (reinterpret_cast<const vec2 *>(this))[index];
+        return (reinterpret_cast<const Eigen::Vector2<T> *>(this))[index];
     }
 
-    vec2 &operator[](uint32_t index)
+    Eigen::Vector2<T> &operator[](uint32_t index)
     {
         ASSERT(index <= 1);
-        return (reinterpret_cast<vec2 *>(this))[index];
+        return (reinterpret_cast<Eigen::Vector2<T> *>(this))[index];
     }
 
-    vec2 corner(int i) const
+    Eigen::Vector2<T> corner(int i) const
     {
-        const vec2 *c = (const vec2 *)this;
-        return vec2(c[i & 1].x(), c[(i >> 1) & 1].y());
+        const Eigen::Vector2<T> *c = (const Eigen::Vector2<T> *)this;
+        return Eigen::Vector2<T>(c[i & 1].x(), c[(i >> 1) & 1].y());
     }
 
-    vec2 min = vec2::Constant(inf);
-    vec2 max = vec2::Constant(-inf);
+    Eigen::Vector2<T> min = Eigen::Vector2<T>::Constant(inf);
+    Eigen::Vector2<T> max = Eigen::Vector2<T>::Constant(-inf);
 };
 
-inline bool intersectBool(const AABB2 &b0, const AABB2 &b1)
+template<typename T>
+inline bool intersectBool(const AABB2_t<T> &b0, const AABB2_t<T> &b1)
 {
     return !(b0.min.x() > b1.max.x() || b1.min.x() > b0.max.x() || b0.min.y() > b1.max.y() || b1.min.y() > b0.max.y());
 }
 
-inline AABB2 intersect(const AABB2 &b0, const AABB2 &b1)
+template<typename T>
+inline AABB2_t<T> intersect(const AABB2_t<T> &b0, const AABB2_t<T> &b1)
 {
-    AABB2 ret;
+    AABB2_t<T> ret;
     ret.min = b0.min.cwiseMax(b1.min);
     ret.max = b0.max.cwiseMin(b1.max);
     if (ret.min.x() > ret.max.x() || ret.min.y() > ret.max.y()) {
-        return AABB2();
+        return AABB2_t<T>();
     }
     return ret;
 }
 
-inline AABB2 join(const AABB2 &b0, const AABB2 &b1)
+template<typename T>
+inline AABB2_t<T> join(const AABB2_t<T> &b0, const AABB2_t<T> &b1)
 {
-    AABB2 ret;
+    AABB2_t<T> ret;
     ret.min = b0.min.cwiseMin(b1.min);
     ret.max = b0.max.cwiseMax(b1.max);
     return ret;
 }
 
-struct AABB3
-{
-    AABB3() = default;
-    AABB3(const vec3 &min, const vec3 &max) : min(min), max(max) {}
+using AABB2 = AABB2_t<float>;
+using AABB2d = AABB2_t<double>;
 
-    void expand(const vec3 &point)
+template <typename T>
+struct AABB3_t
+{
+    AABB3_t() = default;
+    AABB3_t(const Eigen::Vector3<T> &min, const Eigen::Vector3<T> &max) : min(min), max(max) {}
+
+    void expand(const Eigen::Vector3<T> &point)
     {
         min.x() = std::min(min.x(), point.x());
         min.y() = std::min(min.y(), point.y());
@@ -154,7 +162,7 @@ struct AABB3
         max.z() = std::max(max.z(), point.z());
     }
 
-    void expand(const AABB3 &aabb)
+    void expand(const AABB3_t &aabb)
     {
         min.x() = std::min(min.x(), aabb.min.x());
         min.y() = std::min(min.y(), aabb.min.y());
@@ -167,11 +175,11 @@ struct AABB3
 
     bool isEmpty() const { return min.x() > max.x() || min.y() > max.y() || min.z() > max.z(); }
 
-    vec3 center() const { return 0.5f * (min + max); }
+    Eigen::Vector3<T> center() const { return 0.5f * (min + max); }
 
-    vec3 extents() const { return max - min; }
+    Eigen::Vector3<T> extents() const { return max - min; }
 
-    float offset(const vec3 &point, uint32_t dim) const
+    float offset(const Eigen::Vector3<T> &point, uint32_t dim) const
     {
         float ext = extents()[dim];
         if (ext == 0.0f) {
@@ -180,10 +188,10 @@ struct AABB3
         return (point[dim] - min[dim]) / ext;
     }
 
-    vec3 offset(const vec3 &point) const
+    Eigen::Vector3<T> offset(const Eigen::Vector3<T> &point) const
     {
-        vec3 ext = extents();
-        vec3 o = (point - min).cwiseQuotient(ext);
+        Eigen::Vector3<T> ext = extents();
+        Eigen::Vector3<T> o = (point - min).cwiseQuotient(ext);
         for (int i = 0; i < 3; ++i) {
             if (ext[i] == 0.0f)
                 o[i] = 0.0f;
@@ -191,21 +199,21 @@ struct AABB3
         return o;
     }
 
-    vec3 corner(int i) const
+    Eigen::Vector3<T> corner(int i) const
     {
-        const vec3 *c = (const vec3 *)this;
-        return vec3(c[i & 1].x(), c[(i & 2) >> 1].y(), c[(i & 4) >> 2].z());
+        const Eigen::Vector3<T> *c = (const Eigen::Vector3<T> *)this;
+        return Eigen::Vector3<T>(c[i & 1].x(), c[(i & 2) >> 1].y(), c[(i & 4) >> 2].z());
     }
 
-    vec3 lerp(const vec3 &t) const
+    Eigen::Vector3<T> lerp(const Eigen::Vector3<T> &t) const
     {
-        return vec3(std::lerp(min.x(), max.x(), t.x()), std::lerp(min.y(), max.y(), t.y()),
+        return Eigen::Vector3<T>(std::lerp(min.x(), max.x(), t.x()), std::lerp(min.y(), max.y(), t.y()),
                     std::lerp(min.z(), max.z(), t.z()));
     }
 
     uint32_t largestAxis() const
     {
-        vec3 exts = extents();
+        Eigen::Vector3<T> exts = extents();
         if (exts.x() >= exts.y() && exts.x() >= exts.z())
             return 0;
         else if (exts.y() >= exts.x() && exts.y() >= exts.z())
@@ -216,62 +224,68 @@ struct AABB3
 
     float surfaceArea() const
     {
-        vec3 exts = extents();
+        Eigen::Vector3<T> exts = extents();
         return 2.0f * (exts.x() * exts.y() + exts.y() * exts.z() + exts.x() * exts.z());
     }
 
     float volume() const
     {
-        vec3 exts = extents();
+        Eigen::Vector3<T> exts = extents();
         return exts.x() * exts.y() * exts.z();
     }
 
-    bool contain(const vec3 &p) const
+    bool contain(const Eigen::Vector3<T> &p) const
     {
         return min.x() <= p.x() && min.y() <= p.y() && min.z() <= p.z() && max.x() >= p.x() && max.y() >= p.y() &&
                max.z() >= p.z();
     }
 
-    bool contain(const AABB3 &other) const
+    bool contain(const AABB3_t &other) const
     {
         return min.x() <= other.min.x() && min.y() <= other.min.y() && min.z() <= other.min.z() &&
                max.x() >= other.max.x() && max.y() >= other.max.y() && max.z() >= other.max.z();
     }
 
-    const vec3 &operator[](uint32_t index) const
+    const Eigen::Vector3<T> &operator[](uint32_t index) const
     {
         ASSERT(index <= 1);
-        return (reinterpret_cast<const vec3 *>(this))[index];
+        return (reinterpret_cast<const Eigen::Vector3<T> *>(this))[index];
     }
 
-    vec3 &operator[](uint32_t index)
+    Eigen::Vector3<T> &operator[](uint32_t index)
     {
         ASSERT(index <= 1);
-        return (reinterpret_cast<vec3 *>(this))[index];
+        return (reinterpret_cast<Eigen::Vector3<T> *>(this))[index];
     }
 
-    vec3 min = vec3::Constant(inf);
-    vec3 max = vec3::Constant(-inf);
+    Eigen::Vector3<T> min = Eigen::Vector3<T>::Constant(inf);
+    Eigen::Vector3<T> max = Eigen::Vector3<T>::Constant(-inf);
 };
 
-inline bool intersectBool(const AABB3 &b0, const AABB3 &b1)
+template<typename T>
+inline bool intersectBool(const AABB3_t<T> &b0, const AABB3_t<T> &b1)
 {
     return !(b0.min.x() > b1.max.x() || b1.min.x() > b0.max.x() || b0.min.y() > b1.max.y() || b1.min.y() > b0.max.y() ||
              b0.min.x() > b1.max.z() || b1.min.z() > b0.max.z());
 }
 
-inline AABB3 intersect(const AABB3 &b0, const AABB3 &b1)
+template<typename T>
+inline AABB3_t<T> intersect(const AABB3_t<T> &b0, const AABB3_t<T> &b1)
 {
-    AABB3 ret;
+    AABB3_t<T> ret;
     ret.min = b0.min.cwiseMax(b1.min);
     ret.max = b0.max.cwiseMin(b1.max);
     if (ret.min.x() > ret.max.x() || ret.min.y() > ret.max.y() || ret.min.z() > ret.max.z()) {
-        return AABB3();
+        return AABB3_t<T>();
     }
     return ret;
 }
 
-inline AABB3 join(const AABB3 &b0, const AABB3 &b1) { return AABB3(b0.min.cwiseMin(b1.min), b0.max.cwiseMax(b1.max)); }
+template<typename T>
+inline AABB3_t<T> join(const AABB3_t<T> &b0, const AABB3_t<T> &b1) { return AABB3_t<T>(b0.min.cwiseMin(b1.min), b0.max.cwiseMax(b1.max)); }
+
+using AABB3 = AABB3_t<float>;
+using AABB3d = AABB3_t<double>;
 
 inline bool isect_ray_aabb(const Ray &ray, const AABB3 &bounds, const vec3 &inv_dir, const int dir_is_neg[3],
                            float thit[2] = nullptr, vec3 phit[2] = nullptr)
