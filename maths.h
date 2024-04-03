@@ -11,14 +11,18 @@ template <int N>
 using vec = Eigen::Matrix<float, N, 1>;
 using vec2 = Eigen::Vector2f;
 using vec2i = Eigen::Vector2i;
+using vec2d = Eigen::Vector2d;
 using vec3 = Eigen::Vector3f;
 using vec3i = Eigen::Vector3i;
+using vec3d = Eigen::Vector3d;
 using vec4 = Eigen::Vector4f;
 using vec4i = Eigen::Vector4i;
-using vec3d = Eigen::Vector3d;
+using vec4d = Eigen::Vector4d;
 using mat2 = Eigen::Matrix2f;
 using mat3 = Eigen::Matrix3f;
+using mat3d = Eigen::Matrix3d;
 using mat4 = Eigen::Matrix4f;
+using mat4d = Eigen::Matrix4d;
 using quat = Eigen::Quaternionf;
 using quatd = Eigen::Quaterniond;
 template <int N>
@@ -34,6 +38,11 @@ using arr = Eigen::Array<float, N, 1>;
 using arr2 = arr<2>;
 using arr3 = arr<3>;
 using arr4 = arr<4>;
+template <int N>
+using arrd = Eigen::Array<double, N, 1>;
+using arr2d = arrd<2>;
+using arr3d = arrd<3>;
+using arr4d = arrd<4>;
 template <int N>
 using arri = Eigen::Array<int, N, 1>;
 using arr2i = arri<2>;
