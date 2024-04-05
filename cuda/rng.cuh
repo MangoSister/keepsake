@@ -123,6 +123,12 @@ inline vec3 RNG::Uniform<vec3>()
     return vec3(Uniform<float>(), Uniform<float>(), Uniform<float>());
 }
 
+template <>
+inline vec4 RNG::Uniform<vec4>()
+{
+    return vec4(Uniform<float>(), Uniform<float>(), Uniform<float>(), Uniform<float>());
+}
+
 inline void RNG::Advance(int64_t idelta)
 {
     uint64_t curMult = PCG32_MULT, curPlus = inc, accMult = 1u;
@@ -186,6 +192,14 @@ CUDA_HOST_DEVICE inline vec3 sample_uniform_sphere(vec2 u)
     float sin_phi = sin(phi);
     float cos_phi = cos(phi);
     return vec3(r * cos_phi, r * sin_phi, z);
+}
+
+CUDA_HOST_DEVICE inline vec3 sample_uniform_hemisphere_concentric(vec2 u, vec3 n)
+{
+    vec3 w = concentric_square_to_hemisphere(u);
+    vec3 t, b;
+    orthonormal_basis(n, t, b);
+    return w.x * t + w.y * b + w.z * n;
 }
 
 CUDA_HOST_DEVICE inline vec3 sample_cosine_hemisphere(const vec2 &u)
@@ -296,6 +310,17 @@ CUDA_HOST_DEVICE
 inline ksc::vec3 sample_uniform_ellipsoid(const ksc::mat3 &L, ksc::vec3 center, ksc::vec2 u, ksc::vec3 *sph = nullptr)
 {
     ksc::vec3 p = ksc::sample_uniform_sphere(u);
+    if (sph) {
+        *sph = p;
+    }
+    return L * p + center;
+}
+
+CUDA_HOST_DEVICE
+inline ksc::vec3 sample_uniform_ellipsoid_equal_area(const ksc::mat3 &L, ksc::vec3 center, ksc::vec2 u,
+                                                     ksc::vec3 *sph = nullptr)
+{
+    ksc::vec3 p = ksc::equal_area_square_to_sphere(u);
     if (sph) {
         *sph = p;
     }
