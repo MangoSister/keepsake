@@ -189,6 +189,26 @@ inline int log2_int(uint32_t v)
 
 inline int log2_int(int32_t v) { return log2_int((uint32_t)v); }
 
+inline int log2_int(uint64_t v)
+{
+#if defined(_MSC_VER)
+    unsigned long lz = 0;
+#if defined(_WIN64)
+    _BitScanReverse64(&lz, v);
+#else
+    if (_BitScanReverse(&lz, v >> 32))
+        lz += 32;
+    else
+        _BitScanReverse(&lz, v & 0xffffffff);
+#endif // _WIN64
+    return lz;
+#else
+    return 63 - __builtin_clzll(v);
+#endif
+}
+
+inline int log2_int(int64_t v) { return log2_int((uint64_t)v); }
+
 inline float int_as_float(int i)
 {
     float f;
