@@ -1801,6 +1801,123 @@ CUDA_HOST_DEVICE
 inline color3 linear_to_srgb(color3 c) { return color3(linear_to_srgb(c.x), linear_to_srgb(c.y), linear_to_srgb(c.z)); }
 
 CUDA_HOST_DEVICE
+inline color3 rgb_to_lab(const color3 rgb)
+{
+    float R = rgb.x;
+    float G = rgb.y;
+    float B = rgb.z;
+
+    float varR = R / 255.0f;
+    float varG = G / 255.0f;
+    float varB = B / 255.0f;
+
+    if (varR > 0.04045f)
+        varR = pow(((varR + 0.055f) / 1.055f), 2.4f);
+    else
+        varR /= 12.92f;
+
+    if (varG > 0.04045f)
+        varG = pow(((varG + 0.055f) / 1.055f), 2.4f);
+    else
+        varG /= 12.92f;
+
+    if (varB > 0.04045f)
+        varB = pow(((varB + 0.055f) / 1.055f), 2.4f);
+    else
+        varB = varB / 12.92f;
+
+    varR *= 100.f;
+    varG *= 100.f;
+    varB *= 100.f;
+
+    float X = varR * 0.4124f + varG * 0.3576f + varB * 0.1805f;
+    float Y = varR * 0.2126f + varG * 0.7152f + varB * 0.0722f;
+    float Z = varR * 0.0193f + varG * 0.1192f + varB * 0.9505f;
+
+    float varX = X / 95.047f;
+    float varY = Y / 100.000f;
+    float varZ = Z / 108.883f;
+
+    if (varX > 0.008856f)
+        varX = pow(varX, 1.0f / 3.0f);
+    else
+        varX = (7.787f * varX) + (16.0f / 116.0f);
+
+    if (varY > 0.008856f)
+        varY = pow(varY, 1.0f / 3.0f);
+    else
+        varY = (7.787f * varY) + (16.0f / 116.0f);
+
+    if (varZ > 0.008856f)
+        varZ = pow(varZ, 1.0f / 3.0f);
+    else
+        varZ = (7.787f * varZ) + (16.0f / 116.0f);
+
+    float ls = (116.0f * varY) - 16.0;
+    float as = 500.0f * (varX - varY);
+    float bs = 200.0f * (varY - varZ);
+    return color3(ls, as, bs);
+}
+
+CUDA_HOST_DEVICE
+inline color3 lab_to_rgb(const color3 lab)
+{
+    float ls = lab.x;
+    float as = lab.y;
+    float bs = lab.z;
+
+    float varY = (ls + 16.0f) / 116.0f;
+    float varX = as / 500.0f + varY;
+    float varZ = varY - bs / 200.0f;
+
+    if (pow(varY, 3.0f) > 0.008856f)
+        varY = pow(varY, 3.0f);
+    else
+        varY = (varY - 16.0f / 116.0f) / 7.787f;
+
+    if (pow(varX, 3.0f) > 0.008856f)
+        varX = pow(varX, 3.0f);
+    else
+        varX = (varX - 16.0f / 116.0f) / 7.787f;
+
+    if (pow(varZ, 3.0f) > 0.008856f)
+        varZ = pow(varZ, 3.0f);
+    else
+        varZ = (varZ - 16.0f / 116.0f) / 7.787f;
+
+    float X = 95.047f * varX;
+    float Y = 100.000f * varY;
+    float Z = 108.883f * varZ;
+
+    varX = X / 100.0f;
+    varY = Y / 100.0f;
+    varZ = Z / 100.0f;
+
+    float varR = varX * 3.2406f + varY * -1.5372f + varZ * -0.4986f;
+    float varG = varX * -0.9689f + varY * 1.8758f + varZ * 0.0415f;
+    float varB = varX * 0.0557f + varY * -0.2040f + varZ * 1.0570f;
+
+    if (varR > 0.0031308f)
+        varR = 1.055f * pow(varR, (1.0f / 2.4f)) - 0.055f;
+    else
+        varR *= 12.92f;
+
+    if (varG > 0.0031308f)
+        varG = 1.055f * pow(varG, (1.0f / 2.4f)) - 0.055f;
+    else
+        varG *= 12.92f;
+    if (varB > 0.0031308f)
+        varB = 1.055f * pow(varB, (1.0f / 2.4f)) - 0.055f;
+    else
+        varB = 12.92f * varB;
+
+    float R = varR * 255.0f;
+    float G = varG * 255.0f;
+    float B = varB * 255.0f;
+    return color3(R, G, B);
+}
+
+CUDA_HOST_DEVICE
 inline vec2 demux_float(float f)
 {
     // ASSERT(f >= 0 && f < 1);
