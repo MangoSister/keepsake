@@ -341,4 +341,16 @@ float sample_standard_gamma(RNG &rng, float shape);
 
 float sample_beta(RNG &rng, float a, float b);
 
+// https://stackoverflow.com/questions/31600717/how-to-generate-a-random-quaternion-quickly
+// h = (sqrt(1 - u) sin(2 \pi v), sqrt(1 - u) cos(2 \pi v), sqrt(u) sin(2 \pi w), sqrt(u) cos(2 \pi w))
+inline ks::quat sample_uniform_rotation(float u, float v, float w)
+{
+    ks::quat q;
+    q.w() = std::sqrt(1 - u) * std::sin(2 * ks::pi * v);
+    q.x() = std::sqrt(1 - u) * std::cos(2 * ks::pi * v);
+    q.y() = std::sqrt(u) * std::sin(2 * ks::pi * w);
+    q.z() = std::sqrt(u) * std::cos(2 * ks::pi * w);
+    return q;
+}
+
 } // namespace ks
