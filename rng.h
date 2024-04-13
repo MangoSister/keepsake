@@ -171,6 +171,17 @@ inline vec3 sample_uniform_sphere_vol(const vec3 &u)
     return r * vec3(std::cos(phi) * sin_theta, std::sin(phi) * sin_theta, cos_theta);
 }
 
+// Gammell, Jonathan D., and Timothy D. Barfoot. "The probability density function of a transformation-based
+// hyperellipsoid sampling technique." arXiv preprint arXiv:1404.1347 (2014).
+inline vec3 sample_uniform_ellipsoid(const mat3 &L, vec3 center, vec2 u, vec3 *sph = nullptr)
+{
+    vec3 p = sample_uniform_sphere(u);
+    if (sph) {
+        *sph = p;
+    }
+    return L * p + center;
+}
+
 inline float sample_normal(RNG &rng, float mean, float stddev)
 {
     std::normal_distribution<> normal_dist(mean, stddev);

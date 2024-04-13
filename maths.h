@@ -803,4 +803,23 @@ inline bool refract(const vec3 &wi, const vec3 &n, float eta, vec3 &wt)
     return true;
 }
 
+// https://rosettacode.org/wiki/Cholesky_decomposition
+inline mat3 cholesky_decompose(const mat3 &A)
+{
+    // Assume A is SPD (symmetric positive definite)
+    float l11 = sqrt(A(0, 0));
+    float l21 = 1 / l11 * A(1, 0);
+    float l22 = sqrt(A(1, 1) - sqr(l21));
+    float l31 = 1 / l11 * A(2, 0);
+    float l32 = 1 / l22 * (A(2, 1) - l31 * l21);
+    float l33 = sqrt(A(2, 2) - (sqr(l31) + sqr(l32)));
+    mat3 L;
+    // clang-format off
+    L(0, 0) = l11; L(0, 1) = 0.0f;  L(0,2) = 0.0f;
+    L(1, 0) = l21; L(1, 1) = l22;   L(1,2) = 0.0f;
+    L(2, 0) = l31; L(2, 1) = l32;   L(2,2) = l33;
+    // clang-format on
+    return L;
+}
+
 } // namespace ks
