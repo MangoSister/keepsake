@@ -72,6 +72,7 @@ struct PrincipledBSDF : public ks::BSDF
         float ay;
         float metallic;
         float ior;
+        float specular_r0_mul;
         float specular_trans;
         const ks::MicrofacetAdapter *microfacet;
     };
@@ -96,6 +97,7 @@ struct PrincipledBSDF : public ks::BSDF
         static ks::color3 eval_diffuse(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static ks::color3 eval_metallic_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static ks::color3 eval_dielectric_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
+        static float dielectric_specular_adjust(float wo_dot_wh, const Closure &closure);
 
         static ks::vec3 lobe_sample_weights(const ks::vec3 &wo, const Closure &closure);
         static ks::vec3 sample_diffuse(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u, float &pdf);
@@ -113,6 +115,7 @@ struct PrincipledBSDF : public ks::BSDF
     std::unique_ptr<ks::ShaderField1> roughness;
     std::unique_ptr<ks::ShaderField1> metallic;
     std::unique_ptr<ks::ShaderField1> ior;
+    std::unique_ptr<ks::ShaderField1> specular_r0_mul;
     std::unique_ptr<ks::ShaderField1> specular_trans;
 
     std::unique_ptr<ks::MicrofacetAdapter> microfacet;

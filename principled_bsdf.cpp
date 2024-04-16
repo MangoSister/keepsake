@@ -238,6 +238,8 @@ PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) con
     closure.metallic = clamp(closure.metallic, 0.0f, 1.0f);
     closure.ior = (*ior)(it)[0];
     closure.ior = clamp(closure.ior, 1.0f, 4.0f);
+    closure.specular_r0_mul = (*specular_r0_mul)(it)[0];
+    closure.specular_r0_mul = std::max(closure.specular_r0_mul, 0.0f);
     closure.specular_trans = (*specular_trans)(it)[0];
     closure.specular_trans = clamp(closure.specular_trans, 0.0f, 1.0f);
     closure.microfacet = &*microfacet;
@@ -402,11 +404,13 @@ color3 PrincipledBSDF::internal::eval_dielectric_specular(const vec3 &wo, const 
 
     float D = c.microfacet->D(c.ax, c.ay, wh);
     float G = c.microfacet->G2(c.ax, c.ay, wo, wi);
-    float Fr = fresnel_dielectric(std::abs(wo.dot(wh)), 1.0f / eta);
+    float abs_wo_dot_wh = std::abs(wo.dot(wh));
+    float Fr = fresnel_dielectric(abs_wo_dot_wh, 1.0f / eta);
 
     color3 f;
     if (reflect) {
-        f = color3::Constant(D * G * Fr / (4.0f * std::abs(wo.z())));
+        float Fr_adj = dielectric_specular_adjust(abs_wo_dot_wh, c);
+        f = color3::Constant(D * G * (Fr * Fr_adj) / (4.0f * std::abs(wo.z())));
     } else {
         float denom = sqr(wo.dot(wh) + eta * wi.dot(wh));
         float specular = D * G * (1.0f - Fr) * wo.dot(wh) * wi.dot(wh) / (denom * wo.z());
@@ -426,6 +430,13 @@ color3 PrincipledBSDF::internal::eval_dielectric_specular(const vec3 &wo, const 
     return f;
 }
 
+float PrincipledBSDF::internal::dielectric_specular_adjust(float wo_dot_wh, const Closure &closure)
+{
+    float R0 = sqr((1.0f - closure.ior) / (1.0f + closure.ior));
+    float schlick = fresnel_schlick(wo_dot_wh);
+    return std::lerp(closure.specular_r0_mul * R0, 1.0f, schlick) / std::lerp(R0, 1.0f, schlick);
+}
+
 vec3 PrincipledBSDF::internal::lobe_sample_weights(const vec3 &wo, const Closure &c)
 {
     float lum_basecolor = luminance(c.basecolor);
@@ -436,6 +447,7 @@ vec3 PrincipledBSDF::internal::lobe_sample_weights(const vec3 &wo, const Closure
     float weight_metallic_specular =
         wo.z() > 0.0f ? c.metallic * std::lerp(lum_basecolor, 1.0f, fresnel_schlick(wo.z())) : 0.0f;
     float eta = wo.z() >= 0.0f ? c.ior : (1.0f / c.ior);
+    // TODO: incorporate specular_r0_mul here? in general need a better heuristic...
     float weight_dielectric_specular = (1.0f - c.metallic) * fresnel_dielectric(std::abs(wo.z()), 1.0f / eta);
 
     float sum = weight_diffuse + weight_metallic_specular + weight_dielectric_specular;
@@ -496,10 +508,14 @@ vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const 
     float G1 = c.microfacet->G1(c.ax, c.ay, wo);
 
     float eta = wo.z() >= 0.0f ? c.ior : (1.0f / c.ior);
+    float abs_wo_dot_wh = std::abs(wo.dot(wh));
     float Fr = fresnel_dielectric(std::abs(wo.dot(wh)), 1.0f / eta);
+    float Fr_adj = dielectric_specular_adjust(abs_wo_dot_wh, c);
+    float Fr_refl = Fr * Fr_adj;
+    float Fr_refr = (1.0f - Fr) * c.specular_trans;
 
     vec3 wi;
-    if (u_fr < Fr / (Fr + (1.0f - Fr) * c.specular_trans)) {
+    if (u_fr < Fr_refl / (Fr_refl + Fr_refr)) {
         // sample reflection
         wi = reflect(wo, wh);
         // side check
@@ -508,7 +524,7 @@ vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const 
             return vec3::Zero();
         }
         pdf = D * G1 / (4.0f * std::abs(wo.z()));
-        pdf *= Fr / (Fr + (1.0f - Fr) * c.specular_trans);
+        pdf *= Fr_refl / (Fr_refl + Fr_refr);
         ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
     } else {
         // sample refraction
@@ -525,7 +541,7 @@ vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const 
         float denom = sqr(wo.dot(wh) + eta * wi.dot(wh));
         float jacobian = eta * eta * std::abs(wi.dot(wh)) / denom;
         pdf = D * G1 * std::abs(wo.dot(wh)) / std::abs(wo.z()) * jacobian;
-        pdf *= (1.0f - Fr) * c.specular_trans / (Fr + (1.0f - Fr) * c.specular_trans);
+        pdf *= Fr_refr / (Fr_refl + Fr_refr);
         ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
     }
 
@@ -563,18 +579,22 @@ float PrincipledBSDF::internal::pdf_dielectric_specular(const ks::vec3 &wo, cons
 
     float D = c.microfacet->D(c.ax, c.ay, wh);
     float G1 = c.microfacet->G1(c.ax, c.ay, wo);
+    float abs_wo_dot_wh = std::abs(wo.dot(wh));
     float Fr = fresnel_dielectric(std::abs(wo.dot(wh)), 1.0f / eta);
+    float Fr_adj = dielectric_specular_adjust(abs_wo_dot_wh, c);
+    float Fr_refl = Fr * Fr_adj;
+    float Fr_refr = (1.0f - Fr) * c.specular_trans;
 
     float pdf;
     if (reflect) {
         pdf = D * G1 / (4.0f * std::abs(wo.z()));
-        pdf *= Fr / (Fr + (1.0f - Fr) * c.specular_trans);
+        pdf *= Fr_refl / (Fr_refl + Fr_refr);
         ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
     } else {
         float denom = sqr(wo.dot(wh) + eta * wi.dot(wh));
         float jacobian = eta * eta * std::abs(wi.dot(wh)) / denom;
         pdf = D * G1 * std::abs(wo.dot(wh)) / std::abs(wo.z()) * jacobian;
-        pdf *= (1.0f - Fr) * c.specular_trans / (Fr + (1.0f - Fr) * c.specular_trans);
+        pdf *= Fr_refr / (Fr_refl + Fr_refr);
         ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
     }
     return pdf;
@@ -590,6 +610,7 @@ std::unique_ptr<PrincipledBSDF> create_principled_bsdf(const ConfigArgs &args)
     bsdf->roughness = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["roughness"]);
     bsdf->metallic = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["metallic"]);
     bsdf->ior = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["ior"]);
+    bsdf->specular_r0_mul = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular_r0_mul"]);
     bsdf->specular_trans = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular_trans"]);
     std::string m = args.load_string("microfacet", "ggx");
     if (m == "ggx") {
