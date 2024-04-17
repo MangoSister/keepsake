@@ -21,6 +21,7 @@ struct MeshAsset : public Configurable
 
     std::vector<std::unique_ptr<MeshData>> meshes;
     std::vector<std::unique_ptr<Material>> materials;
+    std::vector<std::unique_ptr<NormalMap>> normal_maps;
     std::vector<std::unique_ptr<BSDF>> bsdfs;
     std::vector<std::unique_ptr<Texture>> textures;
 
@@ -37,10 +38,12 @@ void assign_material_list(Scene &scene, const ConfigArgs &args_materials);
 
 struct CompoundMeshAsset : public Configurable
 {
-    void load_from_gltf_binary(const fs::path &path, bool load_materials, bool twosided);
+    void load_from_gltf(const fs::path &path, bool load_materials, bool twosided);
 
     std::vector<MeshAsset> prototypes;
     std::vector<std::pair<uint32_t, Transform>> instances;
+    // Textures are owned here instead of in each child prototype mesh asset.
+    std::vector<std::unique_ptr<Texture>> textures;
 };
 
 std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &args);

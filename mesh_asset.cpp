@@ -4,7 +4,9 @@
 #include "file_util.h"
 #include "hash.h"
 #include "maths.h"
+#include "normal_map.h"
 #include "parallel.h"
+#include "principled_bsdf.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 #include <stb_image.h>
@@ -354,13 +356,61 @@ struct CastU16ToU32
     size_t cast_element_size_in_bytes = 4;
 };
 
-void CompoundMeshAsset::load_from_gltf_binary(const fs::path &path, bool load_materials, bool twosided)
+// TODO: support a lot of features such as:
+// - 16-bit format
+// - uv scale/offset (gltf extension: KHR_texture_transform)
+// - more sampler types
+// - avoid loading duplicate images
+
+std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::Model &model)
+{
+    const tinygltf::Image &src_img = model.images[img_idx];
+
+    TextureDataType data_type;
+    if (src_img.bits == 8 && src_img.pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+        data_type = TextureDataType::u8;
+    } else if (src_img.bits == 32 && src_img.pixel_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+        data_type = TextureDataType::f32;
+    }
+
+    const std::byte *bytes = reinterpret_cast<const std::byte *>(src_img.image.data());
+    auto dst_tex = std::make_unique<Texture>(bytes, src_img.width, src_img.height, src_img.component, data_type, true);
+    return dst_tex;
+}
+
+template <int N>
+std::unique_ptr<TextureField<N>> create_texture_shader_field(const Texture &texture, int sampler_idx,
+                                                             const tinygltf::Model &model,
+                                                             std::optional<arri<N>> swizzle = {})
+{
+    const tinygltf::Sampler &src_sampler = model.samplers[sampler_idx];
+
+    std::unique_ptr<TextureSampler> dst_sampler;
+    if (src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST ||
+        src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST ||
+        src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR ||
+        src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR) {
+        dst_sampler = std::make_unique<LinearSampler>();
+    } else {
+        dst_sampler = std::make_unique<NearestSampler>();
+    }
+    return std::make_unique<TextureField<N>>(texture, std::move(dst_sampler), true, swizzle);
+}
+
+void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials, bool twosided)
 {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err;
     std::string warn;
-    bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
+    bool is_binary = path.extension() == ".glb";
+    bool ret;
+    if (is_binary) {
+        ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
+    } else {
+        ret = loader.LoadASCIIFromFile(&model, &err, &warn, path.string());
+    }
+
     if (!err.empty()) {
         std::cout << "GLTF Loader Error: " << err << "\n";
     }
@@ -369,9 +419,19 @@ void CompoundMeshAsset::load_from_gltf_binary(const fs::path &path, bool load_ma
     }
     const std::vector<tinygltf::Mesh> &src_meshes = model.meshes;
     const std::vector<tinygltf::Material> &src_materials = model.materials;
+    const std::vector<tinygltf::Texture> &src_textures = model.textures;
+    const std::vector<tinygltf::Image> &src_images = model.images;
+    const std::vector<tinygltf::Sampler> &src_samplers = model.samplers;
     const std::vector<tinygltf::Buffer> &buffers = model.buffers;
     const std::vector<tinygltf::BufferView> &bufferviews = model.bufferViews;
     const std::vector<tinygltf::Accessor> &accessors = model.accessors;
+
+    if (load_materials) {
+        textures.resize(src_images.size());
+        for (uint32_t i = 0; i < (uint32_t)src_images.size(); ++i) {
+            textures[i] = create_texture_from_gltf(i, model);
+        }
+    }
 
     prototypes.resize(src_meshes.size());
     for (int i = 0; i < src_meshes.size(); ++i) {
@@ -450,11 +510,136 @@ void CompoundMeshAsset::load_from_gltf_binary(const fs::path &path, bool load_ma
             }
 
             if (load_materials) {
-                // TODO:
-                // src_materials[primtives[j].material].
+                // Try our best to convert to PrincipledBSDF....some features are not supported yet or behave
+                // differently.
+                // TODO: support a lot of features such as:
+                // - multiple texture coordinate sets
+                // - constant scaling on top of textures
+                // - tinted specular (specular color from KHR_materials_specular)
+
+                // TODO: check color space?
+                const auto &src = src_materials[primtives[j].material];
+                const auto &pbr = src.pbrMetallicRoughness;
+                auto dst_bsdf = std::make_unique<PrincipledBSDF>();
+                if (pbr.baseColorTexture.index >= 0) {
+                    const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];
+                    dst_bsdf->basecolor = create_texture_shader_field<3>(
+                        *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model);
+                } else {
+                    dst_bsdf->basecolor = std::make_unique<ConstantField<color3>>(
+                        color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
+                }
+                if (pbr.metallicRoughnessTexture.index >= 0) {
+                    // glTF expects the metallic values to be encoded in the blue (B) channel, and
+                    // roughness to be encoded in the green (G) channel of the same image.
+                    const auto &mr_map = textures[src_textures[pbr.metallicRoughnessTexture.index].source];
+                    dst_bsdf->roughness = create_texture_shader_field<1>(
+                        *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model, arri<1>(1));
+                    dst_bsdf->metallic = create_texture_shader_field<1>(
+                        *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model, arri<1>(2));
+                } else {
+                    dst_bsdf->roughness = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.roughnessFactor));
+                    dst_bsdf->metallic = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.metallicFactor));
+                }
+                if (src.emissiveTexture.index >= 0) {
+                    const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
+                    dst_bsdf->emissive = create_texture_shader_field<3>(
+                        *emissive_map, src_textures[src.emissiveTexture.index].sampler, model);
+                } else {
+                    dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
+                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
+                }
+
+                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md
+                if (auto it = src.extensions.find("KHR_materials_ior"); it != src.extensions.end()) {
+                    const auto &ior_ = it->second.Get("ior");
+                    if (ior_.Type() == tinygltf::REAL_TYPE || ior_.Type() == tinygltf::INT_TYPE) {
+                        dst_bsdf->ior =
+                            std::make_unique<ConstantField<color<1>>>(color<1>((float)ior_.GetNumberAsDouble()));
+                    } else {
+                        if (ior_.Type() != tinygltf::NULL_TYPE) {
+                            fprintf(stderr, "Unexpected ior value type from KHR_materials_ior!\n");
+                        }
+                        dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
+                    }
+                } else {
+                    dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
+                }
+                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_specular/README.md
+                if (auto it = src.extensions.find("KHR_materials_specular"); it != src.extensions.end()) {
+                    const auto &specular_factor = it->second.Get("specularFactor");
+                    const auto &specular_texture = it->second.Get("specularTexture");
+                    if (specular_texture.Type() == tinygltf::OBJECT_TYPE) {
+                        const auto &spec_tex_idx_ = specular_texture.Get("index");
+                        ASSERT(spec_tex_idx_.Type() == tinygltf::INT_TYPE);
+                        int spec_tex_idx = spec_tex_idx_.GetNumberAsInt();
+                        const auto &spec_map = textures[src_textures[spec_tex_idx].source];
+                        dst_bsdf->specular_r0_mul =
+                            create_texture_shader_field<1>(*spec_map, src_textures[spec_tex_idx].sampler, model);
+                    } else if (specular_factor.Type() == tinygltf::REAL_TYPE) {
+                        dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(
+                            color<1>((float)specular_factor.GetNumberAsDouble()));
+                    } else {
+                        if (specular_texture.Type() != tinygltf::NULL_TYPE) {
+                            fprintf(stderr, "Unexpected specularTexture value type from KHR_materials_specular!\n");
+                        }
+                        if (specular_factor.Type() != tinygltf::NULL_TYPE) {
+                            fprintf(stderr, "Unexpected specularFactor value type from KHR_materials_specular!\n");
+                        }
+                        dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(0.5f));
+                    }
+                } else {
+                    dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(0.5f));
+                }
+                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_transmission/README.md
+                if (auto it = src.extensions.find("KHR_materials_transmission"); it != src.extensions.end()) {
+                    const auto &trans_factor = it->second.Get("transmissionFactor");
+                    const auto &trans_texture = it->second.Get("transmissionTexture");
+                    if (trans_texture.Type() == tinygltf::OBJECT_TYPE) {
+                        const auto &trans_tex_idx_ = trans_texture.Get("index");
+                        ASSERT(trans_tex_idx_.Type() == tinygltf::INT_TYPE);
+                        int trans_tex_idx = trans_tex_idx_.GetNumberAsInt();
+                        const auto &trans_map = textures[src_textures[trans_tex_idx].source];
+                        dst_bsdf->specular_trans =
+                            create_texture_shader_field<1>(*trans_map, src_textures[trans_tex_idx].sampler, model);
+                    } else if (trans_factor.Type() == tinygltf::REAL_TYPE ||
+                               trans_factor.Type() == tinygltf::INT_TYPE) {
+                        dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(
+                            color<1>((float)trans_factor.GetNumberAsDouble()));
+                    } else {
+                        if (trans_texture.Type() != tinygltf::NULL_TYPE) {
+                            fprintf(stderr,
+                                    "Unexpected transmissionTexture value type from KHR_materials_transmission!\n");
+                        }
+                        if (trans_factor.Type() != tinygltf::NULL_TYPE) {
+                            fprintf(stderr,
+                                    "Unexpected transmissionFactor value type from KHR_materials_transmission!\n");
+                        }
+                        dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
+                    }
+                } else {
+                    dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
+                }
+                dst_bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
+
+                auto dst_mat = std::make_unique<BlendedMaterial>();
+                if (src.normalTexture.index >= 0) {
+                    const auto &normal_texture = textures[src_textures[src.normalTexture.index].source];
+                    auto nm = std::make_unique<NormalMap>();
+                    nm->strength = src.normalTexture.scale;
+                    nm->map = create_texture_shader_field<3>(*normal_texture,
+                                                             src_textures[src.normalTexture.index].sampler, model);
+                    dst_mat->normal_map = nm.get();
+                    mesh_asset.normal_maps.push_back(std::move(nm));
+                }
+
+                mesh_asset.bsdfs.push_back(std::move(dst_bsdf));
+                mesh_asset.materials.push_back(std::move(dst_mat));
+                mesh_asset.material_names.push_back(src.name);
             }
 
             mesh_asset.meshes.emplace_back(std::make_unique<MeshData>(std::move(mesh_data)));
+            mesh_asset.mesh_names.push_back(src_meshes[i].name);
         }
         prototypes[i] = std::move(mesh_asset);
     }
@@ -517,10 +702,10 @@ std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &
 
     fs::path path = args.load_path("path");
     std::string fmt = args.load_string("format", "glb");
-    if (fmt == "glb") {
+    if (fmt == "glb" || fmt == "gltf") {
         bool load_materials = args.load_bool("load_materials");
         bool twosided = args.load_bool("twosided", false);
-        compound->load_from_gltf_binary(path, load_materials, twosided);
+        compound->load_from_gltf(path, load_materials, twosided);
     } else {
         ASSERT(false, "Unsupported mesh asset format [%s].", fmt.c_str());
     }
