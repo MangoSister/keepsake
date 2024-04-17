@@ -177,8 +177,14 @@ std::unique_ptr<Camera> create_camera(const ConfigArgs &args)
 
     std::string type = args.load_string("type");
     if (type == "perspective") {
-        float vfov = to_radian(args.load_float("vfov"));
         float aspect = args.load_float("aspect");
+        float vfov;
+        if (args.contains("vfov")) {
+            vfov = to_radian(args.load_float("vfov"));
+        } else {
+            float hfov = to_radian(args.load_float("hfov"));
+            vfov = 2.0f * std::atan((1.0f / aspect) * std::tan(0.5f * hfov));
+        }
         return std::make_unique<Camera>(to_world, vfov, aspect);
     } else if (type == "orthographic") {
         float left = args.load_float("left");
