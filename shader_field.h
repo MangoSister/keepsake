@@ -3,6 +3,7 @@
 #include "ray.h"
 #include "texture.h"
 #include <numeric>
+#include <optional>
 
 namespace ks
 {
@@ -38,7 +39,7 @@ struct TextureField : public ShaderField<color<N>>
 {
     TextureField() = default;
     TextureField(const Texture &texture, std::unique_ptr<TextureSampler> &&sampler, bool flip_v = true,
-                 const arri<N> *swizzle = nullptr, const vec2 &uv_scale = vec2::Ones(),
+                 std::optional<arri<N>> swizzle = {}, const vec2 &uv_scale = vec2::Ones(),
                  const vec2 &uv_offset = vec2::Zero())
         : texture(&texture), sampler(std::move(sampler)), flip_v(flip_v), uv_scale(uv_scale), uv_offset(uv_offset)
     {
@@ -106,8 +107,7 @@ std::unique_ptr<TextureField<N>> create_texture_shader_field_color(const ConfigA
     const Texture *map = args.asset_table().get<Texture>(args.load_string("map"));
     std::unique_ptr<TextureSampler> sampler = create_texture_sampler(args["sampler"]);
     bool flip_v = args.load_bool("flip_v", true);
-    arri<N> swizzle;
-    std::iota(swizzle.data(), swizzle.data() + N, 0);
+    std::optional<arri<N>> swizzle = {};
     if (args.contains("swizzle")) {
         if constexpr (N == 1) {
             swizzle = arri<N>(args.load_integer("swizzle"));
@@ -121,7 +121,7 @@ std::unique_ptr<TextureField<N>> create_texture_shader_field_color(const ConfigA
     }
     vec2 uv_scale = args.load_vec2("uv_scale", false, vec2::Ones());
     vec2 uv_offset = args.load_vec2("uv_offset", false, vec2::Zero());
-    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, &swizzle, uv_scale, uv_offset);
+    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, swizzle, uv_scale, uv_offset);
 }
 
 template <int N>
