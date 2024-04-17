@@ -40,8 +40,9 @@ struct TextureField : public ShaderField<color<N>>
     TextureField() = default;
     TextureField(const Texture &texture, std::unique_ptr<TextureSampler> &&sampler, bool flip_v = true,
                  std::optional<arri<N>> swizzle = {}, const vec2 &uv_scale = vec2::Ones(),
-                 const vec2 &uv_offset = vec2::Zero())
-        : texture(&texture), sampler(std::move(sampler)), flip_v(flip_v), uv_scale(uv_scale), uv_offset(uv_offset)
+                 const vec2 &uv_offset = vec2::Zero(), const color<N> &scale = color<N>::Ones())
+        : texture(&texture), sampler(std::move(sampler)), flip_v(flip_v), uv_scale(uv_scale), uv_offset(uv_offset),
+          scale(scale)
     {
         if (!swizzle)
             std::iota(this->swizzle.data(), this->swizzle.data() + N, 0);
@@ -70,7 +71,7 @@ struct TextureField : public ShaderField<color<N>>
         color<N> c;
         for (int i = 0; i < N; ++i)
             c[i] = swizzle[i] >= 0 ? out[swizzle[i]] : 0.0f;
-        return c;
+        return c * scale;
     }
 
     const Texture *texture = nullptr;
@@ -79,6 +80,9 @@ struct TextureField : public ShaderField<color<N>>
     bool flip_v = true; // This is very common for some reasons...
     vec2 uv_scale = vec2::Ones();
     vec2 uv_offset = vec2::Zero();
+    // Optionally provide a constant scale on top of the textured value.
+    // This is convenient in a lot of cases.
+    color<N> scale = color<N>::Ones();
 };
 
 template <int N>

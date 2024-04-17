@@ -362,7 +362,7 @@ struct CastU16ToU32
 // - more sampler types
 // - avoid loading duplicate images
 
-std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::Model &model)
+std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::Model &model, ColorSpace src_colorspace)
 {
     const tinygltf::Image &src_img = model.images[img_idx];
 
@@ -374,14 +374,30 @@ std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::M
     }
 
     const std::byte *bytes = reinterpret_cast<const std::byte *>(src_img.image.data());
-    auto dst_tex = std::make_unique<Texture>(bytes, src_img.width, src_img.height, src_img.component, data_type, true);
-    return dst_tex;
+    if (src_colorspace == ColorSpace::sRGB) {
+        std::unique_ptr<std::byte[]> copy =
+            std::make_unique<std::byte[]>(src_img.width * src_img.height * src_img.component);
+        std::copy(reinterpret_cast<const std::byte *>(bytes),
+                  reinterpret_cast<const std::byte *>(bytes) + (src_img.width * src_img.height * src_img.component),
+                  copy.get());
+
+        int n = src_img.width * src_img.height * src_img.component;
+        for (int i = 0; i < n; ++i) {
+            float f32 = (float)(*reinterpret_cast<uint8_t *>(&copy[i])) / 255.0f;
+            float linear_f32 = srgb_to_linear(f32);
+            uint8_t linear_u8 = (uint8_t)std::floor(linear_f32 * 255.0f);
+            (*reinterpret_cast<uint8_t *>(&copy[i])) = linear_u8;
+        }
+        return std::make_unique<Texture>(copy.get(), src_img.width, src_img.height, src_img.component, data_type, true);
+    } else {
+        return std::make_unique<Texture>(bytes, src_img.width, src_img.height, src_img.component, data_type, true);
+    }
 }
 
 template <int N>
-std::unique_ptr<TextureField<N>> create_texture_shader_field(const Texture &texture, int sampler_idx,
-                                                             const tinygltf::Model &model,
-                                                             std::optional<arri<N>> swizzle = {})
+std::unique_ptr<TextureField<N>>
+create_texture_shader_field(const Texture &texture, int sampler_idx, const tinygltf::Model &model,
+                            color<N> scale = color<N>::Ones(), std::optional<arri<N>> swizzle = {})
 {
     const tinygltf::Sampler &src_sampler = model.samplers[sampler_idx];
 
@@ -394,7 +410,8 @@ std::unique_ptr<TextureField<N>> create_texture_shader_field(const Texture &text
     } else {
         dst_sampler = std::make_unique<NearestSampler>();
     }
-    return std::make_unique<TextureField<N>>(texture, std::move(dst_sampler), true, swizzle);
+    return std::make_unique<TextureField<N>>(texture, std::move(dst_sampler), false, swizzle, vec2::Ones(),
+                                             vec2::Zero(), scale);
 }
 
 void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials, bool twosided)
@@ -427,9 +444,22 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
     const std::vector<tinygltf::Accessor> &accessors = model.accessors;
 
     if (load_materials) {
+        // Determine color spaces for all texture images.
+        std::vector<ColorSpace> colorspaces;
+        colorspaces.resize(src_images.size(), ColorSpace::Linear);
+        for (uint32_t i = 0; i < (uint32_t)src_materials.size(); ++i) {
+            const auto &src = src_materials[i];
+            const auto &pbr = src.pbrMetallicRoughness;
+            if (pbr.baseColorTexture.index >= 0) {
+                colorspaces[src_textures[pbr.baseColorTexture.index].source] = ColorSpace::sRGB;
+            }
+            if (src.emissiveTexture.index >= 0) {
+                colorspaces[src_textures[src.emissiveTexture.index].source] = ColorSpace::sRGB;
+            }
+        }
         textures.resize(src_images.size());
         for (uint32_t i = 0; i < (uint32_t)src_images.size(); ++i) {
-            textures[i] = create_texture_from_gltf(i, model);
+            textures[i] = create_texture_from_gltf(i, model, colorspaces[i]);
         }
     }
 
@@ -524,7 +554,8 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 if (pbr.baseColorTexture.index >= 0) {
                     const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];
                     dst_bsdf->basecolor = create_texture_shader_field<3>(
-                        *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model);
+                        *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model,
+                        color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
                 } else {
                     dst_bsdf->basecolor = std::make_unique<ConstantField<color3>>(
                         color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
@@ -534,9 +565,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                     // roughness to be encoded in the green (G) channel of the same image.
                     const auto &mr_map = textures[src_textures[pbr.metallicRoughnessTexture.index].source];
                     dst_bsdf->roughness = create_texture_shader_field<1>(
-                        *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model, arri<1>(1));
+                        *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model,
+                        color<1>(pbr.roughnessFactor), arri<1>(1));
                     dst_bsdf->metallic = create_texture_shader_field<1>(
-                        *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model, arri<1>(2));
+                        *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model,
+                        color<1>(pbr.metallicFactor), arri<1>(2));
                 } else {
                     dst_bsdf->roughness = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.roughnessFactor));
                     dst_bsdf->metallic = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.metallicFactor));
@@ -544,7 +577,8 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 if (src.emissiveTexture.index >= 0) {
                     const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
                     dst_bsdf->emissive = create_texture_shader_field<3>(
-                        *emissive_map, src_textures[src.emissiveTexture.index].sampler, model);
+                        *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
+                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
                 } else {
                     dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
                         color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
@@ -574,8 +608,13 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                         ASSERT(spec_tex_idx_.Type() == tinygltf::INT_TYPE);
                         int spec_tex_idx = spec_tex_idx_.GetNumberAsInt();
                         const auto &spec_map = textures[src_textures[spec_tex_idx].source];
-                        dst_bsdf->specular_r0_mul =
-                            create_texture_shader_field<1>(*spec_map, src_textures[spec_tex_idx].sampler, model);
+
+                        float sf = 0.5f;
+                        if (specular_factor.Type() == tinygltf::REAL_TYPE) {
+                            sf = (float)specular_factor.GetNumberAsDouble();
+                        }
+                        dst_bsdf->specular_r0_mul = create_texture_shader_field<1>(
+                            *spec_map, src_textures[spec_tex_idx].sampler, model, color<1>(sf));
                     } else if (specular_factor.Type() == tinygltf::REAL_TYPE) {
                         dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(
                             color<1>((float)specular_factor.GetNumberAsDouble()));
@@ -600,8 +639,13 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                         ASSERT(trans_tex_idx_.Type() == tinygltf::INT_TYPE);
                         int trans_tex_idx = trans_tex_idx_.GetNumberAsInt();
                         const auto &trans_map = textures[src_textures[trans_tex_idx].source];
-                        dst_bsdf->specular_trans =
-                            create_texture_shader_field<1>(*trans_map, src_textures[trans_tex_idx].sampler, model);
+
+                        float t = 0.0f;
+                        if (trans_factor.Type() == tinygltf::REAL_TYPE || trans_factor.Type() == tinygltf::INT_TYPE) {
+                            t = (float)trans_factor.GetNumberAsDouble();
+                        }
+                        dst_bsdf->specular_trans = create_texture_shader_field<1>(
+                            *trans_map, src_textures[trans_tex_idx].sampler, model, color<1>(t));
                     } else if (trans_factor.Type() == tinygltf::REAL_TYPE ||
                                trans_factor.Type() == tinygltf::INT_TYPE) {
                         dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(
