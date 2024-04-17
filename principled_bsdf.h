@@ -117,6 +117,7 @@ struct PrincipledBSDF : public ks::BSDF
     std::unique_ptr<ks::ShaderField1> ior;
     std::unique_ptr<ks::ShaderField1> specular_r0_mul;
     std::unique_ptr<ks::ShaderField1> specular_trans;
+    std::unique_ptr<ks::ShaderField3> emissive;
 
     std::unique_ptr<ks::MicrofacetAdapter> microfacet;
 };

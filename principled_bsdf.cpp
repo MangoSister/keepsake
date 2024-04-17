@@ -238,7 +238,8 @@ PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) con
     closure.metallic = clamp(closure.metallic, 0.0f, 1.0f);
     closure.ior = (*ior)(it)[0];
     closure.ior = clamp(closure.ior, 1.0f, 4.0f);
-    closure.specular_r0_mul = (*specular_r0_mul)(it)[0];
+    // Remap [0, 1] to [1, 2] (actually allows going above 1 for even more reflection).
+    closure.specular_r0_mul = (*specular_r0_mul)(it)[0] * 2.0f;
     closure.specular_r0_mul = std::max(closure.specular_r0_mul, 0.0f);
     closure.specular_trans = (*specular_trans)(it)[0];
     closure.specular_trans = clamp(closure.specular_trans, 0.0f, 1.0f);
@@ -612,6 +613,8 @@ std::unique_ptr<PrincipledBSDF> create_principled_bsdf(const ConfigArgs &args)
     bsdf->ior = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["ior"]);
     bsdf->specular_r0_mul = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular_r0_mul"]);
     bsdf->specular_trans = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular_trans"]);
+    bsdf->emissive = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["emissive"]);
+
     std::string m = args.load_string("microfacet", "ggx");
     if (m == "ggx") {
         bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
