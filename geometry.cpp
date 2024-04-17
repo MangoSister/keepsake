@@ -155,8 +155,10 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit, const R
         }
     }
 
-    it.compute_uv_partials(ray);
     it = transform_it(transform, it);
+    // Compute uv partials after transform.
+    it.compute_uv_partials(ray);
+
     return it;
 }
 
