@@ -623,6 +623,7 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 dst_bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
 
                 auto dst_mat = std::make_unique<BlendedMaterial>();
+                dst_mat->bsdf = dst_bsdf.get();
                 if (src.normalTexture.index >= 0) {
                     const auto &normal_texture = textures[src_textures[src.normalTexture.index].source];
                     auto nm = std::make_unique<NormalMap>();
