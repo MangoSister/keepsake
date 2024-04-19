@@ -7,6 +7,15 @@
 namespace ks
 {
 
+enum class MicrofacetType
+{
+    GGX,
+    Beckmann,
+};
+
+extern MicrofacetAdapterDerived<GGX> ggx_adapter;
+extern MicrofacetAdapterDerived<Beckmann> beckmann_adapter;
+
 struct PrincipledBRDF : public ks::BSDF
 {
     bool delta() const { return false; }
@@ -54,7 +63,7 @@ struct PrincipledBRDF : public ks::BSDF
     std::unique_ptr<ks::ShaderField1> metallic;
     std::unique_ptr<ks::ShaderField1> specular;
 
-    std::unique_ptr<ks::MicrofacetAdapter> microfacet;
+    MicrofacetType microfacet;
 };
 
 std::unique_ptr<PrincipledBRDF> create_principled_brdf(const ks::ConfigArgs &args);
@@ -121,7 +130,7 @@ struct PrincipledBSDF : public ks::BSDF
     std::unique_ptr<ks::ShaderField1> specular_trans;
     std::unique_ptr<ks::ShaderField3> emissive;
 
-    std::unique_ptr<ks::MicrofacetAdapter> microfacet;
+    MicrofacetType microfacet;
 };
 
 std::unique_ptr<PrincipledBSDF> create_principled_bsdf(const ks::ConfigArgs &args);

@@ -664,7 +664,7 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 } else {
                     dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
                 }
-                dst_bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
+                dst_bsdf->microfacet = MicrofacetType::GGX;
 
                 auto dst_mat = std::make_unique<BlendedMaterial>();
                 dst_mat->bsdf = dst_bsdf.get();

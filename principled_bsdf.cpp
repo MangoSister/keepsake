@@ -5,6 +5,9 @@
 namespace ks
 {
 
+MicrofacetAdapterDerived<GGX> ggx_adapter;
+MicrofacetAdapterDerived<Beckmann> beckmann_adapter;
+
 PrincipledBRDF::Closure PrincipledBRDF::eval_closure(const Intersection &it) const
 {
     Closure closure;
@@ -18,7 +21,11 @@ PrincipledBRDF::Closure PrincipledBRDF::eval_closure(const Intersection &it) con
     closure.metallic = clamp(closure.metallic, 0.0f, 1.0f);
     closure.specular = (*specular)(it)[0];
     closure.specular = clamp(closure.specular, 0.0f, 1.0f) * 0.08f;
-    closure.microfacet = &*microfacet;
+    if (microfacet == MicrofacetType::GGX) {
+        closure.microfacet = &ggx_adapter;
+    } else {
+        closure.microfacet = &beckmann_adapter;
+    }
     return closure;
 }
 
@@ -215,9 +222,9 @@ std::unique_ptr<PrincipledBRDF> create_principled_brdf(const ConfigArgs &args)
     bsdf->specular = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular"]);
     std::string m = args.load_string("microfacet", "ggx");
     if (m == "ggx") {
-        bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
+        bsdf->microfacet = MicrofacetType::GGX;
     } else if (m == "beckmann") {
-        bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<Beckmann>>();
+        bsdf->microfacet = MicrofacetType::Beckmann;
     }
 
     return bsdf;
@@ -245,7 +252,11 @@ PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) con
     closure.specular_trans = clamp(closure.specular_trans, 0.0f, 1.0f);
     closure.emissive = (*emissive)(it);
     closure.emissive = closure.emissive.cwiseMax(0.0f);
-    closure.microfacet = &*microfacet;
+    if (microfacet == MicrofacetType::GGX) {
+        closure.microfacet = &ggx_adapter;
+    } else {
+        closure.microfacet = &beckmann_adapter;
+    }
     return closure;
 }
 
@@ -619,9 +630,9 @@ std::unique_ptr<PrincipledBSDF> create_principled_bsdf(const ConfigArgs &args)
 
     std::string m = args.load_string("microfacet", "ggx");
     if (m == "ggx") {
-        bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<GGX>>();
+        bsdf->microfacet = MicrofacetType::GGX;
     } else if (m == "beckmann") {
-        bsdf->microfacet = std::make_unique<MicrofacetAdapterDerived<Beckmann>>();
+        bsdf->microfacet = MicrofacetType::Beckmann;
     }
 
     return bsdf;
