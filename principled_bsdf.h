@@ -74,6 +74,8 @@ struct PrincipledBSDF : public ks::BSDF
         float ior;
         float specular_r0_mul;
         float specular_trans;
+        ks::color3 emissive;
+
         const ks::MicrofacetAdapter *microfacet;
     };
     Closure eval_closure(const ks::Intersection &it) const;

@@ -243,6 +243,8 @@ PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) con
     closure.specular_r0_mul = std::max(closure.specular_r0_mul, 0.0f);
     closure.specular_trans = (*specular_trans)(it)[0];
     closure.specular_trans = clamp(closure.specular_trans, 0.0f, 1.0f);
+    closure.emissive = (*emissive)(it);
+    closure.emissive = closure.emissive.cwiseMax(0.0f);
     closure.microfacet = &*microfacet;
     return closure;
 }
