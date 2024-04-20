@@ -8,13 +8,6 @@
 namespace ks
 {
 
-static inline float power_heur(float pf, float pg)
-{
-    float pf2 = sqr(pf);
-    float pg2 = sqr(pg);
-    return pf2 / (pf2 + pg2);
-}
-
 static color3 sample_direct(const Light &light, const BSDF &bsdf, const Intersection &hit, const Scene &geom,
                             const vec3 &wo, const vec2 &u_light, const vec2 &u_bsdf)
 {

@@ -70,6 +70,26 @@ constexpr T sqr(const T &x)
     return x * x;
 }
 
+template <int n>
+inline constexpr float pow(float v)
+{
+    if constexpr (n < 0)
+        return 1 / pow<-n>(v);
+    float n2 = pow<n / 2>(v);
+    return n2 * n2 * pow<n & 1>(v);
+}
+
+template <>
+inline constexpr float pow<1>(float v)
+{
+    return v;
+}
+template <>
+inline constexpr float pow<0>(float v)
+{
+    return 1;
+}
+
 // NOTE: this returns {-1, 0, 1}.
 template <typename T>
 constexpr T sgn(const T &x)
