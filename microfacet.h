@@ -14,6 +14,7 @@ struct MicrofacetDistribution
     virtual float G2(const vec3 &wo, const vec3 &wi) const = 0;
     virtual float pdf(const vec3 &wo, const vec3 &wm) const = 0;
     virtual vec3 sample(const vec3 &wo, const vec2 &u) const = 0;
+    virtual vec3 sample(const vec2 &u) const = 0;
 };
 
 struct GGX : public MicrofacetDistribution
@@ -345,6 +346,19 @@ struct Beckmann : public MicrofacetDistribution
         return wh;
     }
 
+    vec3 sample(const vec2 &u) const
+    {
+        ASSERT(false, "TODO!");
+        return vec3::Zero();
+    }
+
+    float pdf(const vec3 &wm) const
+    {
+        float pdf = D(wm) * std::abs(wm.z());
+        return pdf;
+        // Don't forget to correct jacobian after this, depending on reflection or refraction.
+    }
+
     float alpha_x = 0.1f, alpha_y = 0.1f;
 
     static constexpr float min_alpha = 1e-3f;
@@ -357,6 +371,8 @@ struct MicrofacetAdapter
     virtual float G2(float ax, float ay, const vec3 &wo, const vec3 &wi) const = 0;
     virtual float pdf(float ax, float ay, const vec3 &wo, const vec3 &wm) const = 0;
     virtual vec3 sample(float ax, float ay, const vec3 &wo, const vec2 &u) const = 0;
+    virtual float pdf(float ax, float ay, const vec3 &wm) const = 0;
+    virtual vec3 sample(float ax, float ay, const vec2 &u) const = 0;
 };
 
 template <typename M>
@@ -367,6 +383,8 @@ struct MicrofacetAdapterDerived : public MicrofacetAdapter
     float G2(float ax, float ay, const vec3 &wo, const vec3 &wi) const { return M(ax, ay).G2(wo, wi); };
     float pdf(float ax, float ay, const vec3 &wo, const vec3 &wm) const { return M(ax, ay).pdf(wo, wm); };
     vec3 sample(float ax, float ay, const vec3 &wo, const vec2 &u) const { return M(ax, ay).sample(wo, u); };
+    float pdf(float ax, float ay, const vec3 &wm) const { return M(ax, ay).pdf(wm); };
+    vec3 sample(float ax, float ay, const vec2 &u) const { return M(ax, ay).sample(u); };
 };
 
 } // namespace ks
