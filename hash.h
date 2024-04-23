@@ -9,15 +9,17 @@ namespace ks
 
 // https://www.shadertoy.com/view/XlGcRh
 
+// One-liner linear congruential generator. Quick but low quality.
+constexpr uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
+
 template <int N>
 inline arr<N> convert_u32_f01(const arru<N> &u32)
 {
     return u32.template cast<float>() / float(0xffffffffu);
 }
 
-inline uint32_t hash11u(uint32_t p)
+inline uint32_t xxhash32(uint32_t p)
 {
-    // xxhash32
     const uint32_t PRIME32_2 = 2246822519U, PRIME32_3 = 3266489917U;
     const uint32_t PRIME32_4 = 668265263U, PRIME32_5 = 374761393U;
     uint32_t h32 = p + PRIME32_5;
@@ -27,18 +29,8 @@ inline uint32_t hash11u(uint32_t p)
     return h32 ^ (h32 >> 16);
 }
 
-inline arr2u hash12u(uint32_t p)
+inline uint32_t xxhash32(arr2u p)
 {
-    arr2u v;
-    v.x() = hash11u(p);
-    // some big primes
-    v.y() = hash11u(p + 3794833813);
-    return v;
-}
-
-inline uint32_t hash21u(arr2u p)
-{
-    // xxhash32
     const uint32_t PRIME32_2 = 2246822519U, PRIME32_3 = 3266489917U;
     const uint32_t PRIME32_4 = 668265263U, PRIME32_5 = 374761393U;
     uint32_t h32 = p.y() + PRIME32_5 + p.x() * PRIME32_3;
@@ -48,9 +40,56 @@ inline uint32_t hash21u(arr2u p)
     return h32 ^ (h32 >> 16);
 }
 
-inline arr2u hash22u(arr2u v)
+inline uint32_t xxhash32(arr3u p)
 {
-    // pcg2d
+    constexpr uint32_t PRIME32_2 = 2246822519U, PRIME32_3 = 3266489917U;
+    constexpr uint32_t PRIME32_4 = 668265263U, PRIME32_5 = 374761393U;
+    uint32_t h32 = p.z() + PRIME32_5 + p.x() * PRIME32_3;
+    h32 = PRIME32_4 * ((h32 << 17) | (h32 >> (32 - 17)));
+    h32 += p.y() * PRIME32_3;
+    h32 = PRIME32_4 * ((h32 << 17) | (h32 >> (32 - 17)));
+    h32 = PRIME32_2 * (h32 ^ (h32 >> 15));
+    h32 = PRIME32_3 * (h32 ^ (h32 >> 13));
+    return h32 ^ (h32 >> 16);
+}
+
+inline uint32_t xxhash32(arr4u p)
+{
+    constexpr uint32_t PRIME32_2 = 2246822519U, PRIME32_3 = 3266489917U;
+    constexpr uint32_t PRIME32_4 = 668265263U, PRIME32_5 = 374761393U;
+    uint32_t h32 = p.w() + PRIME32_5 + p.x() * PRIME32_3;
+    h32 = PRIME32_4 * ((h32 << 17) | (h32 >> (32 - 17)));
+    h32 += p.y() * PRIME32_3;
+    h32 = PRIME32_4 * ((h32 << 17) | (h32 >> (32 - 17)));
+    h32 += p.z() * PRIME32_3;
+    h32 = PRIME32_4 * ((h32 << 17) | (h32 >> (32 - 17)));
+    h32 = PRIME32_2 * (h32 ^ (h32 >> 15));
+    h32 = PRIME32_3 * (h32 ^ (h32 >> 13));
+    return h32 ^ (h32 >> 16);
+}
+
+inline arr2u xxhash32_1to2(uint32_t p)
+{
+    arr2u v;
+    v.x() = xxhash32(p);
+    p = lcg(p);
+    v.y() = xxhash32(p);
+    return v;
+}
+
+inline arr3u xxhash32_1to3(uint32_t p)
+{
+    arr3u v;
+    v.x() = xxhash32(p);
+    p = lcg(p);
+    v.y() = xxhash32(p);
+    p = lcg(p);
+    v.z() = xxhash32(p);
+    return v;
+}
+
+inline arr2u pcg2d(arr2u v)
+{
     v = v * 1664525u + 1013904223u;
 
     v.x() += v.y() * 1664525u;
@@ -70,21 +109,10 @@ inline arr2u hash22u(arr2u v)
     return v;
 }
 
-inline arr2 hash22f(arr2u v) { return convert_u32_f01<2>(hash22u(v)); }
+inline arr2 pcg2d_float(arr2u v) { return convert_u32_f01<2>(pcg2d(v)); }
 
-inline arr3u hash13u(uint32_t p)
+inline arr3u pcg3d(arr3u v)
 {
-    arr3u v;
-    v.x() = hash11u(p);
-    // some big primes
-    v.y() = hash11u(p + 3794833813);
-    v.z() = hash11u(p + 4200861443);
-    return v;
-}
-
-inline arr3u hash33u(arr3u v)
-{
-    // pcg3d
     v = v * 1664525u + 1013904223u;
 
     v.x() += v.y() * v.z();
@@ -103,10 +131,7 @@ inline arr3u hash33u(arr3u v)
     return v;
 }
 
-inline arr3 hash33f(arr3u v) { return convert_u32_f01<3>(hash33u(v)); }
-
-// One-liner linear congruential generator. Quick but low quality.
-constexpr uint32_t lcg(uint32_t p) { return p * 1664525u + 1013904223u; }
+inline arr3 pcg3d_float(arr3u v) { return convert_u32_f01<3>(pcg3d(v)); }
 
 // https://github.com/explosion/murmurhash/blob/master/murmurhash/MurmurHash2.cpp
 inline uint64_t murmur_hash_64A(const unsigned char *key, size_t len, uint64_t seed)
