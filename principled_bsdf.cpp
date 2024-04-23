@@ -47,6 +47,17 @@ float PrincipledBRDF::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it
     return internal::pdf(wo, wi, closure);
 }
 
+std::pair<color3, float> PrincipledBRDF::eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
+{
+    Closure closure = eval_closure(it);
+    color3 f = internal::eval(wo, wi, closure);
+    if (f.isZero()) {
+        return {f, 0.0f};
+    }
+    float pdf = internal::pdf(wo, wi, closure);
+    return {f, pdf};
+}
+
 color3 PrincipledBRDF::internal::eval(const vec3 &wo, const vec3 &wi, const Closure &closure)
 {
     if (wo.z() == 0.0f || wi.z() == 0.0f) {
@@ -276,6 +287,17 @@ float PrincipledBSDF::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it
 {
     Closure closure = eval_closure(it);
     return internal::pdf(wo, wi, closure);
+}
+
+std::pair<color3, float> PrincipledBSDF::eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
+{
+    Closure closure = eval_closure(it);
+    color3 f = internal::eval(wo, wi, closure);
+    if (f.isZero()) {
+        return {f, 0.0f};
+    }
+    float pdf = internal::pdf(wo, wi, closure);
+    return {f, pdf};
 }
 
 ks::color3 PrincipledBSDF::internal::eval(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure)

@@ -37,6 +37,7 @@ struct PrincipledBRDF : public ks::BSDF
     ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const ks::Intersection &it, const ks::vec2 &u,
                       float &pdf) const;
     float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const ks::Intersection &it) const;
+    std::pair<color3, float> eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const override;
 
     struct internal
     {
@@ -95,6 +96,7 @@ struct PrincipledBSDF : public ks::BSDF
     ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const ks::Intersection &it, const ks::vec2 &u,
                       float &pdf) const;
     float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const ks::Intersection &it) const;
+    std::pair<color3, float> eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const override;
 
     struct internal
     {
