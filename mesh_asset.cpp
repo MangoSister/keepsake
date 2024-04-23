@@ -369,24 +369,42 @@ std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::M
     TextureDataType data_type;
     if (src_img.bits == 8 && src_img.pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
         data_type = TextureDataType::u8;
+    } else if (src_img.bits == 16 && src_img.pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+        data_type = TextureDataType::u16;
     } else if (src_img.bits == 32 && src_img.pixel_type == TINYGLTF_COMPONENT_TYPE_FLOAT) {
         data_type = TextureDataType::f32;
+    } else {
+        fprintf(stderr, "Unsupported gltf texture data type!\n");
+        std::abort();
     }
 
     const std::byte *bytes = reinterpret_cast<const std::byte *>(src_img.image.data());
     if (src_colorspace == ColorSpace::sRGB) {
         std::unique_ptr<std::byte[]> copy =
-            std::make_unique<std::byte[]>(src_img.width * src_img.height * src_img.component);
-        std::copy(reinterpret_cast<const std::byte *>(bytes),
-                  reinterpret_cast<const std::byte *>(bytes) + (src_img.width * src_img.height * src_img.component),
-                  copy.get());
+            std::make_unique<std::byte[]>(src_img.width * src_img.height * src_img.component * (src_img.bits / 8));
 
         int n = src_img.width * src_img.height * src_img.component;
-        for (int i = 0; i < n; ++i) {
-            float f32 = (float)(*reinterpret_cast<uint8_t *>(&copy[i])) / 255.0f;
-            float linear_f32 = srgb_to_linear(f32);
-            uint8_t linear_u8 = (uint8_t)std::floor(linear_f32 * 255.0f);
-            (*reinterpret_cast<uint8_t *>(&copy[i])) = linear_u8;
+        if (data_type == TextureDataType::u8) {
+            const uint8_t *src_ptr_u8 = reinterpret_cast<const uint8_t *>(bytes);
+            uint8_t *dst_ptr_u8 = reinterpret_cast<uint8_t *>(copy.get());
+            for (int i = 0; i < n; ++i) {
+                float f32 = (float)src_ptr_u8[i] / 255.0f;
+                float linear_f32 = srgb_to_linear(f32);
+                uint8_t linear_u8 = (uint8_t)std::floor(linear_f32 * 255.0f);
+                dst_ptr_u8[i] = linear_u8;
+            }
+        } else if (data_type == TextureDataType::u16) {
+            const uint16_t *src_ptr_u16 = reinterpret_cast<const uint16_t *>(bytes);
+            uint16_t *dst_ptr_u16 = reinterpret_cast<uint16_t *>(copy.get());
+            for (int i = 0; i < n; ++i) {
+                float f32 = (float)src_ptr_u16[i] / 65535.0f;
+                float linear_f32 = srgb_to_linear(f32);
+                uint16_t linear_u16 = (uint8_t)std::floor(linear_f32 * 65535.0f);
+                dst_ptr_u16[i] = linear_u16;
+            }
+        } else {
+            fprintf(stderr, "HDR texture should not be in sRGB space!\n");
+            std::abort();
         }
         return std::make_unique<Texture>(copy.get(), src_img.width, src_img.height, src_img.component, data_type, true);
     } else {

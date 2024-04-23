@@ -14,6 +14,8 @@ constexpr int byte_stride(TextureDataType data_type)
     switch (data_type) {
     case TextureDataType::u8:
         return 1;
+    case TextureDataType::u16:
+        return 2;
     case TextureDataType::f32:
     default:
         return 4;
@@ -388,6 +390,14 @@ void Texture::fetch_as_float(int x, int y, int level, std::span<float> out) cons
         }
         break;
     }
+    case TextureDataType::u16: {
+        const uint16_t *u16_data = reinterpret_cast<const uint16_t *>(bytes);
+        int nc = std::min(num_channels, (int)out.size());
+        for (int c = 0; c < nc; ++c) {
+            out[c] = (float)u16_data[c] / 65535.0f;
+        }
+        break;
+    }
     case TextureDataType::f32:
     default: {
         const float *f32_data = reinterpret_cast<const float *>(bytes);
@@ -407,6 +417,13 @@ void Texture::set_from_float(int x, int y, int level, std::span<const float> in)
         uint8_t *u8_data = reinterpret_cast<uint8_t *>(bytes);
         for (int c = 0; c < num_channels; ++c) {
             u8_data[c] = (uint8_t)std::floor(in[c] * 255.0f);
+        }
+        break;
+    }
+    case TextureDataType::u16: {
+        uint16_t *u16_data = reinterpret_cast<uint16_t *>(bytes);
+        for (int c = 0; c < num_channels; ++c) {
+            u16_data[c] = (uint16_t)std::floor(in[c] * 65535.0f);
         }
         break;
     }
@@ -594,6 +611,7 @@ std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, C
         float_data = load_from_hdr(path, ch, width, height);
         data_type = TextureDataType::f32;
     } else {
+        // TODO: support 16-bit pngs.
         byte_data = load_from_ldr(path, ch, width, height, src_colorspace);
         data_type = TextureDataType::u8;
     }

@@ -16,6 +16,7 @@ namespace ks
 enum class TextureDataType
 {
     u8,
+    u16,
     f32,
 };
 
