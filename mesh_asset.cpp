@@ -357,8 +357,6 @@ struct CastU16ToU32
 };
 
 // TODO: support a lot of features such as:
-// - 16-bit format
-// - uv scale/offset (gltf extension: KHR_texture_transform)
 // - more sampler types
 // - avoid loading duplicate images
 
@@ -412,10 +410,65 @@ std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::M
     }
 }
 
+template <typename TextureInfo>
+std::pair<vec2, vec2> get_texture_transform(const TextureInfo &texture_info)
+{
+    vec2 scale = vec2::Ones();
+    vec2 offset = vec2::Zero();
+    if (auto it = texture_info.extensions.find("KHR_texture_transform"); it != texture_info.extensions.end()) {
+        const auto &scale_ = it->second.Get("scale");
+        if (scale_.IsArray()) {
+            for (int i = 0; i < 2; ++i) {
+                if (scale_.Get(i).IsNumber()) {
+                    scale[i] = scale_.Get(i).GetNumberAsDouble();
+                }
+            }
+        }
+        const auto &offset_ = it->second.Get("offset");
+        if (offset_.IsArray()) {
+            for (int i = 0; i < 2; ++i) {
+                if (offset_.Get(i).IsNumber()) {
+                    offset[i] = offset_.Get(i).GetNumberAsDouble();
+                }
+            }
+        }
+    }
+    return {scale, offset};
+}
+
+template <>
+std::pair<vec2, vec2> get_texture_transform(const tinygltf::Value &texture_info)
+{
+    vec2 scale = vec2::Ones();
+    vec2 offset = vec2::Zero();
+    if (const auto &extensions = texture_info.Get("extensions"); extensions.IsObject()) {
+        if (const auto &texture_transform = extensions.Get("KHR_texture_transform"); texture_transform.IsObject()) {
+            const auto &scale_ = texture_transform.Get("scale");
+            if (scale_.IsArray()) {
+                for (int i = 0; i < 2; ++i) {
+                    if (scale_.Get(i).IsNumber()) {
+                        scale[i] = scale_.Get(i).GetNumberAsDouble();
+                    }
+                }
+            }
+            const auto &offset_ = texture_transform.Get("offset");
+            if (offset_.IsArray()) {
+                for (int i = 0; i < 2; ++i) {
+                    if (offset_.Get(i).IsNumber()) {
+                        offset[i] = offset_.Get(i).GetNumberAsDouble();
+                    }
+                }
+            }
+        }
+    }
+    return {scale, offset};
+}
+
 template <int N>
 std::unique_ptr<TextureField<N>>
 create_texture_shader_field(const Texture &texture, int sampler_idx, const tinygltf::Model &model,
-                            color<N> scale = color<N>::Ones(), std::optional<arri<N>> swizzle = {})
+                            color<N> scale = color<N>::Ones(), std::optional<arri<N>> swizzle = {},
+                            vec2 uv_scale = vec2::Ones(), vec2 uv_offset = vec2::Zero())
 {
     const tinygltf::Sampler &src_sampler = model.samplers[sampler_idx];
 
@@ -428,8 +481,8 @@ create_texture_shader_field(const Texture &texture, int sampler_idx, const tinyg
     } else {
         dst_sampler = std::make_unique<NearestSampler>();
     }
-    return std::make_unique<TextureField<N>>(texture, std::move(dst_sampler), false, swizzle, vec2::Ones(),
-                                             vec2::Zero(), scale);
+    return std::make_unique<TextureField<N>>(texture, std::move(dst_sampler), false, swizzle, uv_scale, uv_offset,
+                                             scale);
 }
 
 void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials, bool twosided)
@@ -571,9 +624,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 auto dst_bsdf = std::make_unique<PrincipledBSDF>();
                 if (pbr.baseColorTexture.index >= 0) {
                     const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];
+                    auto [uv_scale, uv_offset] = get_texture_transform(pbr.baseColorTexture);
                     dst_bsdf->basecolor = create_texture_shader_field<3>(
                         *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model,
-                        color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
+                        color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]), {}, uv_scale,
+                        uv_offset);
                 } else {
                     dst_bsdf->basecolor = std::make_unique<ConstantField<color3>>(
                         color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
@@ -582,21 +637,24 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                     // glTF expects the metallic values to be encoded in the blue (B) channel, and
                     // roughness to be encoded in the green (G) channel of the same image.
                     const auto &mr_map = textures[src_textures[pbr.metallicRoughnessTexture.index].source];
+                    auto [uv_scale, uv_offset] = get_texture_transform(pbr.metallicRoughnessTexture);
                     dst_bsdf->roughness = create_texture_shader_field<1>(
                         *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model,
-                        color<1>(pbr.roughnessFactor), arri<1>(1));
+                        color<1>(pbr.roughnessFactor), arri<1>(1), uv_scale, uv_offset);
                     dst_bsdf->metallic = create_texture_shader_field<1>(
                         *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model,
-                        color<1>(pbr.metallicFactor), arri<1>(2));
+                        color<1>(pbr.metallicFactor), arri<1>(2), uv_scale, uv_offset);
                 } else {
                     dst_bsdf->roughness = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.roughnessFactor));
                     dst_bsdf->metallic = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.metallicFactor));
                 }
                 if (src.emissiveTexture.index >= 0) {
                     const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
+                    auto [uv_scale, uv_offset] = get_texture_transform(src.emissiveTexture);
                     dst_bsdf->emissive = create_texture_shader_field<3>(
                         *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
-                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
+                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]), {}, uv_scale,
+                        uv_offset);
                 } else {
                     dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
                         color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
@@ -631,8 +689,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                         if (specular_factor.Type() == tinygltf::REAL_TYPE) {
                             sf = (float)specular_factor.GetNumberAsDouble();
                         }
-                        dst_bsdf->specular_r0_mul = create_texture_shader_field<1>(
-                            *spec_map, src_textures[spec_tex_idx].sampler, model, color<1>(sf));
+                        auto [uv_scale, uv_offset] = get_texture_transform(specular_texture);
+
+                        dst_bsdf->specular_r0_mul =
+                            create_texture_shader_field<1>(*spec_map, src_textures[spec_tex_idx].sampler, model,
+                                                           color<1>(sf), {}, uv_scale, uv_offset);
                     } else if (specular_factor.Type() == tinygltf::REAL_TYPE) {
                         dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(
                             color<1>((float)specular_factor.GetNumberAsDouble()));
@@ -662,8 +723,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                         if (trans_factor.Type() == tinygltf::REAL_TYPE || trans_factor.Type() == tinygltf::INT_TYPE) {
                             t = (float)trans_factor.GetNumberAsDouble();
                         }
-                        dst_bsdf->specular_trans = create_texture_shader_field<1>(
-                            *trans_map, src_textures[trans_tex_idx].sampler, model, color<1>(t));
+                        auto [uv_scale, uv_offset] = get_texture_transform(trans_texture);
+
+                        dst_bsdf->specular_trans =
+                            create_texture_shader_field<1>(*trans_map, src_textures[trans_tex_idx].sampler, model,
+                                                           color<1>(t), {}, uv_scale, uv_offset);
                     } else if (trans_factor.Type() == tinygltf::REAL_TYPE ||
                                trans_factor.Type() == tinygltf::INT_TYPE) {
                         dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(
@@ -690,8 +754,12 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                     const auto &normal_texture = textures[src_textures[src.normalTexture.index].source];
                     auto nm = std::make_unique<NormalMap>();
                     nm->strength = src.normalTexture.scale;
-                    nm->map = create_texture_shader_field<3>(*normal_texture,
-                                                             src_textures[src.normalTexture.index].sampler, model);
+
+                    auto [uv_scale, uv_offset] = get_texture_transform(src.normalTexture);
+
+                    nm->map =
+                        create_texture_shader_field<3>(*normal_texture, src_textures[src.normalTexture.index].sampler,
+                                                       model, color3::Ones(), {}, uv_scale, uv_offset);
                     dst_mat->normal_map = nm.get();
                     mesh_asset.normal_maps.push_back(std::move(nm));
                 }
