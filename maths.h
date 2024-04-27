@@ -257,6 +257,77 @@ inline uint32_t float_as_uint(float f)
     return u;
 }
 
+// Jeannerod, Claude-Pierre, Nicolas Louvet, and Jean-Michel Muller.
+// "Further analysis of Kahan’s algorithm for the accurate computation of 2× 2 determinants." Mathematics of
+// Computation 82.284 (2013): 2245-2264.
+template <typename T>
+    requires std::is_floating_point_v<T>
+T difference_of_products(T a, T b, T c, T d)
+{
+    T w = d * c;
+    T e = std::fma(-d, c, w);
+    T f = std::fma(a, b, -w);
+    return f + e;
+}
+
+template <typename Ta, typename Tb, typename Tc, typename Td>
+inline auto sum_of_products(Ta a, Tb b, Tc c, Td d)
+{
+    auto cd = c * d;
+    auto sumOfProducts = fma(a, b, cd);
+    auto error = fma(c, d, -cd);
+    return sumOfProducts + error;
+}
+
+// CompensatedFloat Definition
+struct CompensatedFloat
+{
+  public:
+    // CompensatedFloat Public Methods
+    CompensatedFloat(float v, float err = 0) : v(v), err(err) {}
+    explicit operator float() const { return v + err; }
+    explicit operator double() const { return double(v) + double(err); }
+
+    float v, err;
+};
+
+inline CompensatedFloat two_prod(float a, float b)
+{
+    float ab = a * b;
+    return {ab, fma(a, b, -ab)};
+}
+
+inline CompensatedFloat two_sum(float a, float b)
+{
+    float s = a + b, delta = s - a;
+    return {s, (a - (s - delta)) + (b - delta)};
+}
+
+namespace internal
+{
+// InnerProduct Helper Functions
+template <typename Float>
+inline CompensatedFloat inner_product(Float a, Float b)
+{
+    return two_prod(a, b);
+}
+
+// Accurate dot products with FMA: Graillat et al.,
+// https://www-pequan.lip6.fr/~graillat/papers/posterRNC7.pdf
+//
+// Accurate summation, dot product and polynomial evaluation in complex
+// floating point arithmetic, Graillat and Menissier-Morain.
+template <typename Float, typename... T>
+inline CompensatedFloat inner_product(Float a, Float b, T... terms)
+{
+    CompensatedFloat ab = two_prod(a, b);
+    CompensatedFloat tp = inner_product(terms...);
+    CompensatedFloat sum = two_sum(ab.v, tp.v);
+    return {sum.v, ab.err + (tp.err + sum.err)};
+}
+
+} // namespace internal
+
 // https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
 // Also pbrt hair doc
 // TODO: as of Haswell, the PEXT instruction could do all this in a
