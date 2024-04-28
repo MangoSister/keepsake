@@ -328,6 +328,24 @@ inline CompensatedFloat inner_product(Float a, Float b, T... terms)
 
 } // namespace internal
 
+template <typename T>
+    requires std::is_floating_point_v<T>
+struct KahanSum
+{
+    void operator+=(T val)
+    {
+        T y = val - correction;
+        T t = total + y;
+        correction = (t - total) - y;
+        total = t;
+    }
+
+    explicit operator T() const { return total; }
+
+    T total = T(0);
+    T correction = T(0);
+};
+
 // https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
 // Also pbrt hair doc
 // TODO: as of Haswell, the PEXT instruction could do all this in a
