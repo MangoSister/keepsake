@@ -10,16 +10,16 @@
 namespace ks
 {
 
-struct RNG
+struct RNG : public pcg32
 {
     RNG() = default;
-    explicit RNG(uint64_t seed) : pcg(seed) {}
+    explicit RNG(uint64_t seed) : pcg32(seed) {}
 
-    uint32_t nextu32() { return pcg(); }
+    uint32_t nextu32() { return this->operator()(); }
 
     float next()
     {
-        uint32_t r = pcg();
+        uint32_t r = this->operator()();
         return std::min((float)r / 0xFFFFFFFFu, before_one);
     }
 
@@ -33,10 +33,10 @@ struct RNG
         return u;
     }
 
+    uint64_t state() const { return this->state_; }
+
     vec2 next2d() { return next<2>(); }
     vec3 next3d() { return next<3>(); }
-
-    pcg32 pcg;
 };
 
 template <int base>
@@ -185,7 +185,7 @@ inline vec3 sample_uniform_ellipsoid(const mat3 &L, vec3 center, vec2 u, vec3 *s
 inline float sample_normal(RNG &rng, float mean, float stddev)
 {
     std::normal_distribution<> normal_dist(mean, stddev);
-    return normal_dist(rng.pcg);
+    return normal_dist(rng);
 }
 
 template <int N>
@@ -194,7 +194,7 @@ inline std::array<float, N> sample_normal(RNG &rng)
     std::normal_distribution<> normal_dist(0.0f, 1.0f);
     std::array<float, N> samples;
     for (int i = 0; i < N; ++i) {
-        samples[i] = normal_dist(rng.pcg);
+        samples[i] = normal_dist(rng);
     }
     return samples;
 }
