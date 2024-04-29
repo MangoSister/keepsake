@@ -7,6 +7,10 @@
 namespace ks
 {
 
+//-----------------------------------------------------------------------------
+// [Different types of lights]
+//-----------------------------------------------------------------------------
+
 SkyLight::SkyLight(const fs::path &path, const Transform &l2w, bool transform_y_up, float strength)
     : l2w(l2w), transform_y_up(transform_y_up), strength(strength)
 {
@@ -149,5 +153,45 @@ std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &arg
     vec3 dir = args.load_vec3("dir", true);
     return std::make_unique<DirectionalLight>(L, dir);
 }
+
+//-----------------------------------------------------------------------------
+// [Light Samplers]
+//-----------------------------------------------------------------------------
+
+void LightSampler::build(std::span<const Light *> lights)
+{
+    skylights.clear();
+    for (uint32_t i = 0; i < (uint32_t)lights.size(); ++i) {
+        const Light *l = lights[i];
+        const SkyLight *sky = dynamic_cast<const SkyLight *>(l);
+        if (!sky) {
+            skylights.emplace_back(i, sky);
+        }
+    }
+}
+
+void UniformLightSampler::build(std::span<const Light *> lights)
+{
+    LightSampler::build(lights);
+
+    this->lights.resize(lights.size());
+    std::copy(lights.begin(), lights.end(), this->lights.begin());
+}
+
+std::pair<uint32_t, const Light *> UniformLightSampler::sample(float u, float &pr) const
+{
+    uint32_t N = (uint32_t)lights.size();
+    uint32_t index = std::min((uint32_t)std::floor(u * N), N - 1);
+    pr = 1.0f / (float)N;
+    return {index, lights[index]};
+}
+
+float UniformLightSampler::probability(uint32_t light_index) const
+{
+    uint32_t N = (uint32_t)lights.size();
+    return 1.0f / (float)N;
+}
+
+const Light *UniformLightSampler::get(uint32_t light_index) const { return lights[light_index]; }
 
 } // namespace ks

@@ -9,6 +9,11 @@ namespace fs = std::filesystem;
 namespace ks
 {
 
+//-----------------------------------------------------------------------------
+// [Different types of lights]
+//-----------------------------------------------------------------------------
+// TODO: area lights???
+
 struct Light
 {
     virtual ~Light() = default;
@@ -63,5 +68,32 @@ struct DirectionalLight : public Light
 std::unique_ptr<Light> create_light(const ConfigArgs &args);
 std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args);
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args);
+
+//-----------------------------------------------------------------------------
+// [Light Samplers]
+//-----------------------------------------------------------------------------
+
+// TODO: Light BVH, or just ReSTIR, etc...
+struct LightSampler
+{
+    virtual ~LightSampler() = default;
+
+    virtual void build(std::span<const Light *> lights);
+    virtual std::pair<uint32_t, const Light *> sample(float u, float &pr) const = 0;
+    virtual float probability(uint32_t light_index) const = 0;
+    virtual const Light *get(uint32_t light_index) const = 0;
+
+    std::vector<std::pair<uint32_t, const SkyLight *>> skylights;
+};
+
+struct UniformLightSampler : public LightSampler
+{
+    void build(std::span<const Light *> lights) final;
+    std::pair<uint32_t, const Light *> sample(float u, float &pr) const final;
+    float probability(uint32_t light_index) const final;
+    const Light *get(uint32_t light_index) const final;
+
+    std::vector<const Light *> lights;
+};
 
 } // namespace ks
