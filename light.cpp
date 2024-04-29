@@ -186,10 +186,13 @@ std::pair<uint32_t, const Light *> UniformLightSampler::sample(float u, float &p
     return {index, lights[index]};
 }
 
-float UniformLightSampler::probability(uint32_t light_index) const
+float UniformLightSampler::probability(uint32_t light_index, bool non_delta) const
 {
-    uint32_t N = (uint32_t)lights.size();
-    return 1.0f / (float)N;
+    if (!non_delta) {
+        return 1.0f / (float)lights.size();
+    } else {
+        return 1.0f / (float)skylights.size();
+    }
 }
 
 const Light *UniformLightSampler::get(uint32_t light_index) const { return lights[light_index]; }

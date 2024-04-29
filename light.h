@@ -80,7 +80,7 @@ struct LightSampler
 
     virtual void build(std::span<const Light *> lights);
     virtual std::pair<uint32_t, const Light *> sample(float u, float &pr) const = 0;
-    virtual float probability(uint32_t light_index) const = 0;
+    virtual float probability(uint32_t light_index, bool non_delta) const = 0;
     virtual const Light *get(uint32_t light_index) const = 0;
 
     std::vector<std::pair<uint32_t, const SkyLight *>> skylights;
@@ -90,7 +90,7 @@ struct UniformLightSampler : public LightSampler
 {
     void build(std::span<const Light *> lights) final;
     std::pair<uint32_t, const Light *> sample(float u, float &pr) const final;
-    float probability(uint32_t light_index) const final;
+    float probability(uint32_t light_index, bool non_delta) const final;
     const Light *get(uint32_t light_index) const final;
 
     std::vector<const Light *> lights;
