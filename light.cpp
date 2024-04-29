@@ -164,7 +164,7 @@ void LightSampler::build(std::span<const Light *> lights)
     for (uint32_t i = 0; i < (uint32_t)lights.size(); ++i) {
         const Light *l = lights[i];
         const SkyLight *sky = dynamic_cast<const SkyLight *>(l);
-        if (!sky) {
+        if (sky) {
             skylights.emplace_back(i, sky);
         }
     }
