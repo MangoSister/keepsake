@@ -1,4 +1,5 @@
 #pragma once
+#include "config.h"
 #include "embree_util.h"
 #include "geometry.h"
 #include <memory>
@@ -47,7 +48,7 @@ struct Scene
     Scene(Scene &&other);
     Scene &operator=(Scene &&other);
 
-    void add_subscene(SubScene && subscene);
+    void add_subscene(SubScene &&subscene);
     void add_instance(const EmbreeDevice &device, uint32_t subscene_id, const Transform &transform);
     void create_rtc_scene(const EmbreeDevice &device);
     AABB3 bound() const;
@@ -73,5 +74,7 @@ struct LocalGeometry
 
     bool intersect1(const Ray &ray, SceneHit &hit) const;
 };
+
+Scene create_scene(const ConfigArgs &args, const EmbreeDevice &device);
 
 } // namespace ks

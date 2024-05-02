@@ -207,4 +207,23 @@ bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
     return scene->intersect1(ray, hit, ctx);
 }
 
+Scene create_scene(const ConfigArgs &args, const EmbreeDevice &device)
+{
+    Scene scene;
+    if (args.contains("object")) {
+        const MeshAsset *mesh_asset = args.asset_table().get<MeshAsset>(args.load_string("object"));
+        scene = create_scene_from_mesh_asset(*mesh_asset, device);
+    } else if (args.contains("compound_object")) {
+        const CompoundMeshAsset *compound_mesh_asset =
+            args.asset_table().get<CompoundMeshAsset>(args.load_string("compound_object"));
+        scene = create_scene_from_compound_mesh_asset(*compound_mesh_asset, device);
+    }
+    if (args.contains("material")) {
+        assign_material_list(scene, args["material"]);
+    }
+    ASSERT(scene.are_material_assigned(),
+           "No materials. Either load materials from file(s) or provide a material list.");
+    return scene;
+}
+
 } // namespace ks

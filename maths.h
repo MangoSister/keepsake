@@ -803,6 +803,32 @@ inline mat4 scale_rotate_translate(const vec3 &scale, const quat &rototation, co
     return T * R * S;
 }
 
+inline mat4 convert_yup_to_zup()
+{
+    mat4 m;
+    // clang-format off
+    m <<
+        1.0f,   0.0f,   0.0f,   0.0f,
+        0.0f,   0.0f,   -1.0f,  0.0f,
+        0.0f,   1.0f,   0.0f,   0.0f,
+        0.0f,   0.0f,   0.0f,   1.0f;
+    // clang-format on
+    return m;
+}
+
+inline mat4 convert_zup_to_yup()
+{
+    mat4 m;
+    // clang-format off
+    m <<
+        1.0f,   0.0f,   0.0f,   0.0f,
+        0.0f,   0.0f,   1.0f,   0.0f,
+        0.0f,   -1.0f,  0.0f,   0.0f,
+        0.0f,   0.0f,   0.0f,   1.0f;
+    // clang-format on
+    return m;
+}
+
 inline mat4 affine_inverse(const mat4 &mat)
 {
     mat4 inv;
