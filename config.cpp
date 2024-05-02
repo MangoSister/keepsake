@@ -180,41 +180,57 @@ Transform ConfigServiceInternal::load_transform_field(const toml::node_view<cons
     // TODO: keyframe this
 
     const toml::table &table = *args.as_table();
-
-    Transform transform;
-    vec3 scale = vec3::Ones();
-    if (table.contains("scale")) {
-        const auto &s = *table["scale"].as_array();
-        for (int i = 0; i < 3; ++i)
-            scale[i] = *s[i].value<float>();
-    }
-    quat rotation = quat::Identity();
-    if (table.contains("rotation")) {
-        const auto &r = *table["rotation"].as_table();
-        if (r.contains("euler")) {
-            const auto &euler = *r["euler"].as_array();
-            float angle0 = to_radian(*euler[0].value<float>());
-            float angle1 = to_radian(*euler[1].value<float>());
-            float angle2 = to_radian(*euler[2].value<float>());
-            rotation = (quat)Eigen::EulerAnglesXYZf(angle0, angle1, angle2);
-        } else if (r.contains("quat")) {
-            const auto &quaternion = *r["quat"].as_array();
-            float w = *quaternion[0].value<float>();
-            float x = *quaternion[1].value<float>();
-            float y = *quaternion[2].value<float>();
-            float z = *quaternion[3].value<float>();
-            rotation = quat(w, x, y, z).normalized();
-        } else {
-            ASSERT(false, "Must specify rotation as (XYZ) euler angles or quaternion.");
+    if (table.contains("matrix_rm")) {
+        // row major
+        const auto &elements = *table["matrix_rm"].as_array();
+        mat4 m;
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                m(r, c) = *elements[r * 4 + c].value<float>();
+        return Transform(m);
+    } else if (table.contains("matrix_cm")) {
+        // column major
+        const auto &elements = *table["matrix_cm"].as_array();
+        mat4 m;
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 4; ++r)
+                m(r, c) = *elements[c * 4 + r].value<float>();
+        return Transform(m);
+    } else {
+        vec3 scale = vec3::Ones();
+        if (table.contains("scale")) {
+            const auto &s = *table["scale"].as_array();
+            for (int i = 0; i < 3; ++i)
+                scale[i] = *s[i].value<float>();
         }
+        quat rotation = quat::Identity();
+        if (table.contains("rotation")) {
+            const auto &r = *table["rotation"].as_table();
+            if (r.contains("euler")) {
+                const auto &euler = *r["euler"].as_array();
+                float angle0 = to_radian(*euler[0].value<float>());
+                float angle1 = to_radian(*euler[1].value<float>());
+                float angle2 = to_radian(*euler[2].value<float>());
+                rotation = (quat)Eigen::EulerAnglesXYZf(angle0, angle1, angle2);
+            } else if (r.contains("quat")) {
+                const auto &quaternion = *r["quat"].as_array();
+                float w = *quaternion[0].value<float>();
+                float x = *quaternion[1].value<float>();
+                float y = *quaternion[2].value<float>();
+                float z = *quaternion[3].value<float>();
+                rotation = quat(w, x, y, z).normalized();
+            } else {
+                ASSERT(false, "Must specify rotation as (XYZ) euler angles or quaternion.");
+            }
+        }
+        vec3 translation = vec3::Zero();
+        if (table.contains("translation")) {
+            const auto &t = *table["translation"].as_array();
+            for (int i = 0; i < 3; ++i)
+                translation[i] = *t[i].value<float>();
+        }
+        return Transform(scale_rotate_translate(scale, rotation, translation));
     }
-    vec3 translation = vec3::Zero();
-    if (table.contains("translation")) {
-        const auto &t = *table["translation"].as_array();
-        for (int i = 0; i < 3; ++i)
-            translation[i] = *t[i].value<float>();
-    }
-    return Transform(scale_rotate_translate(scale, rotation, translation));
 }
 
 fs::path ConfigServiceInternal::output_directory() const
