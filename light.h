@@ -22,9 +22,9 @@ struct Light
     bool delta() const { return delta_direction() || delta_position(); };
 
     // NOTE: the point passed in is the shading point
-    virtual color3 eval(const vec3 &p_shade, const vec3 &wi) const = 0;
+    virtual color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const = 0;
     // NOTE: return throughput weight: (L / pdf)
-    virtual color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &pdf) const = 0;
+    virtual color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const = 0;
     virtual float pdf(const vec3 &p_shade, const vec3 &wi) const = 0;
 };
 
@@ -37,9 +37,9 @@ struct SkyLight : public Light
     bool delta_direction() const { return false; };
 
     // NOTE: the shading point is ignored for skylight
-    color3 eval(const vec3 &p_shade, const vec3 &wi) const;
+    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     // NOTE: return throughput weight: (L / pdf)
-    color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &pdf) const;
+    color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi) const;
 
     DistribTable2D distrib;
@@ -56,18 +56,33 @@ struct DirectionalLight : public Light
 
     bool delta_position() const { return false; };
     bool delta_direction() const { return true; };
-    color3 eval(const vec3 &p_shade, const vec3 &wi) const;
+    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     // NOTE: return throughput weight: (L / pdf)
-    color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &pdf) const;
+    color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi) const;
 
     color3 L;
     vec3 dir;
 };
 
+struct PointLight : public Light
+{
+    PointLight() = default;
+    PointLight(const color3 &I, const vec3 &pos) : I(I), pos(pos){};
+
+    bool delta_position() const { return true; };
+    bool delta_direction() const { return false; };
+    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
+    color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
+    float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    color3 I;
+    vec3 pos;
+};
+
 std::unique_ptr<Light> create_light(const ConfigArgs &args);
 std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args);
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args);
+std::unique_ptr<PointLight> create_point_light(const ConfigArgs &args);
 
 //-----------------------------------------------------------------------------
 // [Light Samplers]

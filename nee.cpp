@@ -19,14 +19,15 @@ static color3 sample_direct(const Light &light, const BSDF &bsdf, const Intersec
 
     if (!delta_bsdf) {
         vec3 wi;
+        float wi_dist;
         float pdf_light;
-        color3 L_beta = light.sample(hit.p, u_light, wi, pdf_light);
+        color3 L_beta = light.sample(hit.p, u_light, wi, wi_dist, pdf_light);
         if (pdf_light > 0.0f && !L_beta.isZero()) {
             vec3 wi_local = hit.sh_vector_to_local(wi);
             // Combine these two is in general faster.
             auto [f, pdf_bsdf] = bsdf.eval_and_pdf(wo_local, wi_local, hit);
             if (!f.isZero() && pdf_bsdf > 0.0f) {
-                Ray shadow_ray = spawn_ray<OffsetType::NextBounce>(hit.p, wi, hit.frame.n, 0.0f, inf);
+                Ray shadow_ray = spawn_ray<OffsetType::NextBounce>(hit.p, wi, hit.frame.n, 0.0f, wi_dist);
                 if (!geom.occlude1(shadow_ray)) {
                     float mis = 1.0f;
                     if (!delta_light) {
@@ -45,9 +46,10 @@ static color3 sample_direct(const Light &light, const BSDF &bsdf, const Intersec
         color3 f_beta = bsdf.sample(wo_local, wi_local, hit, u_bsdf, pdf_bsdf);
         if (pdf_bsdf > 0.0f && !f_beta.isZero()) {
             vec3 wi = hit.sh_vector_to_world(wi_local);
-            color3 L = light.eval(hit.p, wi);
+            float wi_dist;
+            color3 L = light.eval(hit.p, wi, wi_dist);
             if (!L.isZero()) {
-                Ray shadow_ray = spawn_ray<OffsetType::NextBounce>(hit.p, wi, hit.frame.n, 0.0f, inf);
+                Ray shadow_ray = spawn_ray<OffsetType::NextBounce>(hit.p, wi, hit.frame.n, 0.0f, wi_dist);
                 if (!geom.occlude1(shadow_ray)) {
                     // float mis = delta_bsdf ? 1.0f : power_heur(pdf_bsdf, pdf_light);
                     float mis = 1.0f;

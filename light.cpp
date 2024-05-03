@@ -34,7 +34,7 @@ SkyLight::SkyLight(const color3 &ambient)
     distrib = DistribTable2D(&lum, map.ures, map.vres);
 }
 
-color3 SkyLight::eval(const vec3 &p, const vec3 &wi) const
+color3 SkyLight::eval(const vec3 &p, const vec3 &wi, float &wi_dist) const
 {
     vec3 wi_local = l2w.inverse().direction(wi);
 
@@ -59,10 +59,12 @@ color3 SkyLight::eval(const vec3 &p, const vec3 &wi) const
     L += t[0] * (1.0f - t[1]) * map(uv1[0], uv0[1]);
     L += t[0] * t[1] * map(uv1[0], uv1[1]);
     L *= strength;
+
+    wi_dist = inf;
     return L;
 }
 
-color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &pdf) const
+color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const
 {
     vec2 uv = distrib.sample_linear(u, pdf);
     if (pdf == 0.0f) {
@@ -82,7 +84,7 @@ color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &pdf) cons
         pdf = 0.0f;
     }
     wi = l2w.direction(wi_local);
-    return eval(p, wi) / pdf;
+    return eval(p, wi, wi_dist) / pdf;
 }
 
 float SkyLight::pdf(const vec3 &p, const vec3 &wi) const
@@ -108,16 +110,43 @@ float SkyLight::pdf(const vec3 &p, const vec3 &wi) const
     return pdf;
 }
 
-color3 DirectionalLight::eval(const vec3 &p_shade, const vec3 &wi) const { return color3::Zero(); }
+color3 DirectionalLight::eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
+{
+    wi_dist = inf;
+    return color3::Zero();
+}
 
-color3 DirectionalLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &pdf) const
+color3 DirectionalLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const
 {
     wi = dir;
+    wi_dist = inf;
     pdf = 1.0f;
     return L;
 }
 
 float DirectionalLight::pdf(const vec3 &p_shade, const vec3 &wi) const { return 0.0f; }
+
+color3 PointLight::eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
+{
+    wi_dist = (pos - p_shade).norm();
+    return color3::Zero();
+}
+
+color3 PointLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const
+{
+    wi = pos - p_shade;
+    float l2 = wi.squaredNorm();
+    if (l2 == 0.0f) {
+        return color3(0.0f);
+    }
+    float l = std::sqrt(l2);
+    wi /= l;
+    wi_dist = l;
+    pdf = 1.0f;
+    return I / l2;
+}
+
+float PointLight::pdf(const vec3 &p_shade, const vec3 &wi) const { return 0.0f; }
 
 std::unique_ptr<Light> create_light(const ConfigArgs &args)
 {
@@ -125,6 +154,8 @@ std::unique_ptr<Light> create_light(const ConfigArgs &args)
     std::unique_ptr<Light> light;
     if (light_type == "directional") {
         light = create_directional_light(args);
+    } else if (light_type == "point") {
+        light = create_point_light(args);
     } else if (light_type == "sky") {
         light = create_sky_light(args);
     }
@@ -152,6 +183,13 @@ std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &arg
     color3 L = args.load_vec3("L").array();
     vec3 dir = args.load_vec3("dir", true);
     return std::make_unique<DirectionalLight>(L, dir);
+}
+
+std::unique_ptr<PointLight> create_point_light(const ConfigArgs &args)
+{
+    color3 I = args.load_vec3("I").array();
+    vec3 pos = args.load_vec3("pos", false);
+    return std::make_unique<PointLight>(I, pos);
 }
 
 //-----------------------------------------------------------------------------
