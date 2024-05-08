@@ -397,7 +397,7 @@ std::unique_ptr<Texture> create_texture_from_gltf(int img_idx, const tinygltf::M
             for (int i = 0; i < n; ++i) {
                 float f32 = (float)src_ptr_u16[i] / 65535.0f;
                 float linear_f32 = srgb_to_linear(f32);
-                uint16_t linear_u16 = (uint8_t)std::floor(linear_f32 * 65535.0f);
+                uint16_t linear_u16 = (uint16_t)std::floor(linear_f32 * 65535.0f);
                 dst_ptr_u16[i] = linear_u16;
             }
         } else {
