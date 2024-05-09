@@ -1,4 +1,5 @@
 #pragma once
+#include "aabb.h"
 #include "barray.h"
 #include "config.h"
 #include "distrib.h"
@@ -26,6 +27,7 @@ struct Light
     // NOTE: return throughput weight: (L / pdf)
     virtual color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const = 0;
     virtual float pdf(const vec3 &p_shade, const vec3 &wi) const = 0;
+    virtual color3 power(const AABB3 &scene_bound) const = 0;
 };
 
 struct SkyLight : public Light
@@ -41,6 +43,7 @@ struct SkyLight : public Light
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    color3 power(const AABB3 &scene_bound) const;
 
     DistribTable2D distrib;
     BlockedArray<color3> map;
@@ -60,6 +63,7 @@ struct DirectionalLight : public Light
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    color3 power(const AABB3 &scene_bound) const;
 
     color3 L;
     vec3 dir;
@@ -75,6 +79,8 @@ struct PointLight : public Light
     color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    color3 power(const AABB3 &scene_bound) const;
+
     color3 I;
     vec3 pos;
 };
@@ -95,7 +101,7 @@ struct LightSampler
 
     virtual void build(std::span<const Light *> lights);
     virtual std::pair<uint32_t, const Light *> sample(float u, float &pr) const = 0;
-    virtual float probability(uint32_t light_index, bool non_delta) const = 0;
+    virtual float probability(uint32_t light_index) const = 0;
     virtual const Light *get(uint32_t light_index) const = 0;
 
     std::vector<std::pair<uint32_t, const SkyLight *>> skylights;
@@ -105,10 +111,24 @@ struct UniformLightSampler : public LightSampler
 {
     void build(std::span<const Light *> lights) final;
     std::pair<uint32_t, const Light *> sample(float u, float &pr) const final;
-    float probability(uint32_t light_index, bool non_delta) const final;
+    float probability(uint32_t light_index) const final;
     const Light *get(uint32_t light_index) const final;
 
     std::vector<const Light *> lights;
+};
+
+struct PowerLightSampler : public LightSampler
+{
+    explicit PowerLightSampler(const ks::AABB3 &scene_bound) : scene_bound(scene_bound) {}
+
+    void build(std::span<const Light *> lights) final;
+    std::pair<uint32_t, const Light *> sample(float u, float &pr) const final;
+    float probability(uint32_t light_index) const final;
+    const Light *get(uint32_t light_index) const final;
+
+    std::vector<const Light *> lights;
+    ks::AABB3 scene_bound;
+    DistribTable power_distrib;
 };
 
 } // namespace ks

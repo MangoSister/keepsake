@@ -110,6 +110,32 @@ float SkyLight::pdf(const vec3 &p, const vec3 &wi) const
     return pdf;
 }
 
+color3 SkyLight::power(const AABB3 &scene_bound) const
+{
+    std::array<std::atomic<float>, 3> sum{0.0f, 0.0f, 0.0f};
+
+    parallel_for(map.vres, [&](int row) {
+        float theta = (row + 0.5f) / (float)map.vres * pi;
+        float sin_theta = std::sin(theta);
+
+        color3 row_sum = color3::Zero();
+        for (int col = 0; col < map.ures; ++col) {
+            float phi = (col + 0.5f) / (float)map.ures * two_pi;
+            vec3 dir = to_cartesian(phi, theta);
+            float wi_dist;
+            row_sum += eval(vec3::Zero(), dir, wi_dist) * sin_theta;
+        }
+        for (int c = 0; c < 3; ++c)
+            sum[c].fetch_add(row_sum[c]);
+    });
+
+    color3 Phi(sum[0], sum[1], sum[2]);
+    Phi *= (pi / map.vres) * (two_pi / map.ures);
+    float scene_radius = 0.5f * scene_bound.extents().norm();
+    Phi *= pi * sqr(scene_radius);
+    return Phi;
+}
+
 color3 DirectionalLight::eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
 {
     wi_dist = inf;
@@ -125,6 +151,12 @@ color3 DirectionalLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, fl
 }
 
 float DirectionalLight::pdf(const vec3 &p_shade, const vec3 &wi) const { return 0.0f; }
+
+color3 DirectionalLight::power(const AABB3 &scene_bound) const
+{
+    float scene_radius = 0.5f * scene_bound.extents().norm();
+    return L * pi * sqr(scene_radius);
+}
 
 color3 PointLight::eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
 {
@@ -147,6 +179,8 @@ color3 PointLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &w
 }
 
 float PointLight::pdf(const vec3 &p_shade, const vec3 &wi) const { return 0.0f; }
+
+color3 PointLight::power(const AABB3 &scene_bound) const { return 4.0f * pi * I; }
 
 std::unique_ptr<Light> create_light(const ConfigArgs &args)
 {
@@ -224,15 +258,34 @@ std::pair<uint32_t, const Light *> UniformLightSampler::sample(float u, float &p
     return {index, lights[index]};
 }
 
-float UniformLightSampler::probability(uint32_t light_index, bool non_delta) const
-{
-    if (!non_delta) {
-        return 1.0f / (float)lights.size();
-    } else {
-        return 1.0f / (float)skylights.size();
-    }
-}
+float UniformLightSampler::probability(uint32_t light_index) const { return 1.0f / (float)lights.size(); }
 
 const Light *UniformLightSampler::get(uint32_t light_index) const { return lights[light_index]; }
+
+void PowerLightSampler::build(std::span<const Light *> lights)
+{
+    LightSampler::build(lights);
+
+    this->lights.resize(lights.size());
+    std::copy(lights.begin(), lights.end(), this->lights.begin());
+    std::vector<float> powers(lights.size());
+    for (uint32_t i = 0; i < (uint32_t)lights.size(); ++i) {
+        powers[i] = lights[i]->power(scene_bound).mean();
+    }
+    power_distrib = DistribTable(powers.data(), lights.size());
+}
+
+std::pair<uint32_t, const Light *> PowerLightSampler::sample(float u, float &pr) const
+{
+    uint32_t index = power_distrib.sample(u, pr);
+    return {index, lights[index]};
+}
+
+float PowerLightSampler::probability(uint32_t light_index) const
+{
+    return power_distrib.pdf(light_index) / (float)lights.size();
+}
+
+const Light *PowerLightSampler::get(uint32_t light_index) const { return lights[light_index]; }
 
 } // namespace ks
