@@ -87,7 +87,7 @@ color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &wi_dist, 
     return eval(p, wi, wi_dist) / pdf;
 }
 
-float SkyLight::pdf(const vec3 &p, const vec3 &wi) const
+float SkyLight::pdf(const vec3 &p, const vec3 &wi, float wi_dist) const
 {
     vec3 wi_local = l2w.inverse().direction(wi);
     float phi, theta;
@@ -150,7 +150,7 @@ color3 DirectionalLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, fl
     return L;
 }
 
-float DirectionalLight::pdf(const vec3 &p_shade, const vec3 &wi) const { return 0.0f; }
+float DirectionalLight::pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const { return 0.0f; }
 
 color3 DirectionalLight::power(const AABB3 &scene_bound) const
 {
@@ -178,7 +178,7 @@ color3 PointLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &w
     return I / l2;
 }
 
-float PointLight::pdf(const vec3 &p_shade, const vec3 &wi) const { return 0.0f; }
+float PointLight::pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const { return 0.0f; }
 
 color3 PointLight::power(const AABB3 &scene_bound) const { return 4.0f * pi * I; }
 

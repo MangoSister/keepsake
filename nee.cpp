@@ -54,7 +54,7 @@ static color3 sample_direct(const Light &light, const BSDF &bsdf, const Intersec
                     // float mis = delta_bsdf ? 1.0f : power_heur(pdf_bsdf, pdf_light);
                     float mis = 1.0f;
                     if (!delta_bsdf) {
-                        float pdf_light = light.pdf(hit.p, wi);
+                        float pdf_light = light.pdf(hit.p, wi, wi_dist);
                         mis = power_heur(pdf_bsdf, pdf_light);
                     }
                     Ld += f_beta * L * mis;

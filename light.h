@@ -26,7 +26,7 @@ struct Light
     virtual color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const = 0;
     // NOTE: return throughput weight: (L / pdf)
     virtual color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const = 0;
-    virtual float pdf(const vec3 &p_shade, const vec3 &wi) const = 0;
+    virtual float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const = 0;
     virtual color3 power(const AABB3 &scene_bound) const = 0;
 };
 
@@ -42,7 +42,7 @@ struct SkyLight : public Light
     color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
-    float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
     color3 power(const AABB3 &scene_bound) const;
 
     DistribTable2D distrib;
@@ -62,7 +62,7 @@ struct DirectionalLight : public Light
     color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
-    float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
     color3 power(const AABB3 &scene_bound) const;
 
     color3 L;
@@ -78,7 +78,7 @@ struct PointLight : public Light
     bool delta_direction() const { return false; };
     color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
-    float pdf(const vec3 &p_shade, const vec3 &wi) const;
+    float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
     color3 power(const AABB3 &scene_bound) const;
 
     color3 I;
