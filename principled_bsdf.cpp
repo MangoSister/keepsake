@@ -549,6 +549,9 @@ vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const 
     float Fr_adj = dielectric_specular_adjust(abs_wo_dot_wh, c);
     float Fr_refl = Fr * Fr_adj;
     float Fr_refr = (1.0f - Fr) * c.specular_trans;
+    if (Fr_refr == 0.0f) {
+        Fr_refl = 1.0f;
+    }
 
     vec3 wi;
     if (u_fr < Fr_refl / (Fr_refl + Fr_refr)) {
@@ -620,6 +623,9 @@ float PrincipledBSDF::internal::pdf_dielectric_specular(const ks::vec3 &wo, cons
     float Fr_adj = dielectric_specular_adjust(abs_wo_dot_wh, c);
     float Fr_refl = Fr * Fr_adj;
     float Fr_refr = (1.0f - Fr) * c.specular_trans;
+    if (Fr_refr == 0.0f) {
+        Fr_refl = 1.0f;
+    }
 
     float pdf;
     if (reflect) {
