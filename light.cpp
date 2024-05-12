@@ -82,6 +82,7 @@ color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &wi_dist, 
     pdf /= (2.0f * pi * pi * sin_theta);
     if (sin_theta == 0.0f) {
         pdf = 0.0f;
+        return color3::Zero();
     }
     wi = l2w.direction(wi_local);
     return eval(p, wi, wi_dist) / pdf;
