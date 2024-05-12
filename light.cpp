@@ -3,6 +3,7 @@
 #include "parallel.h"
 #include "ray.h"
 #include "rng.h"
+#include <atomic>
 
 namespace ks
 {
@@ -18,12 +19,21 @@ SkyLight::SkyLight(const fs::path &path, const Transform &l2w, bool transform_y_
     std::unique_ptr<color3[]> pixels = load_from_hdr<3>(path, width, height);
     map = BlockedArray<color3>(width, height, 1, pixels.get());
     std::vector<float> lum(width * height);
+    std::atomic<float> lum_sum(0.0);
     parallel_for((int)lum.size(), [&](int i) {
         int y = i / width;
         float theta = (y + 0.5f) / (float)height * pi;
         float sin_theta = std::sin(theta);
         lum[i] = sin_theta * luminance(pixels[i]);
+        lum_sum.fetch_add(lum[i]);
     });
+
+    // Normal PMF table
+    // distrib = DistribTable2D(lum.data(), map.ures, map.vres);
+
+    // Thresholded PMF table. MIS compensation
+    float average = lum_sum.load() / lum.size();
+    parallel_for((int)lum.size(), [&](int i) { lum[i] = std::max(lum[i] - average, 0.0f); });
     distrib = DistribTable2D(lum.data(), map.ures, map.vres);
 }
 
