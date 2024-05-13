@@ -274,8 +274,8 @@ template <typename Ta, typename Tb, typename Tc, typename Td>
 inline auto sum_of_products(Ta a, Tb b, Tc c, Td d)
 {
     auto cd = c * d;
-    auto sumOfProducts = fma(a, b, cd);
-    auto error = fma(c, d, -cd);
+    auto sumOfProducts = std::fma(a, b, cd);
+    auto error = std::fma(c, d, -cd);
     return sumOfProducts + error;
 }
 
@@ -294,7 +294,7 @@ struct CompensatedFloat
 inline CompensatedFloat two_prod(float a, float b)
 {
     float ab = a * b;
-    return {ab, fma(a, b, -ab)};
+    return {ab, std::fma(a, b, -ab)};
 }
 
 inline CompensatedFloat two_sum(float a, float b)
