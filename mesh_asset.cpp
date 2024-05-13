@@ -7,14 +7,17 @@
 #include "normal_map.h"
 #include "parallel.h"
 #include "principled_bsdf.h"
+
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
-#include <stb_image.h>
-#include <stb_image_write.h>
+
 #define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE
+#include <stb_image.h>
+#include <stb_image_write.h>
 #include "tiny_gltf.h"
+
 #include <array>
 #include <iostream>
 #include <unordered_map>
@@ -302,8 +305,8 @@ void convert_mesh_asset_task(const ConfigArgs &args, const fs::path &task_dir, i
     }
 }
 
-void copy_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::BufferView &view,
-                             const tinygltf::Accessor &acc, uint8_t *dest)
+static void copy_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::BufferView &view,
+                                    const tinygltf::Accessor &acc, uint8_t *dest)
 {
     ASSERT(!buf.data.empty());
     const uint8_t *buf_data = buf.data.data();
@@ -322,8 +325,8 @@ void copy_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::Buffer
 }
 
 template <typename CastFn>
-void copy_and_cast_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::BufferView &view,
-                                      const tinygltf::Accessor &acc, uint8_t *dest, const CastFn &fn = CastFn())
+static void copy_and_cast_accessor_to_linear(const tinygltf::Buffer &buf, const tinygltf::BufferView &view,
+                                             const tinygltf::Accessor &acc, uint8_t *dest, const CastFn &fn = CastFn())
 {
     ASSERT(!buf.data.empty());
     const uint8_t *buf_data = buf.data.data();
