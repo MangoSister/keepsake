@@ -125,7 +125,20 @@ std::unique_ptr<TextureField<N>> create_texture_shader_field_color(const ConfigA
     }
     vec2 uv_scale = args.load_vec2("uv_scale", false, vec2::Ones());
     vec2 uv_offset = args.load_vec2("uv_offset", false, vec2::Zero());
-    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, swizzle, uv_scale, uv_offset);
+
+    color<N> scale = color<N>::Ones();
+    if (args.contains("scale")) {
+        if constexpr (N == 1) {
+            scale = color<N>(args.load_float("scale"));
+        } else if constexpr (N == 2) {
+            scale = args.load_vec2("scale").array();
+        } else if constexpr (N == 3) {
+            scale = args.load_vec3("scale").array();
+        } else {
+            scale = args.load_vec4("scale").array();
+        }
+    }
+    return std::make_unique<TextureField<N>>(*map, std::move(sampler), flip_v, swizzle, uv_scale, uv_offset, scale);
 }
 
 template <int N>
