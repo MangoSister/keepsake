@@ -20,7 +20,7 @@ struct RNG : public pcg32
     float next()
     {
         uint32_t r = this->operator()();
-        return std::min((float)r / 0xFFFFFFFFu, before_one);
+        return std::min((float)r / 0xFFFFFFFFu, fp32_before_one);
     }
 
     template <int N>
@@ -53,7 +53,7 @@ constexpr float radical_inverse(uint32_t a)
         a = next;
     }
     // ASSERT(reversed_digits * inv_base_n < 1.00001);
-    return std::min(reversed_digits * inv_base_n, before_one);
+    return std::min(reversed_digits * inv_base_n, fp32_before_one);
 }
 
 template <>

@@ -61,7 +61,7 @@ inline constexpr float quarter_pi = pi / 4.0f;
 inline constexpr float sqrt_2 = 1.41421356237f;
 inline constexpr float inv_pi = 1.0f / pi;
 inline constexpr float inf = std::numeric_limits<float>::infinity();
-inline const float before_one = std::nextafter(1.0f, -std::numeric_limits<float>::infinity());
+inline const float fp32_before_one = std::nextafter(1.0f, -std::numeric_limits<float>::infinity());
 inline constexpr int int_max = std::numeric_limits<int>::max();
 
 template <typename T>
@@ -955,6 +955,11 @@ inline mat3 cholesky_decompose(const mat3 &A)
     L(2, 0) = l31; L(2, 1) = l32;   L(2,2) = l33;
     // clang-format on
     return L;
+}
+
+inline float gaussian(float x, float mu = 0.0f, float sigma = 1.0f)
+{
+    return 1.0f / std::sqrt(two_pi * sigma * sigma) * std::exp(-sqr(x - mu) / (2.0f * sigma * sigma));
 }
 
 } // namespace ks

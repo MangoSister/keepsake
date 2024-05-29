@@ -145,7 +145,7 @@ float GetSobolStatelessIter(int idx, int dim, uint32_t seed, int nd)
     }
 
     // NOTE: the original code uses 4298115584.0, which seems to be over-conservative?
-    return std::min(static_cast<float>(bits) / float(0xffffffffu), before_one);
+    return std::min(static_cast<float>(bits) / float(0xffffffffu), fp32_before_one);
 }
 
 float sobol_owen(int idx, int dim, uint32_t seed, int nd) { return GetSobolStatelessIter(idx, dim, seed, nd); }

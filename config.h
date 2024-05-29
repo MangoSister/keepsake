@@ -1,29 +1,15 @@
 #pragma once
+#include "hash.h"
 #include "maths.h"
 #include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
-#include <string_view>
-#include <unordered_map>
 namespace fs = std::filesystem;
 
 namespace ks
 {
-
-// heterogeneous lookup: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1690r1.html
-// https://www.cppstories.com/2021/heterogeneous-access-cpp20/
-struct string_hash
-{
-    using is_transparent = void;
-    size_t operator()(const char *txt) const { return std::hash<std::string_view>{}(txt); }
-    size_t operator()(std::string_view txt) const { return std::hash<std::string_view>{}(txt); }
-    size_t operator()(const std::string &txt) const { return std::hash<std::string>{}(txt); }
-};
-template <typename T>
-using StringHashTable = std::unordered_map<std::string, T, string_hash, std::equal_to<>>;
 
 struct ConfigurableTable;
 struct ConfigArgsInternal;
