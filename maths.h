@@ -610,6 +610,15 @@ constexpr float srgb_to_linear(float x)
     }
 }
 
+constexpr float linear_to_srgb(float x)
+{
+    if (x < 0.0031308f) {
+        return x * 12.92f;
+    } else {
+        return std::pow(x, 1.0f / 2.4f) * 1.055f - 0.055f;
+    }
+}
+
 inline float luminance(const color3 &rgb)
 {
     constexpr float lum_weight[3] = {0.212671f, 0.715160f, 0.072169f};

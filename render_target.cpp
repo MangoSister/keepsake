@@ -33,11 +33,11 @@ std::unique_ptr<PixelFilter> create_pixel_filter(const ConfigArgs &args)
         float width = args.load_float("width", 1.0f);
         return std::make_unique<BoxPixelFilter>(width);
     } else if (type == "gaussian") {
-        float width = args.load_float("width", 1.5f);
+        float width = args.load_float("width", 3.0f);
         float sigma = args.load_float("sigma", 0.5f);
         return std::make_unique<GaussianPixelFilter>(width, sigma);
     } else if (type == "blackman_harris") {
-        float width = args.load_float("width", 1.5f);
+        float width = args.load_float("width", 3.0f);
         return std::make_unique<BlackmanHarrisPixelFilter>(width);
     }
     fprintf(stderr, "Invalid pixel filter type [%s]", type.c_str());
@@ -80,24 +80,22 @@ RenderTarget2::RenderTarget2(const RenderTargetArgs &args) : width(args.width), 
     }
 }
 
-void RenderTarget2::add(uint32_t x, uint32_t y, color3 pixel, std::span<const color<1>> aov1_pixels,
-                        std::span<const color<2>> aov2_pixels, std::span<const color<3>> aov3_pixels,
-                        std::span<const color<4>> aov4_pixels)
+void RenderTarget2::add(uint32_t x, uint32_t y, const RenderTargetPixel &pixel)
 {
     uint32_t idx = y * width + x;
-    main.pixels[idx] += pixel.cast<double>();
+    main.pixels[idx] += pixel.main.cast<double>();
     ++pixel_weights[idx][0];
-    for (uint32_t j = 0; j < (uint32_t)aov1_pixels.size(); ++j) {
-        aovs1[j].pixels[idx] += aov1_pixels[j];
+    for (uint32_t j = 0; j < (uint32_t)pixel.aov1.size(); ++j) {
+        aovs1[j].pixels[idx] += pixel.aov1[j];
     }
-    for (uint32_t j = 0; j < (uint32_t)aov2_pixels.size(); ++j) {
-        aovs2[j].pixels[idx] += aov2_pixels[j];
+    for (uint32_t j = 0; j < (uint32_t)pixel.aov2.size(); ++j) {
+        aovs2[j].pixels[idx] += pixel.aov2[j];
     }
-    for (uint32_t j = 0; j < (uint32_t)aov3_pixels.size(); ++j) {
-        aovs3[j].pixels[idx] += aov3_pixels[j];
+    for (uint32_t j = 0; j < (uint32_t)pixel.aov3.size(); ++j) {
+        aovs3[j].pixels[idx] += pixel.aov3[j];
     }
-    for (uint32_t j = 0; j < (uint32_t)aov4_pixels.size(); ++j) {
-        aovs4[j].pixels[idx] += aov4_pixels[j];
+    for (uint32_t j = 0; j < (uint32_t)pixel.aov4.size(); ++j) {
+        aovs4[j].pixels[idx] += pixel.aov4[j];
     }
 }
 
@@ -125,15 +123,21 @@ void RenderTarget2::clear()
     }
 }
 
-void RenderTarget2::compose_and_save_to_png(const fs::path &path_prefix, const std::string &path_postfix,
-                                            const Tonemapper *tonemapper) const
+void RenderTarget2::composite_and_save_to_png(const fs::path &path_prefix, const std::string &path_postfix,
+                                              const ToneMapper *tonemapper) const
 {
     auto buf = std::make_unique<std::uint8_t[]>(width * height * 4); // allocate for max 4 components.
     parallel_for((uint32_t)main.pixels.size(), [&](uint32_t i) {
-        double w = (double)pixel_weights[i][0] / (double)(pixel_weights[i][0] + pixel_weights[i][1]);
-        color3 c = lerp(main.backdrop.cast<double>(), main.pixels[i], w).cast<float>();
+        uint32_t w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
+        double w = w_sum == 0 ? 0.0f : (double)pixel_weights[i][0] / (double)(w_sum);
+        color3d fg =
+            pixel_weights[i][0] == 0 ? color3d::Zero() : color3d(main.pixels[i] / (double)(pixel_weights[i][0]));
+        color3 c = lerp(main.backdrop.cast<double>(), fg, w).cast<float>();
         if (tonemapper) {
             c = (*tonemapper)(c);
+        }
+        for (int d = 0; d < 3; ++d) {
+            c[d] = linear_to_srgb(c[d]);
         }
         for (int d = 0; d < 3; ++d) {
             buf[3 * i + d] = (uint8_t)std::clamp(std::floor(c[d] * 255.0f), 0.0f, 255.0f);
@@ -142,19 +146,23 @@ void RenderTarget2::compose_and_save_to_png(const fs::path &path_prefix, const s
     });
 
     fs::path save_path = path_prefix;
-    save_path += ".png";
+    save_path += path_postfix.empty() ? ".png" : string_format("_%s.png", path_postfix.c_str());
     ks::save_to_png((const std::byte *)buf.get(), width, height, 3, save_path);
 
     auto save_plane = [&]<int N>(const AOVPlane<float, N> &plane) {
         parallel_for((uint32_t)plane.pixels.size(), [&](uint32_t i) {
-            double w = (double)pixel_weights[i][0] / (double)(pixel_weights[i][0] + pixel_weights[i][1]);
-            color<N> c = lerp(plane.backdrop, plane.pixels[i], (float)w);
+            uint32_t w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
+            double w = w_sum == 0 ? 0.0f : (double)pixel_weights[i][0] / (double)(w_sum);
+            color<N> fg =
+                pixel_weights[i][0] == 0 ? color<N>::Zero() : color<N>(plane.pixels[i] / (double)(pixel_weights[i][0]));
+            color<N> c = lerp(plane.backdrop, fg, (float)w);
             for (int d = 0; d < N; ++d) {
                 buf[N * i + d] = (uint8_t)std::clamp(std::floor(c[d] * 255.0f), 0.0f, 255.0f);
             }
         });
         fs::path save_path = path_prefix;
-        save_path += string_format("_%s_%s.png", plane.name.c_str(), path_postfix.c_str());
+        save_path += path_postfix.empty() ? string_format("_%s.png", plane.name.c_str())
+                                          : string_format("_%s_%s.png", plane.name.c_str(), path_postfix.c_str());
         ks::save_to_png((const std::byte *)buf.get(), width, height, N, save_path);
     };
 
@@ -306,15 +314,18 @@ static short convert_float_to_half(int i)
     }
 }
 
-void RenderTarget2::compose_and_save_to_exr(const fs::path &path_prefix, const std::string &path_postfix,
-                                            bool write_fp16) const
+void RenderTarget2::composite_and_save_to_exr(const fs::path &path_prefix, const std::string &path_postfix,
+                                              bool write_fp16) const
 {
     size_t component_size = (write_fp16 ? sizeof(short) : sizeof(float));
     auto buf = std::make_unique<std::byte[]>(width * height * 4 * component_size); // allocate for max 4 components.
 
     parallel_for((uint32_t)main.pixels.size(), [&](uint32_t i) {
-        double w = (double)pixel_weights[i][0] / (double)(pixel_weights[i][0] + pixel_weights[i][1]);
-        color3 c = lerp(main.backdrop.cast<double>(), main.pixels[i], w).cast<float>();
+        uint32_t w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
+        double w = w_sum == 0 ? 0.0f : (double)pixel_weights[i][0] / (double)(w_sum);
+        color3d fg =
+            pixel_weights[i][0] == 0 ? color3d::Zero() : color3d(main.pixels[i] / (double)(pixel_weights[i][0]));
+        color3 c = lerp(main.backdrop.cast<double>(), fg, w).cast<float>();
 
         std::byte *ptr = &buf.get()[i * 3 * component_size];
         for (int d = 0; d < 3; ++d) {
@@ -329,13 +340,16 @@ void RenderTarget2::compose_and_save_to_exr(const fs::path &path_prefix, const s
     });
 
     fs::path save_path = path_prefix;
-    save_path += ".exr";
+    save_path += path_postfix.empty() ? ".exr" : string_format("_%s.exr", path_postfix.c_str());
     ks::save_to_exr((const std::byte *)buf.get(), write_fp16, width, height, 3, save_path);
 
     auto save_plane = [&]<int N>(const AOVPlane<float, N> &plane) {
         parallel_for((uint32_t)plane.pixels.size(), [&](uint32_t i) {
-            double w = (double)pixel_weights[i][0] / (double)(pixel_weights[i][0] + pixel_weights[i][1]);
-            color<N> c = lerp(plane.backdrop, plane.pixels[i], (float)w);
+            uint32_t w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
+            double w = w_sum == 0 ? 0.0f : (double)pixel_weights[i][0] / (double)(w_sum);
+            color<N> fg =
+                pixel_weights[i][0] == 0 ? color<N>::Zero() : color<N>(plane.pixels[i] / (double)(pixel_weights[i][0]));
+            color<N> c = lerp(plane.backdrop, fg, (float)w);
 
             std::byte *ptr = &buf.get()[i * 1 * component_size];
             for (int d = 0; d < N; ++d) {
@@ -349,7 +363,8 @@ void RenderTarget2::compose_and_save_to_exr(const fs::path &path_prefix, const s
             }
         });
         fs::path save_path = path_prefix;
-        save_path += string_format("_%s_%s.exr", plane.name.c_str(), path_postfix.c_str());
+        save_path += path_postfix.empty() ? string_format("_%s.exr", plane.name.c_str())
+                                          : string_format("_%s_%s.exr", plane.name.c_str(), path_postfix.c_str());
         ks::save_to_exr((const std::byte *)buf.get(), write_fp16, width, height, N, save_path);
     };
 

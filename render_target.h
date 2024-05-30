@@ -4,6 +4,7 @@
 #include "distrib.h"
 #include "maths.h"
 #include "parallel.h"
+#include "tonemap.h"
 
 #include <filesystem>
 #include <vector>
@@ -106,8 +107,7 @@ struct PixelFilterSampleTable
 
 struct BoxPixelFilter : public PixelFilter
 {
-    BoxPixelFilter() = default;
-    explicit BoxPixelFilter(float width) : r(0.5f * width) {}
+    explicit BoxPixelFilter(float width = 1.0f) : r(0.5f * width) {}
 
     float eval(vec2 offset) const final
     {
@@ -127,7 +127,7 @@ struct BoxPixelFilter : public PixelFilter
 struct GaussianPixelFilter : public PixelFilter
 {
     GaussianPixelFilter() = default;
-    explicit GaussianPixelFilter(float width, float sigma = 0.5f, int sample_table_res = 32)
+    explicit GaussianPixelFilter(float width = 1.5f, float sigma = 0.5f, int sample_table_res = 32)
         : r(0.5f * width), sigma(sigma), threshold(gaussian(r, 0.0f, sigma)), sampler(*this, sample_table_res)
     {}
 
@@ -153,7 +153,7 @@ struct GaussianPixelFilter : public PixelFilter
 struct BlackmanHarrisPixelFilter : public PixelFilter
 {
     BlackmanHarrisPixelFilter() = default;
-    explicit BlackmanHarrisPixelFilter(float width, int sample_table_res = 32)
+    explicit BlackmanHarrisPixelFilter(float width = 1.5f, int sample_table_res = 32)
         : r(0.5f * width), sampler(*this, sample_table_res)
     {}
 
@@ -185,61 +185,6 @@ struct BlackmanHarrisPixelFilter : public PixelFilter
 
 std::unique_ptr<PixelFilter> create_pixel_filter(const ConfigArgs &args);
 
-// https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
-// https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_rd/shaders/effects/tonemap.glsl
-// https://dev.epicgames.com/documentation/en-us/unreal-engine/color-grading-and-the-filmic-tonemapper-in-unreal-engine
-// TODO: maybe an actual spectral/color production workflow later...
-struct Tonemapper
-{
-    virtual ~Tonemapper() = default;
-    virtual color3 operator()(color3 c) const = 0;
-};
-
-struct ACESTonemapper : public Tonemapper
-{
-    ACESTonemapper() = default;
-    ACESTonemapper(float white, float exposure_bias, float A, float B, float C, float D, float E)
-        : white(white), exposure_bias(exposure_bias), A(A), B(B), C(C), D(D), E(E)
-    {}
-
-    color3 operator()(color3 c) const final
-    {
-        // clang-format off
-        static const mat3 rgb_to_rrt((mat3() <<
-                0.59719f, 0.07600f, 0.02840f,
-                0.35458f, 0.90834f, 0.13383f,
-                0.04823f, 0.01566f, 0.83777f)
-            .finished());
-        // clang-format on
-
-        // clang-format off
-        static const mat3 odt_to_rgb((mat3() <<
-                1.60475f, -0.10208f, -0.00327f, 
-                -0.53108f, 1.10813f, -0.07276f,
-                -0.07367f, -0.00605f, 1.07602f)
-            .finished());
-        // clang-format on
-
-        c *= exposure_bias;
-        c = rgb_to_rrt * c.matrix();
-        c = (c * (c + A) - B) / (c * (C * c + D) + E);
-        c = odt_to_rgb * c.matrix();
-
-        float w = white * exposure_bias;
-        w = (w * (w + A) - B) / (w * (C * w + D) + E);
-
-        return c / w;
-    }
-
-    float white = 1.0f;
-    float exposure_bias = 1.8f;
-    float A = 0.0245786f;
-    float B = 0.000090537f;
-    float C = 0.983729f;
-    float D = 0.432951f;
-    float E = 0.238081f;
-};
-
 struct RenderTargetArgs
 {
     template <int N>
@@ -265,7 +210,17 @@ struct RenderTargetArgs
     std::vector<std::pair<std::string_view, color<4>>> aov4;
 };
 
+struct RenderTargetPixel
+{
+    color3 main;
+    std::span<const color<1>> aov1;
+    std::span<const color<2>> aov2;
+    std::span<const color<3>> aov3;
+    std::span<const color<4>> aov4;
+};
+
 // TODO: support transparent background
+// TODO: maybe more composite features
 struct RenderTarget2
 {
     template <typename T, int N>
@@ -291,9 +246,7 @@ struct RenderTarget2
     RenderTarget2() = default;
     RenderTarget2(const RenderTargetArgs &args);
 
-    void add(uint32_t x, uint32_t y, color3 pixel, std::span<const color<1>> aov1_pixels = {},
-             std::span<const color<2>> aov2_pixels = {}, std::span<const color<3>> aov3_pixels = {},
-             std::span<const color<4>> aov4_pixels = {});
+    void add(uint32_t x, uint32_t y, const RenderTargetPixel &pixel);
 
     void add_miss(uint32_t x, uint32_t y);
 
@@ -324,10 +277,10 @@ struct RenderTarget2
     }
 
     // postfix useful for outputing sequences.
-    void compose_and_save_to_png(const fs::path &path_prefix, const std::string &path_postfix = {},
-                                 const Tonemapper *tonemapper = nullptr) const;
-    void compose_and_save_to_exr(const fs::path &path_prefix, const std::string &path_postfix = {},
-                                 bool write_fp16 = false) const;
+    void composite_and_save_to_png(const fs::path &path_prefix, const std::string &path_postfix = {},
+                                   const ToneMapper *tonemapper = nullptr) const;
+    void composite_and_save_to_exr(const fs::path &path_prefix, const std::string &path_postfix = {},
+                                   bool write_fp16 = false) const;
 
     uint32_t width, height;
     std::vector<arr2u> pixel_weights;
