@@ -11,7 +11,8 @@ struct ToneMapper
     virtual color3 operator()(color3 c) const = 0;
 };
 
-// TODO: maybe an actual spectral/color production workflow later...
+// TODO: maybe an actual spectral rendering/color production workflow someday...
+// TODO: The default AgX look seems a bit flat? expected?
 // https://github.com/google/filament/blob/main/filament/src/ToneMapper.cpp
 // https://github.com/Apress/physically-based-shader-dev-for-unity-2017/blob/master/PostProcessingv2/Assets/PostProcessing/PostProcessing/Shaders/ACES.hlsl
 // https://github.com/ampas/aces-dev/blob/master/transforms/ctl/README-MATRIX.md
@@ -242,7 +243,6 @@ struct ACESToneMapper : public ToneMapper
     }
 };
 
-// TODO: The default look seems a bit flat? expected?
 enum class AgXLook
 {
     None,
@@ -373,7 +373,7 @@ inline std::unique_ptr<ToneMapper> create_tone_mapper(const ConfigArgs &args)
         }
         return std::make_unique<AgXToneMapper>(look);
     }
-    fprintf(stderr, "Invalid pixel filter type [%s]", type.c_str());
+    fprintf(stderr, "Invalid tone mapper type [%s]", type.c_str());
     std::abort();
 }
 
