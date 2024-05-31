@@ -40,7 +40,7 @@ static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::pat
         color3 albedo(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
         lambert = std::make_unique<Lambertian>(albedo);
     }
-    std::unique_ptr<BlendedMaterial> material = std::make_unique<BlendedMaterial>();
+    std::unique_ptr<Material> material = std::make_unique<Material>();
     material->bsdf = &*lambert;
     asset.materials.push_back(std::move(material));
     asset.bsdfs.push_back(std::move(lambert));
@@ -751,7 +751,7 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 }
                 dst_bsdf->microfacet = MicrofacetType::GGX;
 
-                auto dst_mat = std::make_unique<BlendedMaterial>();
+                auto dst_mat = std::make_unique<Material>();
                 dst_mat->bsdf = dst_bsdf.get();
                 if (src.normalTexture.index >= 0) {
                     const auto &normal_texture = textures[src_textures[src.normalTexture.index].source];

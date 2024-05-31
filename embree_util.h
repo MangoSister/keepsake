@@ -3,6 +3,9 @@
 #include "aabb.h"
 #include "assertion.h"
 #include "ray.h"
+#include <array>
+#include <utility>
+
 #include <embree3/rtcore.h>
 
 namespace ks
@@ -18,13 +21,40 @@ struct EmbreeDevice
     RTCDevice device;
 };
 
+typedef void (*IntersectContextFilter)(const RTCFilterFunctionNArguments *args, void *payload);
+
+inline void intersect_context_filter_toplevel(const RTCFilterFunctionNArguments *args);
+
 struct IntersectContext
 {
-    IntersectContext() { rtcInitIntersectContext(&context); }
+    IntersectContext()
+    {
+        rtcInitIntersectContext(&context);
+        context.filter = intersect_context_filter_toplevel;
+    }
 
+    void add_filter(IntersectContextFilter fn, void *payload)
+    {
+        ASSERT(n_filters < max_n_filters);
+        filters[n_filters++] = {fn, payload};
+    }
+
+    static constexpr uint32_t max_n_filters = 16;
+    std::array<std::pair<IntersectContextFilter, void *>, max_n_filters> filters;
+    uint32_t n_filters = 0;
+
+  private:
     RTCIntersectContext context;
-    void *ext = nullptr; // allow extended intersection data to callbacks
 };
+
+inline void intersect_context_filter_toplevel(const RTCFilterFunctionNArguments *args)
+{
+    const IntersectContext *ctx = reinterpret_cast<const IntersectContext *>(args->context);
+    for (uint32_t i = 0; i < ctx->n_filters; ++i) {
+        auto [fn, payload] = ctx->filters[i];
+        fn(args, payload);
+    }
+}
 
 inline RTCRay spawn_ray(const vec3 &origin, const vec3 &dir, float tnear, float tfar)
 {
@@ -151,9 +181,9 @@ inline void filter_backface_culling(const RTCFilterFunctionNArguments *args)
     }
 }
 
-inline void filter_local_geometry(const RTCFilterFunctionNArguments *args)
+inline void filter_local_geometry(const RTCFilterFunctionNArguments *args, void *payload)
 {
-    uint32_t geom_id = *(uint32_t *)((IntersectContext *)(args->context))->ext;
+    uint32_t geom_id = *(uint32_t *)payload;
 
     uint32_t N = args->N;
     int *valid = args->valid;
@@ -167,9 +197,9 @@ inline void filter_local_geometry(const RTCFilterFunctionNArguments *args)
     }
 }
 
-inline void filter_exclude_local_geometry(const RTCFilterFunctionNArguments *args)
+inline void filter_exclude_local_geometry(const RTCFilterFunctionNArguments *args, void *payload)
 {
-    uint32_t geom_id = *(uint32_t *)((IntersectContext *)(args->context))->ext;
+    uint32_t geom_id = *(uint32_t *)payload;
 
     uint32_t N = args->N;
     int *valid = args->valid;

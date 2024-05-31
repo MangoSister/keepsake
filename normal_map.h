@@ -19,6 +19,7 @@ struct NormalMap : Configurable
 
     NormalMap() = default;
 
+    // Normal map should not be simply mipmapped...
     vec3 sample(const vec2 &uv) const;
     void apply(Intersection &it) const;
 

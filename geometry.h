@@ -13,6 +13,8 @@ struct Geometry
     // Also pass in ray for ray differential data
     virtual Intersection compute_intersection(const RTCRayHit &rayhit, const Ray &ray,
                                               const Transform &transform) const = 0;
+    // For intersection filter (opacity map, etc)
+    virtual vec2 compute_hit_texcoord(uint32_t prim_id, vec2 uv) const = 0;
 
     RTCGeometry rtcgeom = nullptr;
 };
@@ -72,6 +74,7 @@ struct MeshGeometry : public Geometry
 
     void create_rtc_geom(const EmbreeDevice &device);
     Intersection compute_intersection(const RTCRayHit &rayhit, const Ray &ray, const Transform &transform) const;
+    vec2 compute_hit_texcoord(uint32_t prim_id, vec2 uv) const;
 
     vec3 interpolate_position(uint32_t prim_id, const vec2 &bary) const;
     vec2 interpolate_texcoord(uint32_t prim_id, const vec2 &bary) const;
@@ -88,6 +91,11 @@ struct SphereGeometry : public Geometry
 
     void create_rtc_geom(const EmbreeDevice &device);
     Intersection compute_intersection(const RTCRayHit &rayhit) const;
+    vec2 compute_hit_texcoord(uint32_t prim_id, vec2 uv) const
+    {
+        // TODO
+        return vec2::Zero();
+    }
 
     std::vector<vec4> data; // [x, y, z, radius]
 };

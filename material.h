@@ -8,6 +8,7 @@ namespace ks
 struct BSDF;
 struct BSSRDF;
 struct NormalMap;
+struct OpacityMap;
 struct RNG;
 struct Intersection;
 struct Scene;
@@ -23,41 +24,21 @@ struct MaterialSample
 
 struct Material : public Configurable
 {
+    Material();
+    ~Material();
+
     virtual color3 sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom,
-                          RNG &rng, vec3 &wi, Intersection &exit) const = 0;
+                          RNG &rng, vec3 &wi, Intersection &exit) const;
 
     virtual MaterialSample sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
                                               const LocalGeometry &local_geom, std::span<const Light *const> lights,
-                                              RNG &rng, vec3 &wi, Intersection &exit) const = 0;
+                                              RNG &rng, vec3 &wi, Intersection &exit) const;
 
     const BSDF *bsdf = nullptr;
     const BSSRDF *subsurface = nullptr;
     const NormalMap *normal_map = nullptr;
-};
-
-struct BlendedMaterial : public Material
-{
-    BlendedMaterial();
-    ~BlendedMaterial();
-
-    color3 sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom, RNG &rng,
-                  vec3 &wi, Intersection &exit) const;
-
-    MaterialSample sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
-                                      const LocalGeometry &local_geom, std::span<const Light *const> lights, RNG &rng,
-                                      vec3 &wi, Intersection &exit) const;
-
+    const OpacityMap *opacity_map = nullptr;
     std::unique_ptr<LambertianSubsurfaceExitAdapter> lambert_exit;
-};
-
-struct StackedMaterial : public Material
-{
-    color3 sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom, RNG &rng,
-                  vec3 &wi, Intersection &exit) const;
-
-    MaterialSample sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
-                                      const LocalGeometry &local_geom, std::span<const Light *const> lights, RNG &rng,
-                                      vec3 &wi, Intersection &exit) const;
 };
 
 std::unique_ptr<Material> create_material(const ConfigArgs &args);

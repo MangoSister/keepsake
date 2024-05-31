@@ -1,6 +1,7 @@
 #include "scene.h"
 #include "mesh_asset.h"
 #include "normal_map.h"
+#include "opacity_map.h"
 
 namespace ks
 {
@@ -143,9 +144,43 @@ AABB3 Scene::bound() const
     return AABB3(vec3(b.lower_x, b.lower_y, b.lower_z), vec3(b.upper_x, b.upper_y, b.upper_z));
 }
 
+static inline void filter_opacity_map(const RTCFilterFunctionNArguments *args, void *payload)
+{
+    uint32_t N = args->N;
+    int *valid = args->valid;
+    RTCRayN *ray = args->ray;
+    RTCHitN *hit = args->hit;
+    const Scene &scene = *reinterpret_cast<const Scene *>(payload);
+    for (uint32_t i = 0; i < N; ++i) {
+        if (valid[i] != 0) {
+            int inst_id = RTCHitN_instID(hit, N, i, 0);
+            int geom_id = RTCHitN_geomID(hit, N, i);
+
+            uint32_t subscene_id = scene.instances[inst_id].prototype;
+            const SubScene &subscene = *scene.subscenes[subscene_id];
+            if (!subscene.materials.empty()) {
+                const Geometry &geom = *subscene.geometries[geom_id];
+                const Material &material = *subscene.materials[geom_id];
+                if (material.opacity_map) {
+                    int prim_id = RTCHitN_primID(hit, N, i);
+                    vec2 tc = geom.compute_hit_texcoord(prim_id, vec2(RTCHitN_u(hit, N, i), RTCHitN_v(hit, N, i)));
+                    vec3 ro(RTCRayN_org_x(ray, N, i), RTCRayN_org_y(ray, N, i), RTCRayN_org_z(ray, N, i));
+                    vec3 rd(RTCRayN_dir_x(ray, N, i), RTCRayN_dir_y(ray, N, i), RTCRayN_dir_z(ray, N, i));
+                    if (!material.opacity_map->stochastic_test(tc, ro, rd)) {
+                        valid[i] = 0;
+                    }
+                }
+            }
+        }
+    }
+}
+
 bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ctx) const
 {
+    const_cast<IntersectContext &>(ctx).add_filter(filter_opacity_map, (void *)this);
+
     RTCRayHit rayhit = spawn_rtcrayhit(ray.origin, ray.dir, ray.tmin, ray.tmax);
+
     if (!ks::intersect1(rtcscene, ctx, rayhit)) {
         return false;
     }
@@ -157,6 +192,7 @@ bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ct
     const SubScene &subscene = *subscenes[hit.subscene_id];
     const Geometry &geom = *subscene.geometries[hit.geom_id];
     const Transform &transform = instances[inst_id].transform;
+
     hit.it = geom.compute_intersection(rayhit, ray, transform);
 
     if (!subscene.materials.empty()) {
@@ -202,8 +238,7 @@ bool Scene::are_material_assigned() const
 bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
 {
     IntersectContext ctx;
-    ctx.context.filter = filter_local_geometry;
-    ctx.ext = (void *)&geom_id;
+    ctx.add_filter(filter_local_geometry, (void *)&geom_id);
     return scene->intersect1(ray, hit, ctx);
 }
 

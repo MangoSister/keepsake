@@ -162,6 +162,16 @@ Intersection MeshGeometry::compute_intersection(const RTCRayHit &rayhit, const R
     return it;
 }
 
+vec2 MeshGeometry::compute_hit_texcoord(uint32_t prim_id, vec2 uv) const
+{
+    if (data->has_texcoord()) {
+        vec4 tc;
+        rtcInterpolate0(rtcgeom, prim_id, uv[0], uv[1], RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE, texcoord_slot, tc.data(), 2);
+        return tc.head(2);
+    }
+    return vec2::Zero();
+}
+
 vec3 MeshGeometry::interpolate_position(uint32_t prim_id, const vec2 &bary) const
 {
     vec4 P;
