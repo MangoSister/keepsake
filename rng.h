@@ -3,6 +3,7 @@
 #include "assertion.h"
 #include "maths.h"
 #include <array>
+#include <cstdint>
 #include <pcg_random.hpp>
 #include <random>
 #include <span>
@@ -10,18 +11,68 @@
 namespace ks
 {
 
-struct RNG : public pcg32
+constexpr uint64_t PCG32_DEFAULT_STATE = 0x853c49e6748fea9bULL;
+constexpr uint64_t PCG32_DEFAULT_STREAM = 0xda3e39cb94b95bdbULL;
+constexpr uint64_t PCG32_MULT = 0x5851f42d4c957f2dULL;
+
+struct RNG
 {
-    RNG() = default;
-    explicit RNG(uint64_t seed) : pcg32(seed) {}
+    RNG() : state(PCG32_DEFAULT_STATE), inc(PCG32_DEFAULT_STREAM) {}
+    RNG(uint64_t seq_index, uint64_t offset) { set_seq(seq_index, offset); }
+    explicit RNG(uint64_t seq_index) { set_seq(seq_index); }
 
-    uint32_t nextu32() { return this->operator()(); }
-
-    float next()
+    void set_seq(uint64_t sequence_index, uint64_t offset)
     {
-        uint32_t r = this->operator()();
-        return std::min((float)r / 0xFFFFFFFFu, fp32_before_one);
+        state = 0u;
+        inc = (sequence_index << 1u) | 1u;
+        next_u32();
+        state += offset;
+        next_u32();
     }
+
+    void set_seq(uint64_t sequence_index) { set_seq(sequence_index, mix_bits(sequence_index)); }
+
+    uint32_t next_u32()
+    {
+        uint64_t oldstate = state;
+        state = oldstate * PCG32_MULT + inc;
+        uint32_t xorshifted = (uint32_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
+        uint32_t rot = (uint32_t)(oldstate >> 59u);
+        return (xorshifted >> rot) | (xorshifted << ((~rot + 1u) & 31));
+    }
+
+    uint64_t next_u64()
+    {
+        uint64_t v0 = next_u32(), v1 = next_u32();
+        return (v0 << 32) | v1;
+    }
+
+    int32_t next_i32()
+    {
+        // https://stackoverflow.com/a/13208789
+        uint32_t v = next_u32();
+        if (v <= (uint32_t)std::numeric_limits<int32_t>::max())
+            return int32_t(v);
+        ASSERT(v >= (uint32_t)std::numeric_limits<int32_t>::min());
+        return int32_t(v - std::numeric_limits<int32_t>::min()) + std::numeric_limits<int32_t>::min();
+    }
+
+    int64_t next_i64()
+    {
+        // https://stackoverflow.com/a/13208789
+        uint64_t v = next_u64();
+        if (v <= (uint64_t)std::numeric_limits<int64_t>::max())
+            // Safe to type convert directly.
+            return int64_t(v);
+        ASSERT(v >= (uint64_t)std::numeric_limits<int64_t>::min());
+        return int64_t(v - std::numeric_limits<int64_t>::min()) + std::numeric_limits<int64_t>::min();
+    }
+
+    float next() { return std::min<float>(fp32_before_one, next_u32() * 0x1p-32f); }
+
+    float next_f32() { return next(); }
+
+    double next_f64() { return std::min<double>(fp32_before_one, next_u64() * 0x1p-64); }
 
     template <int N>
     Eigen::Matrix<float, N, 1> next()
@@ -33,10 +84,45 @@ struct RNG : public pcg32
         return u;
     }
 
-    uint64_t state() const { return this->state_; }
-
     vec2 next2d() { return next<2>(); }
     vec3 next3d() { return next<3>(); }
+    vec4 next4d() { return next<4>(); }
+
+    void advance(int64_t idelta)
+    {
+        uint64_t cur_mult = PCG32_MULT, cur_plus = inc, acc_mult = 1u;
+        uint64_t acc_plus = 0u, delta = (uint64_t)idelta;
+        while (delta > 0) {
+            if (delta & 1) {
+                acc_mult *= cur_mult;
+                acc_plus = acc_plus * cur_mult + cur_plus;
+            }
+            cur_plus = (cur_mult + 1) * cur_plus;
+            cur_mult *= cur_mult;
+            delta /= 2;
+        }
+        state = acc_mult * state + acc_plus;
+    }
+
+    int64_t operator-(const RNG &other) const
+    {
+        ASSERT(inc == other.inc);
+        uint64_t cur_mult = PCG32_MULT, cur_plus = inc, cur_state = other.state;
+        uint64_t the_bit = 1u, distance = 0u;
+        while (state != cur_state) {
+            if ((state & the_bit) != (cur_state & the_bit)) {
+                cur_state = cur_state * cur_mult + cur_plus;
+                distance |= the_bit;
+            }
+            ASSERT(state & the_bit == cur_state & the_bit);
+            the_bit <<= 1;
+            cur_plus = (cur_mult + 1ULL) * cur_plus;
+            cur_mult *= cur_mult;
+        }
+        return (int64_t)distance;
+    }
+
+    uint64_t state, inc;
 };
 
 template <int base>
@@ -59,12 +145,7 @@ constexpr float radical_inverse(uint32_t a)
 template <>
 constexpr float radical_inverse<2>(uint32_t bits)
 {
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+    return float(reverse_bits_32(bits)) * 2.3283064365386963e-10; // / 0x100000000
 }
 
 inline vec2 hammersley_2d(uint32_t i, uint32_t N) { return vec2(float(i) / float(N), radical_inverse<2>(i)); }
@@ -182,22 +263,22 @@ inline vec3 sample_uniform_ellipsoid(const mat3 &L, vec3 center, vec2 u, vec3 *s
     return L * p + center;
 }
 
-inline float sample_normal(RNG &rng, float mean, float stddev)
-{
-    std::normal_distribution<> normal_dist(mean, stddev);
-    return normal_dist(rng);
-}
-
-template <int N>
-inline std::array<float, N> sample_normal(RNG &rng)
-{
-    std::normal_distribution<> normal_dist(0.0f, 1.0f);
-    std::array<float, N> samples;
-    for (int i = 0; i < N; ++i) {
-        samples[i] = normal_dist(rng);
-    }
-    return samples;
-}
+// inline float sample_normal(RNG &rng, float mean, float stddev)
+//{
+//     std::normal_distribution<> normal_dist(mean, stddev);
+//     return normal_dist(rng);
+// }
+//
+// template <int N>
+// inline std::array<float, N> sample_normal(RNG &rng)
+//{
+//     std::normal_distribution<> normal_dist(0.0f, 1.0f);
+//     std::array<float, N> samples;
+//     for (int i = 0; i < N; ++i) {
+//         samples[i] = normal_dist(rng);
+//     }
+//     return samples;
+// }
 
 inline bool russian_roulette(color3 &beta, float u)
 {
