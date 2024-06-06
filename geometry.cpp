@@ -190,7 +190,7 @@ vec2 MeshGeometry::interpolate_texcoord(uint32_t prim_id, const vec2 &bary) cons
     return tc.head(2);
 }
 
-vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary, vec3 *ng_out) const
+vec3 MeshGeometry::compute_geometry_normal(uint32_t prim_id) const
 {
     int i0 = data->indices[3 * prim_id];
     int i1 = data->indices[3 * prim_id + 1];
@@ -205,6 +205,12 @@ vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary,
     vec3 e12 = v2 - v1;
     vec3 ng = e01.cross(e12);
     ng.normalize();
+    return ng;
+}
+
+vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary, vec3 *ng_out) const
+{
+    vec3 ng = compute_geometry_normal(prim_id);
 
     if (ng_out)
         *ng_out = ng;

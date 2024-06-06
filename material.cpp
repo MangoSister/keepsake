@@ -1,8 +1,8 @@
 #include "material.h"
 #include "nee.h"
 #include "normal_map.h"
-#include "rng.h"
 #include "scene.h"
+#include "sobol.h"
 #include "subsurface.h"
 
 namespace ks
@@ -42,7 +42,7 @@ Material::Material() = default;
 Material::~Material() = default;
 
 color3 Material::sample(vec3 wo, const Intersection &entry, const Scene &scene, const LocalGeometry &local_geom,
-                        RNG &rng, vec3 &wi, Intersection &exit) const
+                        PTRenderSampler &sampler, vec3 &wi, Intersection &exit) const
 {
     color3 beta = color3::Ones();
 
@@ -54,7 +54,7 @@ color3 Material::sample(vec3 wo, const Intersection &entry, const Scene &scene, 
 
     bool sample_subsurface = false;
     if (subsurface) {
-        if (rng.next() < (bsdf_sample_weight / sum)) {
+        if (sampler.sobol.next() < (bsdf_sample_weight / sum)) {
             beta *= (sum / bsdf_sample_weight);
         } else {
             sample_subsurface = true;
@@ -69,7 +69,7 @@ color3 Material::sample(vec3 wo, const Intersection &entry, const Scene &scene, 
     if (sample_subsurface) {
         vec3 ss_wi;
         SceneHit exit_hit;
-        if (!subsurface->sample(local_geom, entry, vec3::Zero(), rng, beta, exit_hit, ss_wi)) {
+        if (!subsurface->sample(local_geom, entry, vec3::Zero(), sampler.rng, beta, exit_hit, ss_wi)) {
             return color3::Zero();
         }
         wo = -ss_wi;
@@ -86,7 +86,7 @@ color3 Material::sample(vec3 wo, const Intersection &entry, const Scene &scene, 
     vec3 wo_local = exit.sh_vector_to_local(wo);
     vec3 wi_local;
     float pdf;
-    beta *= exit_bsdf->sample(wo_local, wi_local, exit, rng.next2d(), pdf);
+    beta *= exit_bsdf->sample(wo_local, wi_local, exit, sampler.sobol.next2d(), pdf);
     if (beta.maxCoeff() == 0.0f || pdf == 0.0f) {
         return color3::Zero();
     }
@@ -96,9 +96,9 @@ color3 Material::sample(vec3 wo, const Intersection &entry, const Scene &scene, 
     return beta;
 }
 
-MaterialSample Material::sample_with_direct(vec3 wo, const Intersection &entry, const Scene &scene,
-                                            const LocalGeometry &local_geom, std::span<const Light *const> lights,
-                                            RNG &rng, vec3 &wi, Intersection &exit) const
+MaterialSample Material::sample_with_nee(vec3 wo, const Intersection &entry, const Scene &scene,
+                                         const LocalGeometry &local_geom, const LightSampler &light_sampler,
+                                         PTRenderSampler &sampler, vec3 &wi, Intersection &exit) const
 {
     MaterialSample s;
 
@@ -119,7 +119,7 @@ MaterialSample Material::sample_with_direct(vec3 wo, const Intersection &entry, 
 
     bool sample_subsurface = false;
     if (subsurface) {
-        if (rng.next() < (bsdf_sample_weight / sum)) {
+        if (sampler.sobol.next() < (bsdf_sample_weight / sum)) {
             s.beta *= (sum / bsdf_sample_weight);
         } else {
             sample_subsurface = true;
@@ -134,7 +134,7 @@ MaterialSample Material::sample_with_direct(vec3 wo, const Intersection &entry, 
     if (sample_subsurface) {
         vec3 ss_wi;
         SceneHit exit_hit;
-        if (!subsurface->sample(local_geom, entry, vec3::Zero(), rng, s.beta, exit_hit, ss_wi)) {
+        if (!subsurface->sample(local_geom, entry, vec3::Zero(), sampler.rng, s.beta, exit_hit, ss_wi)) {
             return {color3::Zero(), color3::Zero()};
         }
         wo = -ss_wi;
@@ -148,13 +148,13 @@ MaterialSample Material::sample_with_direct(vec3 wo, const Intersection &entry, 
         exit_bsdf = bsdf;
     }
 
-    s.Ld = s.beta * sample_direct(scene, lights, *exit_bsdf, exit, wo, rng);
+    // sample_direct(scene, lights, *exit_bsdf, exit, wo, rng);
+    s.Ld = s.beta * next_event_estimate(scene, light_sampler, *exit_bsdf, exit, wo, sampler);
     vec3 wo_local = exit.sh_vector_to_local(wo);
     vec3 wi_local;
-    float pdf;
-    s.beta *= exit_bsdf->sample(wo_local, wi_local, exit, rng.next2d(), pdf);
+    s.beta *= exit_bsdf->sample(wo_local, wi_local, exit, sampler.sobol.next2d(), s.pdf_wi);
     ASSERT(s.beta.allFinite() && (s.beta >= 0.0f).all());
-    if (s.beta.maxCoeff() == 0.0f || pdf == 0.0f) {
+    if (s.beta.maxCoeff() == 0.0f || s.pdf_wi == 0.0f) {
         return s;
     }
     wi = exit.sh_vector_to_world(wi_local);

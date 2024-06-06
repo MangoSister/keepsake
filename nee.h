@@ -5,14 +5,14 @@
 namespace ks
 {
 
-struct Light;
-struct Intersection;
 struct BSDF;
-struct RNG;
 struct Scene;
+struct LightSampler;
+struct Intersection;
+struct PTRenderSampler;
 
-color3 sample_direct(const Scene &scene, std::span<const Light *const> lights, const BSDF &bsdf,
-                     const Intersection &hit, const vec3 &wo, RNG &rng);
+color3 next_event_estimate(const Scene &scene, const LightSampler &light_sampler, const BSDF &bsdf,
+                           const Intersection &hit, const vec3 &wo, PTRenderSampler &sampler);
 
 template <int n = 2>
 inline float power_heur(float pf, float pg)

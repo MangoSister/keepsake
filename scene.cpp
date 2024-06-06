@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "material.h"
 #include "mesh_asset.h"
 #include "normal_map.h"
 #include "opacity_map.h"
@@ -74,6 +75,7 @@ Scene::Scene(Scene &&other)
 {
     subscenes = std::move(other.subscenes);
     instances = std::move(other.instances);
+    mesh_lights = std::move(other.mesh_lights);
     rtcscene = other.rtcscene;
     // Avoid releasing...
     other.rtcscene = nullptr;
@@ -95,6 +97,7 @@ Scene &Scene::operator=(Scene &&other)
 
     subscenes = std::move(other.subscenes);
     instances = std::move(other.instances);
+    mesh_lights = std::move(other.mesh_lights);
     rtcscene = other.rtcscene;
     // Avoid releasing...
     other.rtcscene = nullptr;
@@ -186,8 +189,10 @@ bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ct
     }
 
     uint32_t inst_id = rayhit.hit.instID[0];
+    hit.inst_id = inst_id;
     hit.subscene_id = instances[inst_id].prototype;
     hit.geom_id = rayhit.hit.geomID;
+    hit.prim_id = rayhit.hit.primID;
 
     const SubScene &subscene = *subscenes[hit.subscene_id];
     const Geometry &geom = *subscene.geometries[hit.geom_id];
@@ -235,6 +240,28 @@ bool Scene::are_material_assigned() const
     return true;
 }
 
+void Scene::build_mesh_lights()
+{
+    uint32_t n_mesh_light_instanced_geom = 0;
+    uint32_t n_mesh_light_tri = 0;
+    for (uint32_t inst_id = 0; inst_id < (uint32_t)instances.size(); ++inst_id) {
+        const SubSceneInstance &instance = instances[inst_id];
+        const SubScene &subscene = *subscenes[instance.prototype];
+        for (uint32_t geom_id = 0; geom_id < subscene.geometries.size(); ++geom_id) {
+            const MeshGeometry *mesh = dynamic_cast<const MeshGeometry *>(subscene.geometries[geom_id].get());
+            const Material *material = subscene.materials[geom_id];
+            if (mesh && material->emission) {
+                mesh_lights.push_back(std::make_unique<MeshLightShared>(
+                    inst_id, geom_id, *mesh, instance.transform, *(material->emission), &*material->opacity_map->map));
+                ++n_mesh_light_instanced_geom;
+                n_mesh_light_tri += (uint32_t)mesh_lights.back()->lights.size();
+            }
+        }
+    }
+    printf("[build_mesh_lights]: Scene has [%u] (instanced) mesh lights and [%u] emissive tris\n",
+           n_mesh_light_instanced_geom, n_mesh_light_tri);
+}
+
 bool LocalGeometry::intersect1(const Ray &ray, SceneHit &hit) const
 {
     IntersectContext ctx;
@@ -258,6 +285,9 @@ Scene create_scene(const ConfigArgs &args, const EmbreeDevice &device)
     }
     ASSERT(scene.are_material_assigned(),
            "No materials. Either load materials from file(s) or provide a material list.");
+
+    scene.build_mesh_lights();
+
     return scene;
 }
 

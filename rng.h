@@ -291,25 +291,36 @@ inline bool russian_roulette(color3 &beta, float u)
     return true;
 }
 
+// Better mapping from pbrt4 that both avoids sqrt and folding
 inline vec3 sample_triangle(const vec3 &v0, const vec3 &v1, const vec3 &v2, const vec2 &u, vec2 *bary)
 {
-    float su0 = std::sqrt(u[0]);
-    float alpha = 1.0f - su0;
-    float beta = u[1] * su0;
-    float gamma = 1.0f - alpha - beta;
-    if (bary) {
-        (*bary)[0] = alpha;
-        (*bary)[1] = beta;
+    float b0, b1;
+    if (u[0] < u[1]) {
+        b0 = u[0] / 2;
+        b1 = u[1] - b0;
+    } else {
+        b1 = u[1] / 2;
+        b0 = u[0] - b1;
     }
-    return alpha * v0 + beta * v1 + gamma * v2;
+    float b2 = 1.0f - b0 - b1;
+    if (bary) {
+        (*bary)[0] = b0;
+        (*bary)[1] = b1;
+    }
+    return b0 * v0 + b1 * v1 + b2 * v2;
 }
 
 inline vec2 sample_triangle_bary(const vec2 &u)
 {
-    float su0 = std::sqrt(u[0]);
-    float alpha = 1.0f - su0;
-    float beta = u[1] * su0;
-    return vec2(alpha, beta);
+    float b0, b1;
+    if (u[0] < u[1]) {
+        b0 = u[0] / 2;
+        b1 = u[1] - b0;
+    } else {
+        b1 = u[1] / 2;
+        b0 = u[0] - b1;
+    }
+    return vec2(b0, b1);
 }
 
 // Sample a tetrahedron: http://vcg.isti.cnr.it/jgt/tetra.htm

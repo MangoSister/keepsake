@@ -8,6 +8,7 @@
 #include "parallel.h"
 #include "principled_bsdf.h"
 
+// clang-format off
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
@@ -17,6 +18,7 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 #include "tiny_gltf.h"
+// clang-format on
 
 #include <array>
 #include <iostream>
@@ -624,7 +626,25 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 // TODO: check color space?
                 const auto &src = src_materials[primtives[j].material];
                 const auto &pbr = src.pbrMetallicRoughness;
+
+                auto dst_mat = std::make_unique<Material>();
                 auto dst_bsdf = std::make_unique<PrincipledBSDF>();
+                dst_mat->bsdf = dst_bsdf.get();
+                if (src.emissiveTexture.index >= 0) {
+                    const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
+                    auto [uv_scale, uv_offset] = get_texture_transform(src.emissiveTexture);
+                    dst_bsdf->emissive = create_texture_shader_field<3>(
+                        *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
+                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]), {}, uv_scale,
+                        uv_offset);
+                } else {
+                    dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
+                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
+                }
+                // TODO: check black texture?
+                if (src.emissiveFactor[0] > 0.0f || src.emissiveFactor[1] > 0.0f || src.emissiveFactor[2] > 0.0f) {
+                    dst_mat->emission = dst_bsdf->emissive.get();
+                }
                 if (pbr.baseColorTexture.index >= 0) {
                     const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];
                     auto [uv_scale, uv_offset] = get_texture_transform(pbr.baseColorTexture);
@@ -650,17 +670,6 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 } else {
                     dst_bsdf->roughness = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.roughnessFactor));
                     dst_bsdf->metallic = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.metallicFactor));
-                }
-                if (src.emissiveTexture.index >= 0) {
-                    const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
-                    auto [uv_scale, uv_offset] = get_texture_transform(src.emissiveTexture);
-                    dst_bsdf->emissive = create_texture_shader_field<3>(
-                        *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
-                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]), {}, uv_scale,
-                        uv_offset);
-                } else {
-                    dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
-                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
                 }
 
                 // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md
@@ -751,8 +760,6 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 }
                 dst_bsdf->microfacet = MicrofacetType::GGX;
 
-                auto dst_mat = std::make_unique<Material>();
-                dst_mat->bsdf = dst_bsdf.get();
                 if (src.normalTexture.index >= 0) {
                     const auto &normal_texture = textures[src_textures[src.normalTexture.index].source];
                     auto nm = std::make_unique<NormalMap>();

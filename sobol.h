@@ -230,8 +230,8 @@ struct OwenScrambledSobol02Morton
 // Sampler for unidirectional PT style renderer.
 // Deterministic rng state for easier debugging.
 // Renderer should try to use sobol and align dimensions (pixel, bsdf, light, etc)
-// Use RNG only when we need an undertermined number of random numbers (volume sampling, stochastic eval, anything else
-// fancy)
+// Use RNG only when we need an undertermined number of random numbers (volume sampling, subsurface, stochastic eval,
+// anything else fancy)
 struct PTRenderSampler
 {
     PTRenderSampler(arr2u full_resolution, arr2u pixel, uint32_t samples_per_pixel, uint32_t sample_index,

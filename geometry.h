@@ -78,6 +78,7 @@ struct MeshGeometry : public Geometry
 
     vec3 interpolate_position(uint32_t prim_id, const vec2 &bary) const;
     vec2 interpolate_texcoord(uint32_t prim_id, const vec2 &bary) const;
+    vec3 compute_geometry_normal(uint32_t prim_id) const;
     vec3 interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary, vec3 *ng = nullptr) const;
 
     uint32_t texcoord_slot = ~0;

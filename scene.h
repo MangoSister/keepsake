@@ -2,7 +2,9 @@
 #include "config.h"
 #include "embree_util.h"
 #include "geometry.h"
+#include "light.h"
 #include <memory>
+#include <optional>
 
 namespace ks
 {
@@ -15,8 +17,10 @@ struct SceneHit
 {
     Intersection it;
     const Material *material = nullptr;
+    uint32_t inst_id = 0;
     uint32_t subscene_id = 0;
     uint32_t geom_id = 0; //
+    uint32_t prim_id = 0;
 };
 
 struct SubScene
@@ -61,8 +65,12 @@ struct Scene
     const Material &get_prototype_material(uint32_t subscene_id, uint32_t geom_id) const;
     bool are_material_assigned() const;
 
+    void build_mesh_lights();
+
     std::vector<std::unique_ptr<SubScene>> subscenes;
     std::vector<SubSceneInstance> instances;
+    // TODO: instanced mesh lights
+    std::vector<std::unique_ptr<MeshLightShared>> mesh_lights;
 
     RTCScene rtcscene = nullptr;
 };
