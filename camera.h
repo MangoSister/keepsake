@@ -35,7 +35,7 @@ struct Camera
 
 ks::mat4 look_at(const ks::vec3 &position, const ks::vec3 &target, ks::vec3 up);
 ks::mat4 look_at_view(const ks::vec3 &position, const ks::vec3 &target, ks::vec3 up);
-ks::mat4 rev_inf_projection(float vfov, float aspect, float near_clip = 0.01f);
+ks::mat4 rev_inf_projection(float vfov, float aspect, float near_clip = 0.1f);
 ks::mat4 rev_orthographic(float left, float right, float bottom, float top, float near_clip, float far_clip);
 
 struct ConfigArgs;
