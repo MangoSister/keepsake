@@ -1,18 +1,24 @@
 [submodule "test/deps/cxxopts"]
-	path = test/deps/cxxopts
+	path = deps/cxxopts
 	url = git@github.com:jarro2783/cxxopts.git
 [submodule "test/deps/stb"]
-	path = test/deps/stb
+	path = deps/stb
 	url = git@github.com:nothings/stb.git
 [submodule "test/deps/tinyexr"]
-	path = test/deps/tinyexr
+	path = deps/tinyexr
 	url = git@github.com:syoyo/tinyexr.git
-[submodule "test/deps/pcg-cpp"]
-	path = test/deps/pcg-cpp
-	url = git@github.com:imneme/pcg-cpp.git
 [submodule "test/deps/tomlplusplus"]
-	path = test/deps/tomlplusplus
+	path = deps/tomlplusplus
 	url = git@github.com:marzer/tomlplusplus.git
 [submodule "test/deps/stduuid"]
-	path = test/deps/stduuid
+	path = deps/stduuid
 	url = git@github.com:mariusbancila/stduuid.git
+[submodule "deps/tinygltf"]
+	path = deps/tinygltf
+	url = git@github.com:syoyo/tinygltf.git
+[submodule "deps/tinyobjloader"]
+	path = deps/tinyobjloader
+	url = git@github.com:tinyobjloader/tinyobjloader.git
+[submodule "deps/imgui"]
+	path = deps/imgui
+	url = git@github.com:ocornut/imgui.git
