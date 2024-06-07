@@ -20,11 +20,9 @@ struct ConfigServiceInternal
     vec4 load_vec4_field(const toml::node_view<const toml::node> &args, bool force_normalize, float time = 0.0f);
     Transform load_transform_field(const toml::node_view<const toml::node> &args, float time = 0.0f);
 
-    fs::path output_directory() const;
     void run_all_tasks() const;
 
     toml::parse_result cfg;
-
     fs::path asset_root_dir;
     ConfigurableTable asset_table;
 
@@ -34,6 +32,8 @@ struct ConfigServiceInternal
     std::unordered_map<const toml::node *, KeyframeVec4> vec4_fields;
 
     std::unordered_map<std::string, ConfigTask> task_factory;
+
+    fs::path output_dir;
 };
 
 void ConfigServiceInternal::parse_file(const fs::path &file_path)
@@ -43,6 +43,19 @@ void ConfigServiceInternal::parse_file(const fs::path &file_path)
     } catch (const toml::parse_error &err) {
         std::cerr << "Parsing failed:\n" << err << "\n";
     }
+
+    if (cfg.contains("output_dir")) {
+        output_dir = fs::path(*cfg["output_dir"].value<std::string>());
+    } else {
+        output_dir = fs::path(current_time_and_date());
+    }
+    if (!fs::is_directory(output_dir) || !fs::exists(output_dir)) {
+        if (!fs::create_directory(output_dir)) {
+            printf("Failed to create directory %s\n", output_dir.string().c_str());
+            return;
+        }
+        printf("Created output directory [%s]\n", output_dir.string().c_str());
+    }
 }
 
 void ConfigServiceInternal::parse(std::string_view str)
@@ -51,6 +64,19 @@ void ConfigServiceInternal::parse(std::string_view str)
         cfg = toml::parse(str);
     } catch (const toml::parse_error &err) {
         std::cerr << "Parsing failed:\n" << err << "\n";
+    }
+
+    if (cfg.contains("output_dir")) {
+        output_dir = fs::path(*cfg["output_dir"].value<std::string>());
+    } else {
+        output_dir = fs::path(current_time_and_date());
+    }
+    if (!fs::is_directory(output_dir) || !fs::exists(output_dir)) {
+        if (!fs::create_directory(output_dir)) {
+            printf("Failed to create directory %s\n", output_dir.string().c_str());
+            return;
+        }
+        printf("Created output directory [%s]\n", output_dir.string().c_str());
     }
 }
 
@@ -233,25 +259,8 @@ Transform ConfigServiceInternal::load_transform_field(const toml::node_view<cons
     }
 }
 
-fs::path ConfigServiceInternal::output_directory() const
-{
-    if (cfg.contains("output_dir")) {
-        return fs::path(*cfg["output_dir"].value<std::string>());
-    } else {
-        return fs::path(current_time_and_date());
-    }
-}
-
 void ConfigServiceInternal::run_all_tasks() const
 {
-    fs::path output_dir = output_directory();
-    if (!fs::is_directory(output_dir) || !fs::exists(output_dir)) {
-        if (!fs::create_directory(output_dir)) {
-            printf("Failed to create directory %s\n", output_dir.string().c_str());
-            return;
-        }
-        printf("Created output directory [%s]\n", output_dir.string().c_str());
-    }
     if (!cfg.contains("task")) {
         printf("No task to run\n");
         return;
@@ -342,7 +351,7 @@ void ConfigService::load_assets() { service->asset_table.load(*service); }
 
 const ConfigurableTable &ConfigService::asset_table() const { return service->asset_table; }
 
-fs::path ConfigService::output_directory() const { return service->output_directory(); }
+fs::path ConfigService::output_directory() const { return service->output_dir; }
 
 void ConfigService::run_all_tasks() const { return service->run_all_tasks(); }
 
