@@ -90,7 +90,6 @@ set(KS_TEST_SRC
 set(COMMON_INCLUDE_DIRS
   ../yui
   ../deps/cxxopts/include
-  ../deps/pcg-cpp/include
   ../deps/stb
   ../deps/tinyexr
   ../deps/tinyobjloader  

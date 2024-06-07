@@ -223,8 +223,6 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
         n_frames = 1;
     }
 
-    std::FILE *log = std::fopen((task_dir / "log.txt").string().c_str(), "w");
-
     SmallPT small_pt;
 
     uint32_t frame_start = frame_offset;
@@ -247,10 +245,8 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
             float interval_render_time =
                 std::chrono::duration<float>(interval_render_end - interval_render_start).count();
 
-            printf("Frame [%d/%d] | [%d/%d] spp interval took: %.1f sec\n", frame_idx + 1, n_frames, spp_finished,
-                   input.spp, interval_render_time);
-            fprintf(log, "Frame [%d/%d] | [%d/%d] spp interval took: %.1f sec\n", frame_idx + 1, n_frames, spp_finished,
-                    input.spp, interval_render_time);
+            get_default_logger().info("Frame [{}/{}] | [{}/{}] spp interval took: {:.1f} sec", frame_idx + 1, n_frames,
+                                      spp_finished, input.spp, interval_render_time);
 
             fs::path save_path_prefix = task_dir / string_format("small_pt_spp%d", spp_finished);
             std::string save_path_postfix = n_frames > 1 ? string_format("%06u", frame_idx) : std::string();
@@ -266,11 +262,9 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
         small_pt.run(input);
         auto render_end = std::chrono::steady_clock::now();
         std::chrono::duration<float> render_time_sec = render_end - render_start;
-        printf("Frame [%d/%d] | Rendering time: %.3f sec\n", frame_idx + 1, n_frames, render_time_sec.count());
-        fprintf(log, "Frame [%d/%d] | Rendering time: %.3f sec\n", frame_idx + 1, n_frames, render_time_sec.count());
+        get_default_logger().info("Frame [{}/{}] | Rendering time: {:.1f} sec", frame_idx + 1, n_frames,
+                                  render_time_sec.count());
     }
-
-    std::fclose(log);
 }
 
 } // namespace ks

@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
     }
     cfg.parse_file(cfg_path);
 
-    create_default_logger(cfg.output_directory());
+    create_default_logger(cfg.output_directory() / "log.txt");
 
     int nthreads = args["nthreads"].as<int>();
     // DEBUG
