@@ -71,3 +71,42 @@ void foo()
 }
 
 } // namespace ks
+
+// -- scriptable front end
+// -- - asset loading
+// -- - task 
+// -- - simple "gameplay"/animation
+// -----------------------------
+// require "more_asset.lua"
+
+// y = yui.get_inst()
+
+// brick = y.create_texture{
+//     name = "brick",
+//     path = "brick.png", 
+//     colorspace = sRGB,
+//     channels = 3,
+//     build_mipmaps = false
+// }
+
+// brick_bsdf = y.create_bsdf{
+//     type = "principled_brdf", 
+//     basecolor = ShaderField{
+//         type = "texture",
+//         map = brick,
+//     }}
+
+// metal_bsdf =  y.create_bsdf{
+//     type = "principled_brdf", 
+//     basecolor = {
+//         type = "texture",
+//         map = "texture.brick",
+//     }}
+
+// y.create_some_custom_stuff{}
+
+// --------------------------------
+
+// for i in range(10):
+//     camera.pos.x += 2
+//     y.small_pt{camera}
