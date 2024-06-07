@@ -41,8 +41,6 @@ struct SmallPT
 {
     void run(const SmallPTInput &in) const;
     std::pair<bool, ks::color3> trace(const SmallPTInput &in, ks::Ray ray, ks::PTRenderSampler &sampler) const;
-    ks::color3 sample_direct(const SmallPTInput &in, const ks::SceneHit &hit, const ks::vec3 &wo,
-                             ks::PTRenderSampler &sampler) const;
 };
 
 } // namespace ks

@@ -33,4 +33,6 @@ spdlog::logger &get_default_logger()
     return *default_logger;
 }
 
+thread_local CPURendererThreadMonitor cpu_renderer_thread_monitor;
+
 } // namespace ks

@@ -2,6 +2,7 @@
 #include "file_util.h"
 #include "hash.h"
 #include "light.h"
+#include "log_util.h"
 #include "material.h"
 #include "mesh_asset.h"
 #include "nee.h"
@@ -23,7 +24,11 @@ void SmallPT::run(const SmallPTInput &in) const
         int spp_batch = std::min(in.spp_prog_interval, in.spp - s_interval_start);
         int s_interval_end = s_interval_start + spp_batch;
         parallel_tile_2d(in.render_width, in.render_height, [&](int x, int y) {
+            cpu_renderer_thread_monitor.record_pixel(x, y);
+
             for (int s = s_interval_start; s < s_interval_end; ++s) {
+                cpu_renderer_thread_monitor.record_sample_idx(s);
+
                 PTRenderSampler sampler(arr2u(in.render_width, in.render_height), arr2u(x, y), in.spp, s, in.rng_seed);
 
                 vec2 pixel_sample_offset = in.spp == 1 ? vec2::Zero() : in.pixel_filter->sample(sampler.sobol.next2d());
@@ -54,6 +59,8 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
     color3 beta = color3::Ones();
     float pdf_wi_bsdf = 0.0f;
     for (int bounce = 0; bounce < in.bounces + 1; ++bounce) {
+        cpu_renderer_thread_monitor.record_bounce(bounce);
+
         SceneHit hit;
         bool isect_geom = in.scene->intersect1(ray, hit);
 
@@ -72,7 +79,7 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
                     float pdf_wi_light = sky->pdf(ray.origin, wi, inf);
                     float mis_weight = power_heur(pdf_wi_bsdf, pdf_wi_light * pr_light);
                     color3 beta_uni = Le * mis_weight;
-                    // thread_monitor_check(beta_uni.allFinite());
+                    thread_monitor_check(beta_uni.allFinite());
                     if (bounce >= 2 && in.clamp_indirect > 0.0f) {
                         beta_uni = beta_uni.cwiseMin(color3::Constant(in.clamp_indirect));
                     }
@@ -94,14 +101,13 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
             if (bounce == 0) {
                 L += beta * Le;
             } else {
-                // thread_monitor_check(material.light_index >= 0);
                 // A light can be too small or too un-important to cause this to underflow.
                 // In this case we treat it as a delta light and ignore the unidirectional strategy.
                 if (pr_light > 0.0f) {
                     float pdf_wi_light = mesh_light->pdf(ray.origin, wi, hit.it.thit);
                     float mis_weight = power_heur(pdf_wi_bsdf, pdf_wi_light * pr_light);
                     color3 beta_uni = Le * mis_weight;
-                    // thread_monitor_check(beta_uni.allFinite());
+                    thread_monitor_check(beta_uni.allFinite());
                     if (bounce >= 2 && in.clamp_indirect > 0.0f) {
                         beta_uni = beta_uni.cwiseMin(color3::Constant(in.clamp_indirect));
                     }
@@ -122,6 +128,8 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
         // NEE (light sampling) strategy
         MaterialSample s =
             hit.material->sample_with_nee(wo, hit.it, *in.scene, local_geom, *in.light_sampler, sampler, wi, exit);
+        thread_monitor_check(s.beta.allFinite());
+
         L += beta * s.Ld;
         beta *= s.beta;
         if (beta.maxCoeff() == 0.0f) {
@@ -136,7 +144,7 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
             if (sampler.sobol.next() < q)
                 break;
             beta /= 1.0f - q;
-            // thread_monitor_check(beta.allFinite());
+            thread_monitor_check(beta.allFinite());
         }
     }
 
