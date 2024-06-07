@@ -36,6 +36,7 @@ set(COMMON_INCLUDE_DIRS
   deps/stb
   deps/tinyexr
   deps/tomlplusplus
+  deps/stduuid/include  
 )
 
 set(COMMON_COMPILE_DEFS
@@ -52,8 +53,10 @@ set(CPP_LIBS
 add_executable(keepsake_test)
 target_sources(keepsake_test PRIVATE ${KS_SRC} ${KS_TEST_SRC})
 target_compile_features(keepsake_test PRIVATE cxx_std_20)
+if(MSVC)
+  target_compile_options(keepsake_test PRIVATE /bigobj)
+endif()
 target_include_directories(keepsake_test PRIVATE ${COMMON_INCLUDE_DIRS})
-
 target_link_libraries(keepsake_test PRIVATE ${CPP_LIBS})
 set_target_properties(keepsake_test PROPERTIES
   POSITION_INDEPENDENT_CODE ON
