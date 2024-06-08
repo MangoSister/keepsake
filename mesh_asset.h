@@ -22,6 +22,7 @@ struct MeshAsset : public Configurable
     std::vector<std::unique_ptr<MeshData>> meshes;
     std::vector<std::unique_ptr<Material>> materials;
     std::vector<std::unique_ptr<NormalMap>> normal_maps;
+    std::vector<std::unique_ptr<OpacityMap>> opacity_maps;
     std::vector<std::unique_ptr<BSDF>> bsdfs;
     std::vector<std::unique_ptr<Texture>> textures;
 

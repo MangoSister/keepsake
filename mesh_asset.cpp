@@ -5,6 +5,7 @@
 #include "hash.h"
 #include "maths.h"
 #include "normal_map.h"
+#include "opacity_map.h"
 #include "parallel.h"
 #include "principled_bsdf.h"
 
@@ -645,6 +646,12 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 if (src.emissiveFactor[0] > 0.0f || src.emissiveFactor[1] > 0.0f || src.emissiveFactor[2] > 0.0f) {
                     dst_mat->emission = dst_bsdf->emissive.get();
                 }
+
+                std::unique_ptr<OpacityMap> om;
+                // We will use stochastic test for all non-opaque mode
+                if (src.alphaMode != "OPAQUE") {
+                    om = std::make_unique<OpacityMap>();
+                }
                 if (pbr.baseColorTexture.index >= 0) {
                     const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];
                     auto [uv_scale, uv_offset] = get_texture_transform(pbr.baseColorTexture);
@@ -652,10 +659,24 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                         *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model,
                         color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]), {}, uv_scale,
                         uv_offset);
+                    if (om) {
+                        ASSERT(basecolor_map->num_channels == 4); // Must be rgba
+                        om->map = create_texture_shader_field<1>(
+                            *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model,
+                            color<1>(pbr.baseColorFactor[3]), arri<1>(3), uv_scale, uv_offset);
+                    }
                 } else {
                     dst_bsdf->basecolor = std::make_unique<ConstantField<color3>>(
                         color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
+                    if (om) {
+                        om->map = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.baseColorFactor[3]));
+                    }
                 }
+                if (om) {
+                    dst_mat->opacity_map = om.get();
+                    mesh_asset.opacity_maps.push_back(std::move(om));
+                }
+
                 if (pbr.metallicRoughnessTexture.index >= 0) {
                     // glTF expects the metallic values to be encoded in the blue (B) channel, and
                     // roughness to be encoded in the green (G) channel of the same image.
