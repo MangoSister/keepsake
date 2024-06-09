@@ -247,12 +247,11 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
 
             get_default_logger().info("Frame [{}/{}] | [{}/{}] spp interval took: {:.1f} sec", frame_idx + 1, n_frames,
                                       spp_finished, input.spp, interval_render_time);
-
+            get_default_logger().flush();
             fs::path save_path_prefix = task_dir / string_format("small_pt_spp%d", spp_finished);
             std::string save_path_postfix = n_frames > 1 ? string_format("%06u", frame_idx) : std::string();
-            if (!tone_mapper) {
-                rt.composite_and_save_to_exr(save_path_prefix, save_path_postfix);
-            } else {
+            rt.composite_and_save_to_exr(save_path_prefix, save_path_postfix);
+            if (tone_mapper) {
                 rt.composite_and_save_to_png(save_path_prefix, save_path_postfix, tone_mapper.get());
             }
 
@@ -264,6 +263,7 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
         std::chrono::duration<float> render_time_sec = render_end - render_start;
         get_default_logger().info("Frame [{}/{}] | Rendering time: {:.1f} sec", frame_idx + 1, n_frames,
                                   render_time_sec.count());
+        get_default_logger().flush();
     }
 }
 

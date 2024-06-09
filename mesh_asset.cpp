@@ -621,8 +621,8 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 // differently.
                 // TODO: support a lot of features such as:
                 // - multiple texture coordinate sets
-                // - constant scaling on top of textures
                 // - tinted specular (specular color from KHR_materials_specular)
+                // - sheen for cloth/fabric
 
                 // TODO: check color space?
                 const auto &src = src_materials[primtives[j].material];
@@ -631,19 +631,35 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 auto dst_mat = std::make_unique<Material>();
                 auto dst_bsdf = std::make_unique<PrincipledBSDF>();
                 dst_mat->bsdf = dst_bsdf.get();
+
+                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_emissive_strength/README.md
+                float emissive_strength = 1.0f;
+                if (auto it = src.extensions.find("KHR_materials_emissive_strength"); it != src.extensions.end()) {
+                    const auto &emissive_strength_ = it->second.Get("emissiveStrength");
+                    if (emissive_strength_.Type() == tinygltf::REAL_TYPE ||
+                        emissive_strength_.Type() == tinygltf::INT_TYPE) {
+                        emissive_strength = emissive_strength_.GetNumberAsDouble();
+                    } else {
+                        if (emissive_strength_.Type() != tinygltf::NULL_TYPE) {
+                            fprintf(stderr, "Unexpected ior value type from KHR_materials_ior!\n");
+                        }
+                    }
+                }
                 if (src.emissiveTexture.index >= 0) {
                     const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
                     auto [uv_scale, uv_offset] = get_texture_transform(src.emissiveTexture);
                     dst_bsdf->emissive = create_texture_shader_field<3>(
                         *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
-                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]), {}, uv_scale,
-                        uv_offset);
+                        emissive_strength * color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]),
+                        {}, uv_scale, uv_offset);
                 } else {
                     dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
+                        emissive_strength *
                         color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
                 }
                 // TODO: check black texture?
-                if (src.emissiveFactor[0] > 0.0f || src.emissiveFactor[1] > 0.0f || src.emissiveFactor[2] > 0.0f) {
+                if (emissive_strength > 0.0f &&
+                    (src.emissiveFactor[0] > 0.0f || src.emissiveFactor[1] > 0.0f || src.emissiveFactor[2] > 0.0f)) {
                     dst_mat->emission = dst_bsdf->emissive.get();
                 }
 

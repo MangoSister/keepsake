@@ -252,13 +252,14 @@ void Scene::build_mesh_lights()
             const Material *material = subscene.materials[geom_id];
             if (mesh && material->emission) {
                 mesh_lights.push_back(std::make_unique<MeshLightShared>(
-                    inst_id, geom_id, *mesh, instance.transform, *(material->emission), &*material->opacity_map->map));
+                    inst_id, geom_id, *mesh, instance.transform, *(material->emission),
+                    material->opacity_map ? material->opacity_map->map.get() : nullptr));
                 ++n_mesh_light_instanced_geom;
                 n_mesh_light_tri += (uint32_t)mesh_lights.back()->lights.size();
             }
         }
     }
-    printf("[build_mesh_lights]: Scene has [%u] (instanced) mesh lights and [%u] emissive tris\n",
+    printf("[build_mesh_lights]: Scene has [%u] (instanced) mesh lights and [%u] emissive triangles\n",
            n_mesh_light_instanced_geom, n_mesh_light_tri);
 }
 

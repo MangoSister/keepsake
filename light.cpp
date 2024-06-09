@@ -391,15 +391,16 @@ static std::pair<std::vector<float>, std::vector<float>> compute_mesh_light_impo
         float sum_b_area = 0.0f;
         for (int ty = tymin; ty < tymax; ++ty) {
             for (int tx = txmin; tx < txmax; ++tx) {
-                AABB2 b = intersect(tc_bound, AABB2(vec2(tx, ty), vec2(tx + 1.0f, ty + 1.0f)));
+                // Avoid mod right boundary to 0.
+                AABB2 b = intersect(tc_bound, AABB2(vec2(tx, ty), vec2(tx + fp32_before_one, ty + fp32_before_one)));
                 float b_area = b.area();
                 if (b_area == 0.0f) {
                     continue;
                 }
                 switch (*wrap_mode_u) {
                 case TextureWrapMode::Repeat: {
-                    b.min.x() -= std::floor(b.min.x());
-                    b.max.x() -= std::floor(b.max.x());
+                    b.min.x() = mod(b.min.x(), 1.0f);
+                    b.max.x() = mod(b.max.x(), 1.0f);
                     break;
                 }
                 case TextureWrapMode::Clamp: {
@@ -412,8 +413,8 @@ static std::pair<std::vector<float>, std::vector<float>> compute_mesh_light_impo
                 }
                 switch (*wrap_mode_v) {
                 case TextureWrapMode::Repeat: {
-                    b.min.y() -= std::floor(b.min.y());
-                    b.max.y() -= std::floor(b.max.y());
+                    b.min.y() = mod(b.min.y(), 1.0f);
+                    b.max.y() = mod(b.max.y(), 1.0f);
                     break;
                 }
                 case TextureWrapMode::Clamp: {
@@ -440,7 +441,8 @@ static std::pair<std::vector<float>, std::vector<float>> compute_mesh_light_impo
                 float b_area_wrapped = b.area();
                 ASSERT(b_area_wrapped > 0.0f);
                 // Re-weight by unclamped area.
-                importance[prim_id] += importance_sat.sum(b) / b_area_wrapped * b_area;
+                float mean = importance_sat.sum(b) / b.extents().cwiseProduct(res.cast<float>()).prod();
+                importance[prim_id] += mean * b_area;
                 sum_b_area += b_area;
             }
         }
@@ -449,6 +451,8 @@ static std::pair<std::vector<float>, std::vector<float>> compute_mesh_light_impo
         }
         importance[prim_id] *= (two_pi * pa);
         prim_areas[prim_id] = pa;
+        ASSERT(std::isfinite(importance[prim_id]) && importance[prim_id] >= 0.0f &&
+               std::isfinite(prim_areas[prim_id]) && prim_areas[prim_id] >= 0.0f);
     });
     return {importance, prim_areas};
 }
@@ -574,7 +578,7 @@ void PowerLightSampler::build(LightPointers light_ptrs)
     uint32_t sum = 0;
     for (uint32_t i = 0; i < (uint32_t)index_psum.size(); ++i) {
         index_psum[i] = sum;
-        if (i < (uint32_t)index_psum.size()) {
+        if (i < (uint32_t)index_psum.size() - 1) {
             sum += (i == 0 ? (uint32_t)lights.size() : (uint32_t)mesh_lights[i - 1]->lights.size());
         }
     }
@@ -601,18 +605,18 @@ void PowerLightSampler::build(LightPointers light_ptrs)
         }
     }
 
-    power_distrib = DistribTable(powers.data(), lights.size());
+    power_distrib = DistribTable(powers.data(), powers.size());
 }
 
 std::pair<uint32_t, const Light *> PowerLightSampler::sample(float u, float &pr) const
 {
     uint32_t index = power_distrib.sample(u, pr);
-    return {index, lights[index]};
+    return {index, get(index)};
 }
 
 float PowerLightSampler::probability(uint32_t light_index) const
 {
-    return power_distrib.pdf(light_index) / (float)lights.size();
+    return power_distrib.pdf(light_index) / (float)light_count();
 }
 
 const Light *PowerLightSampler::get(uint32_t light_index) const
