@@ -33,7 +33,7 @@ struct IntersectContext
         context.filter = intersect_context_filter_toplevel;
     }
 
-    void add_filter(IntersectContextFilter fn, void *payload)
+    void add_filter(IntersectContextFilter fn, void *payload) const
     {
         ASSERT(n_filters < max_n_filters);
         filters[n_filters++] = {fn, payload};
@@ -42,8 +42,8 @@ struct IntersectContext
     RTCIntersectContext context;
     //
     static constexpr uint32_t max_n_filters = 16;
-    std::array<std::pair<IntersectContextFilter, void *>, max_n_filters> filters;
-    uint32_t n_filters = 0;
+    mutable std::array<std::pair<IntersectContextFilter, void *>, max_n_filters> filters;
+    mutable uint32_t n_filters = 0;
 };
 
 inline void intersect_context_filter_toplevel(const RTCFilterFunctionNArguments *args)

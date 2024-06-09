@@ -92,26 +92,28 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
             break;
         }
         // Area lights / self emission
-        if (auto [mesh_light, pr_light] =
+        if (hit.material->emission) {
+            auto [mesh_light, pr_light] =
                 in.light_sampler->get_mesh_light(MeshTriIndex{hit.inst_id, hit.geom_id, hit.prim_id});
-            mesh_light) {
-            vec3 wi = ray.dir.normalized();
-            float wi_dist;
-            color3 Le = mesh_light->eval(hit.it);
-            if (bounce == 0) {
-                L += beta * Le;
-            } else {
-                // A light can be too small or too un-important to cause this to underflow.
-                // In this case we treat it as a delta light and ignore the unidirectional strategy.
-                if (pr_light > 0.0f) {
-                    float pdf_wi_light = mesh_light->pdf(ray.origin, wi, hit.it.thit);
-                    float mis_weight = power_heur(pdf_wi_bsdf, pdf_wi_light * pr_light);
-                    color3 beta_uni = Le * mis_weight;
-                    thread_monitor_check(beta_uni.allFinite());
-                    if (bounce >= 2 && in.clamp_indirect > 0.0f) {
-                        beta_uni = beta_uni.cwiseMin(color3::Constant(in.clamp_indirect));
+            if (mesh_light) {
+                vec3 wi = ray.dir.normalized();
+                float wi_dist;
+                color3 Le = mesh_light->eval(hit.it);
+                if (bounce == 0) {
+                    L += beta * Le;
+                } else {
+                    // A light can be too small or too un-important to cause this to underflow.
+                    // In this case we treat it as a delta light and ignore the unidirectional strategy.
+                    if (pr_light > 0.0f) {
+                        float pdf_wi_light = mesh_light->pdf(ray.origin, wi, hit.it.thit);
+                        float mis_weight = power_heur(pdf_wi_bsdf, pdf_wi_light * pr_light);
+                        color3 beta_uni = Le * mis_weight;
+                        thread_monitor_check(beta_uni.allFinite());
+                        if (bounce >= 2 && in.clamp_indirect > 0.0f) {
+                            beta_uni = beta_uni.cwiseMin(color3::Constant(in.clamp_indirect));
+                        }
+                        L += beta * beta_uni;
                     }
-                    L += beta * beta_uni;
                 }
             }
         }

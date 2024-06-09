@@ -180,7 +180,7 @@ static inline void filter_opacity_map(const RTCFilterFunctionNArguments *args, v
 
 bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ctx) const
 {
-    const_cast<IntersectContext &>(ctx).add_filter(filter_opacity_map, (void *)this);
+    ctx.add_filter(filter_opacity_map, (void *)this);
 
     RTCRayHit rayhit = spawn_rtcrayhit(ray.origin, ray.dir, ray.tmin, ray.tmax);
 
@@ -212,6 +212,8 @@ bool Scene::intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ct
 
 bool Scene::occlude1(const Ray &ray, const IntersectContext &ctx) const
 {
+    ctx.add_filter(filter_opacity_map, (void *)this);
+
     RTCRay rtcray = spawn_ray(ray.origin, ray.dir, ray.tmin, ray.tmax);
     return ks::occlude1(rtcscene, ctx, rtcray);
 }

@@ -531,6 +531,10 @@ color3 MeshTriLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float 
     }
     pdf *= (wi_dist2 / absdot);
 
+    // TODO: improve light side shadow ray epsilon
+    constexpr float shadow_eps = 1e-4f;
+    wi_dist = std::max(0.0f, wi_dist - shadow_eps);
+
     Intersection it;
     it.uv = texcoord;
     return eval(it) / pdf;
