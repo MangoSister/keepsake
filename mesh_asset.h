@@ -39,7 +39,7 @@ void assign_material_list(Scene &scene, const ConfigArgs &args_materials);
 
 struct CompoundMeshAsset : public Configurable
 {
-    void load_from_gltf(const fs::path &path, bool load_materials, bool twosided);
+    void load_from_gltf(const fs::path &path, bool load_materials);
 
     std::vector<MeshAsset> prototypes;
     std::vector<std::pair<uint32_t, Transform>> instances;

@@ -491,7 +491,7 @@ create_texture_shader_field(const Texture &texture, int sampler_idx, const tinyg
                                              scale);
 }
 
-void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials, bool twosided)
+void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials)
 {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
@@ -615,6 +615,8 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                                             reinterpret_cast<uint8_t *>(mesh_data.texcoords.data()));
                 }
             }
+            // We set the mesh to two sided if no materials, otherwise we follow the material.
+            mesh_data.twosided = false;
 
             if (load_materials) {
                 // Try our best to convert to PrincipledBSDF....some features are not supported yet or behave
@@ -627,6 +629,8 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 // TODO: check color space?
                 const auto &src = src_materials[primtives[j].material];
                 const auto &pbr = src.pbrMetallicRoughness;
+
+                mesh_data.twosided = src.doubleSided;
 
                 auto dst_mat = std::make_unique<Material>();
                 auto dst_bsdf = std::make_unique<PrincipledBSDF>();
@@ -882,8 +886,7 @@ std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &
     std::string fmt = args.load_string("format", "glb");
     if (fmt == "glb" || fmt == "gltf") {
         bool load_materials = args.load_bool("load_materials");
-        bool twosided = args.load_bool("twosided", false);
-        compound->load_from_gltf(path, load_materials, twosided);
+        compound->load_from_gltf(path, load_materials);
     } else {
         ASSERT(false, "Unsupported mesh asset format [%s].", fmt.c_str());
     }

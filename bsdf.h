@@ -13,6 +13,7 @@ struct BSDF : public Configurable
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
     virtual color3 eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const = 0;
     // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
+    // TODO: consider add another rnd dimension for choosing BSDF "lobe".
     virtual color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const = 0;
     virtual float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const = 0;
     // NOTE: MIS usually requires these together. This provides room of optimization for implementations.
