@@ -545,10 +545,10 @@ color3 LambertianSubsurfaceExitAdapter::eval(const vec3 &wo, const vec3 &wi, con
     return f;
 }
 
-color3 LambertianSubsurfaceExitAdapter::sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u,
-                                               float &pdf) const
+color3 LambertianSubsurfaceExitAdapter::sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe,
+                                               const vec2 &u_wi, float &pdf) const
 {
-    wi = sample_cosine_hemisphere(u);
+    wi = sample_cosine_hemisphere(u_wi);
     pdf = wi.z() * inv_pi;
     color3 f_beta = color3::Constant(sqr(eta));
 

@@ -615,8 +615,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                                             reinterpret_cast<uint8_t *>(mesh_data.texcoords.data()));
                 }
             }
-            // We set the mesh to two sided if no materials, otherwise we follow the material.
-            mesh_data.twosided = false;
+            // TODO:
+            // - we don't really care about backface culling. usually we just render twosided
+            // - However, closed meshes with refraction or subsurface should be single sided so that they represent the
+            // interface correctly.
+            mesh_data.twosided = true;
 
             if (load_materials) {
                 // Try our best to convert to PrincipledBSDF....some features are not supported yet or behave
@@ -630,7 +633,8 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 const auto &src = src_materials[primtives[j].material];
                 const auto &pbr = src.pbrMetallicRoughness;
 
-                mesh_data.twosided = src.doubleSided;
+                // Don't use this flag. Blender set it to true even with refraction/subsurface...
+                // mesh_data.twosided = src.doubleSided;
 
                 auto dst_mat = std::make_unique<Material>();
                 auto dst_bsdf = std::make_unique<PrincipledBSDF>();
@@ -764,6 +768,9 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 }
                 // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_transmission/README.md
                 if (auto it = src.extensions.find("KHR_materials_transmission"); it != src.extensions.end()) {
+                    // NOTE: set to single sided per discussion earlier.
+                    mesh_data.twosided = false;
+
                     const auto &trans_factor = it->second.Get("transmissionFactor");
                     const auto &trans_texture = it->second.Get("transmissionTexture");
                     if (trans_texture.Type() == tinygltf::OBJECT_TYPE) {

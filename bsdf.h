@@ -12,9 +12,11 @@ struct BSDF : public Configurable
     virtual bool delta() const = 0;
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
     virtual color3 eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const = 0;
+    // NOTE: Instead of the standard 2D rnd, we use 3D. 1 rnd for choosing "lobe" or whatever mode, and 2 for actually
+    // sampling wi. However for simple BSDF u_lobe is usually ignored. Something better?
     // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-    // TODO: consider add another rnd dimension for choosing BSDF "lobe".
-    virtual color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const = 0;
+    virtual color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe, const vec2 &u_wi,
+                          float &pdf) const = 0;
     virtual float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const = 0;
     // NOTE: MIS usually requires these together. This provides room of optimization for implementations.
     virtual std::pair<color3, float> eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
@@ -30,7 +32,7 @@ struct Lambertian : public BSDF
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
     color3 eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
     // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-    color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const;
+    color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe, const vec2 &u_wi, float &pdf) const;
     float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
 
     std::unique_ptr<ShaderField<color3>> albedo;

@@ -19,13 +19,14 @@ color3 Lambertian::eval(const vec3 &wo, const vec3 &wi, const Intersection &it) 
     return inv_pi * albedo_color * wi.z();
 }
 
-color3 Lambertian::sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const
+color3 Lambertian::sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe, const vec2 &u_wi,
+                          float &pdf) const
 {
     if (wo.z() <= 0.0f) {
         pdf = 0.0f;
         return color3::Zero();
     }
-    wi = sample_cosine_hemisphere(u);
+    wi = sample_cosine_hemisphere(u_wi);
     pdf = wi.z() * inv_pi;
     color3 albedo_color = (*albedo)(it);
     albedo_color = clamp(albedo_color, color3::Zero(), color3::Ones());

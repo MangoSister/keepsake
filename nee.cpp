@@ -9,7 +9,7 @@ namespace ks
 {
 
 static color3 sample_direct(const Light &light, const BSDF &bsdf, const Intersection &hit, const Scene &geom,
-                            const vec3 &wo, const vec2 &u_light, const vec2 &u_bsdf)
+                            const vec3 &wo, const vec2 &u_light, float u_bsdf_lobe, const vec2 &u_bsdf_wi)
 {
     color3 Ld = color3::Zero();
     vec3 wo_local = hit.sh_vector_to_local(wo);
@@ -43,7 +43,7 @@ static color3 sample_direct(const Light &light, const BSDF &bsdf, const Intersec
     if (!delta_light) {
         vec3 wi_local;
         float pdf_bsdf;
-        color3 f_beta = bsdf.sample(wo_local, wi_local, hit, u_bsdf, pdf_bsdf);
+        color3 f_beta = bsdf.sample(wo_local, wi_local, hit, u_bsdf_lobe, u_bsdf_wi, pdf_bsdf);
         if (pdf_bsdf > 0.0f && !f_beta.isZero()) {
             vec3 wi = hit.sh_vector_to_world(wi_local);
             float wi_dist;

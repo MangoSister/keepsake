@@ -86,7 +86,9 @@ color3 Material::sample(vec3 wo, const Intersection &entry, const Scene &scene, 
     vec3 wo_local = exit.sh_vector_to_local(wo);
     vec3 wi_local;
     float pdf;
-    beta *= exit_bsdf->sample(wo_local, wi_local, exit, sampler.sobol.next2d(), pdf);
+    float u_bsdf_lobe = sampler.sobol.next();
+    vec2 u_bsdf_wi = sampler.sobol.next2d();
+    beta *= exit_bsdf->sample(wo_local, wi_local, exit, u_bsdf_lobe, u_bsdf_wi, pdf);
     if (beta.maxCoeff() == 0.0f || pdf == 0.0f) {
         return color3::Zero();
     }
@@ -152,7 +154,9 @@ MaterialSample Material::sample_with_nee(vec3 wo, const Intersection &entry, con
     s.Ld = s.beta * next_event_estimate(scene, light_sampler, *exit_bsdf, exit, wo, sampler);
     vec3 wo_local = exit.sh_vector_to_local(wo);
     vec3 wi_local;
-    s.beta *= exit_bsdf->sample(wo_local, wi_local, exit, sampler.sobol.next2d(), s.pdf_wi);
+    float u_bsdf_lobe = sampler.sobol.next();
+    vec2 u_bsdf_wi = sampler.sobol.next2d();
+    s.beta *= exit_bsdf->sample(wo_local, wi_local, exit, u_bsdf_lobe, u_bsdf_wi, s.pdf_wi);
     ASSERT(s.beta.allFinite() && (s.beta >= 0.0f).all());
     if (s.beta.maxCoeff() == 0.0f || s.pdf_wi == 0.0f) {
         return s;

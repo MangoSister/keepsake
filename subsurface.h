@@ -25,7 +25,7 @@ struct LambertianSubsurfaceExitAdapter : public BSDF
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
     color3 eval(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
     // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-    color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const;
+    color3 sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe, const vec2 &u_wi, float &pdf) const;
     float pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const;
 
     float eta;

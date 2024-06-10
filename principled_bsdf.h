@@ -34,7 +34,7 @@ struct PrincipledBRDF : public ks::BSDF
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
     ks::color3 eval(const ks::vec3 &wo, const ks::vec3 &wi, const ks::Intersection &it) const;
     // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-    ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const ks::Intersection &it, const ks::vec2 &u,
+    ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const ks::Intersection &it, float u_lobe, const ks::vec2 &u_wi,
                       float &pdf) const;
     float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const ks::Intersection &it) const;
     std::pair<color3, float> eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const override;
@@ -44,8 +44,8 @@ struct PrincipledBRDF : public ks::BSDF
         // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
         static ks::color3 eval(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-        static ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const Closure &closure, const ks::vec2 &u,
-                                 float &pdf);
+        static ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const Closure &closure, float u_lobe,
+                                 const ks::vec2 &u_wi, float &pdf);
         static float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
 
         static ks::color3 eval_diffuse(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
@@ -93,7 +93,7 @@ struct PrincipledBSDF : public ks::BSDF
     // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
     ks::color3 eval(const ks::vec3 &wo, const ks::vec3 &wi, const ks::Intersection &it) const;
     // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-    ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const ks::Intersection &it, const ks::vec2 &u,
+    ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const ks::Intersection &it, float u_lobe, const ks::vec2 &u,
                       float &pdf) const;
     float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const ks::Intersection &it) const;
     std::pair<color3, float> eval_and_pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const override;
@@ -103,8 +103,8 @@ struct PrincipledBSDF : public ks::BSDF
         // NOTE: return cosine-weighted bsdf: f*cos(theta_i)
         static ks::color3 eval(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         // NOTE: return cosine-weighted throughput weight: (f*cos(theta_i) / pdf)
-        static ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const Closure &closure, const ks::vec2 &u,
-                                 float &pdf);
+        static ks::color3 sample(const ks::vec3 &wo, ks::vec3 &wi, const Closure &closure, float u_lobe,
+                                 const ks::vec2 &u_wi, float &pdf);
         static float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
 
         static ks::color3 eval_diffuse(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
@@ -116,8 +116,8 @@ struct PrincipledBSDF : public ks::BSDF
         static ks::vec3 sample_diffuse(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u, float &pdf);
         static ks::vec3 sample_metallic_specular(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u,
                                                  float &pdf);
-        static ks::vec3 sample_dielectric_specular(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u,
-                                                   float &pdf);
+        static ks::vec3 sample_dielectric_specular(const ks::vec3 &wo, const Closure &closure, float u_lobe,
+                                                   const ks::vec2 &u_wi, float &pdf);
 
         static float pdf_diffuse(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static float pdf_metallic_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);

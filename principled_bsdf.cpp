@@ -35,10 +35,11 @@ color3 PrincipledBRDF::eval(const vec3 &wo, const vec3 &wi, const Intersection &
     return internal::eval(wo, wi, closure);
 }
 
-color3 PrincipledBRDF::sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const
+color3 PrincipledBRDF::sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe, const vec2 &u_wi,
+                              float &pdf) const
 {
     Closure closure = eval_closure(it);
-    return internal::sample(wo, wi, closure, u, pdf);
+    return internal::sample(wo, wi, closure, u_lobe, u_wi, pdf);
 }
 
 float PrincipledBRDF::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
@@ -72,7 +73,8 @@ color3 PrincipledBRDF::internal::eval(const vec3 &wo, const vec3 &wi, const Clos
     return f;
 }
 
-color3 PrincipledBRDF::internal::sample(const vec3 &wo, vec3 &wi, const Closure &closure, const vec2 &u, float &pdf)
+color3 PrincipledBRDF::internal::sample(const vec3 &wo, vec3 &wi, const Closure &closure, float u_lobe,
+                                        const vec2 &u_wi, float &pdf)
 {
     if (wo.z() == 0.0f) {
         pdf = 0.0f;
@@ -84,13 +86,11 @@ color3 PrincipledBRDF::internal::sample(const vec3 &wo, vec3 &wi, const Closure 
         pdf = 0.0f;
         return color3::Zero();
     }
-    float u0_remap;
-    int lobe = sample_small_distrib({sample_weights.data(), 2}, u[0], &u0_remap);
-    vec2 u_remap(u0_remap, u[1]);
+    int lobe = sample_small_distrib({sample_weights.data(), 2}, u_lobe);
 
     vec2 pdf_lobe = vec2::Zero();
     if (lobe == 0) {
-        wi = sample_diffuse(wo, closure, u_remap, pdf_lobe[0]);
+        wi = sample_diffuse(wo, closure, u_wi, pdf_lobe[0]);
         if (wi.isZero() || pdf_lobe[0] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
@@ -98,7 +98,7 @@ color3 PrincipledBRDF::internal::sample(const vec3 &wo, vec3 &wi, const Closure 
         if (wo.z() > 0.0f && wi.z() > 0.0f)
             pdf_lobe[1] = pdf_specular(wo, wi, closure);
     } else if (lobe == 1 || pdf_lobe[1] == 0.0f) {
-        wi = sample_specular(wo, closure, u_remap, pdf_lobe[1]);
+        wi = sample_specular(wo, closure, u_wi, pdf_lobe[1]);
         if (wi.isZero()) {
             pdf = 0.0f;
             return color3::Zero();
@@ -277,10 +277,11 @@ color3 PrincipledBSDF::eval(const vec3 &wo, const vec3 &wi, const Intersection &
     return internal::eval(wo, wi, closure);
 }
 
-color3 PrincipledBSDF::sample(const vec3 &wo, vec3 &wi, const Intersection &it, const vec2 &u, float &pdf) const
+color3 PrincipledBSDF::sample(const vec3 &wo, vec3 &wi, const Intersection &it, float u_lobe, const vec2 &u_wi,
+                              float &pdf) const
 {
     Closure closure = eval_closure(it);
-    return internal::sample(wo, wi, closure, u, pdf);
+    return internal::sample(wo, wi, closure, u_lobe, u_wi, pdf);
 }
 
 float PrincipledBSDF::pdf(const vec3 &wo, const vec3 &wi, const Intersection &it) const
@@ -315,8 +316,8 @@ ks::color3 PrincipledBSDF::internal::eval(const ks::vec3 &wo, const ks::vec3 &wi
     return f;
 }
 
-ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, const Closure &closure, const ks::vec2 &u,
-                                            float &pdf)
+ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, const Closure &closure, float u_lobe,
+                                            const ks::vec2 &u_wi, float &pdf)
 {
     if (wo.z() == 0.0f) {
         pdf = 0.0f;
@@ -328,13 +329,12 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
         pdf = 0.0f;
         return color3::Zero();
     }
-    float u0_remap;
-    int lobe = sample_small_distrib({sample_weights.data(), 3}, u[0], &u0_remap);
-    vec2 u_remap(u0_remap, u[1]);
+    float u_lobe_remap;
+    int lobe = sample_small_distrib({sample_weights.data(), 3}, u_lobe, &u_lobe_remap);
 
     vec3 pdf_lobe = vec3::Zero();
     if (lobe == 0) {
-        wi = sample_diffuse(wo, closure, u_remap, pdf_lobe[0]);
+        wi = sample_diffuse(wo, closure, u_wi, pdf_lobe[0]);
         if (wi.isZero() || pdf_lobe[0] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
@@ -343,7 +343,7 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
             pdf_lobe[1] = pdf_metallic_specular(wo, wi, closure);
         pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
     } else if (lobe == 1) {
-        wi = sample_metallic_specular(wo, closure, u_remap, pdf_lobe[1]);
+        wi = sample_metallic_specular(wo, closure, u_wi, pdf_lobe[1]);
         if (wi.isZero() || pdf_lobe[1] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
@@ -352,7 +352,7 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
             pdf_lobe[0] = pdf_diffuse(wo, wi, closure);
         pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
     } else {
-        wi = sample_dielectric_specular(wo, closure, u_remap, pdf_lobe[2]);
+        wi = sample_dielectric_specular(wo, closure, u_lobe_remap, u_wi, pdf_lobe[2]);
         if (wi.isZero() || pdf_lobe[2] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
@@ -529,17 +529,15 @@ vec3 PrincipledBSDF::internal::sample_metallic_specular(const vec3 &wo, const Cl
     return wi;
 }
 
-vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const Closure &c, const vec2 &u, float &pdf)
+vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const Closure &c, float u_lobe,
+                                                          const vec2 &u_wi, float &pdf)
 {
     if (wo.z() == 0.0f) {
         pdf = 0.0f;
         return vec3::Zero();
     }
 
-    vec2 u_ndf = demux_float(u[0]);
-    float u_fr = u[1];
-
-    vec3 wh = c.microfacet->sample(c.ax, c.ay, sgn(wo.z()) * wo, u_ndf);
+    vec3 wh = c.microfacet->sample(c.ax, c.ay, sgn(wo.z()) * wo, u_wi);
     float D = c.microfacet->D(c.ax, c.ay, wh);
     float G1 = c.microfacet->G1(c.ax, c.ay, wo);
 
@@ -554,7 +552,7 @@ vec3 PrincipledBSDF::internal::sample_dielectric_specular(const vec3 &wo, const 
     }
 
     vec3 wi;
-    if (u_fr < Fr_refl / (Fr_refl + Fr_refr)) {
+    if (u_lobe < Fr_refl / (Fr_refl + Fr_refr)) {
         // sample reflection
         wi = reflect(wo, wh);
         // side check
