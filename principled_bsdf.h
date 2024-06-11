@@ -78,6 +78,7 @@ struct PrincipledBSDF : public ks::BSDF
     struct Closure
     {
         ks::color3 basecolor;
+        float roughness;
         float ax;
         float ay;
         float metallic;

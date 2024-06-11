@@ -248,9 +248,9 @@ PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) con
     Closure closure;
     closure.basecolor = (*basecolor)(it);
     closure.basecolor = clamp(closure.basecolor, color3::Zero(), color3::Ones());
-    closure.ax = (*roughness)(it)[0];
-    closure.ax = clamp(closure.ax, 0.0f, 1.0f);
-    closure.ax = sqr(closure.ax);
+    closure.roughness = (*roughness)(it)[0];
+    closure.roughness = clamp(closure.roughness, 0.0f, 1.0f);
+    closure.ax = sqr(closure.roughness);
     closure.ay = closure.ax;
     closure.metallic = (*metallic)(it)[0];
     closure.metallic = clamp(closure.metallic, 0.0f, 1.0f);
@@ -400,7 +400,12 @@ color3 PrincipledBSDF::internal::eval_diffuse(const vec3 &wo, const vec3 &wi, co
     if (lobe_weight == 0.0f) {
         return color3::Zero();
     }
-    return lobe_weight * c.basecolor * inv_pi * wi.z();
+
+    vec3 wh = (wo + wi).normalized();
+    float Fd90 = 0.5f + 2.0f * c.roughness * wh.z();
+    float disney_retro =
+        std::lerp(1.0f, Fd90, fresnel_schlick(wi.z())) * std::lerp(1.0f, Fd90, fresnel_schlick(wo.z()));
+    return lobe_weight * c.basecolor * inv_pi * disney_retro * wi.z();
 }
 
 color3 PrincipledBSDF::internal::eval_metallic_specular(const vec3 &wo, const vec3 &wi, const Closure &c)
