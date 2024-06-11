@@ -235,7 +235,15 @@ std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &arg
 
 std::unique_ptr<PointLight> create_point_light(const ConfigArgs &args)
 {
-    color3 I = args.load_vec3("I").array();
+    color3 I;
+    if (args.contains("I")) {
+        I = args.load_vec3("I").array();
+    } else {
+        color3 c = args.load_vec3("color").array();
+        float power = args.load_float("power");
+        I = c * power / (4.0f * pi);
+    }
+
     vec3 pos = args.load_vec3("pos", false);
     return std::make_unique<PointLight>(I, pos);
 }
