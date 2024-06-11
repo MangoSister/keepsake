@@ -20,29 +20,45 @@ void SmallPT::run(const SmallPTInput &in) const
     rt_args.backdrop = in.backdrop;
     RenderTarget2 rt(rt_args);
 
+    int full_render_width = in.render_width;
+    int full_render_height = in.render_height;
+    int crop_render_start_x = 0;
+    int crop_render_start_y = 0;
+    int crop_render_width = full_render_width;
+    int crop_render_height = full_render_height;
+    if (in.crop_width > 0 && in.crop_height > 0) {
+        crop_render_start_x = std::max(in.crop_start_x, 0);
+        crop_render_start_y = std::max(in.crop_start_y, 0);
+        crop_render_width = std::min(in.crop_width, full_render_width - crop_render_start_x);
+        crop_render_height = std::min(in.crop_height, full_render_height - crop_render_start_y);
+    }
+
     for (int s_interval_start = 0; s_interval_start < in.spp; s_interval_start += in.spp_prog_interval) {
         int spp_batch = std::min(in.spp_prog_interval, in.spp - s_interval_start);
         int s_interval_end = s_interval_start + spp_batch;
-        parallel_tile_2d(in.render_width, in.render_height, [&](int x, int y) {
-            cpu_renderer_thread_monitor.record_pixel(x, y);
+        parallel_tile_2d(crop_render_width, crop_render_height, [&](int offset_x, int offset_y) {
+            int pixel_x = crop_render_start_x + offset_x;
+            int pixel_y = crop_render_start_y + offset_y;
+            cpu_renderer_thread_monitor.record_pixel(pixel_x, pixel_y);
 
             for (int s = s_interval_start; s < s_interval_end; ++s) {
                 cpu_renderer_thread_monitor.record_sample_idx(s);
 
-                PTRenderSampler sampler(arr2u(in.render_width, in.render_height), arr2u(x, y), in.spp, s, in.rng_seed);
+                PTRenderSampler sampler(arr2u(full_render_width, full_render_height), arr2u(pixel_x, pixel_y), in.spp,
+                                        s, in.rng_seed);
 
                 vec2 pixel_sample_offset = in.spp == 1 ? vec2::Zero() : in.pixel_filter->sample(sampler.sobol.next2d());
-                vec2 pixel_sample_pos = (vec2(x + 0.5f, y + 0.5f) + pixel_sample_offset)
-                                            .cwiseQuotient(vec2(in.render_width, in.render_height));
+                vec2 pixel_sample_pos = (vec2(pixel_x + 0.5f, pixel_y + 0.5f) + pixel_sample_offset)
+                                            .cwiseQuotient(vec2(full_render_width, full_render_height));
                 Ray ray =
                     in.camera->spawn_ray(pixel_sample_pos, vec2i(rt.width, rt.height), in.scale_ray_diff ? in.spp : 1);
                 auto [hit, L] = trace(in, ray, sampler);
                 if (hit) {
                     RenderTargetPixel pixel;
                     pixel.main = L;
-                    rt.add(x, y, pixel);
+                    rt.add(pixel_x, pixel_y, pixel);
                 } else {
-                    rt.add_miss(x, y);
+                    rt.add_miss(pixel_x, pixel_y);
                 }
             }
         });
@@ -205,6 +221,10 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
     input.bounces = args.load_integer("bounces");
     input.render_width = args.load_integer("render_width");
     input.render_height = args.load_integer("render_height");
+    input.crop_start_x = args.load_integer("crop_start_x", 0);
+    input.crop_start_y = args.load_integer("crop_start_y", 0);
+    input.crop_width = args.load_integer("crop_width", 0);
+    input.crop_height = args.load_integer("crop_height", 0);
     input.spp = args.load_integer("spp");
     input.scale_ray_diff = args.load_bool("scale_ray_diff", true);
     input.rng_seed = args.load_integer("rng_seed", 0);

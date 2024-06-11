@@ -26,6 +26,10 @@ struct SmallPTInput
     int bounces = 1;
     int render_width = 256;
     int render_height = 256;
+    int crop_start_x = 0;
+    int crop_start_y = 0;
+    int crop_width = 0;
+    int crop_height = 0;
     int spp = 1;
     int rng_seed = 0;
     bool scale_ray_diff = true;
