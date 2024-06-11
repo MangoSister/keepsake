@@ -377,7 +377,7 @@ static std::pair<std::vector<float>, std::vector<float>> compute_mesh_light_impo
         vec2 tc0 = geom.data->get_texcoord(i0);
         vec2 tc1 = geom.data->get_texcoord(i1);
         vec2 tc2 = geom.data->get_texcoord(i2);
-        if (flip_v) {
+        if (flip_v.value_or(false)) {
             tc0[1] = 1.0f - tc0[1];
             tc1[1] = 1.0f - tc1[1];
             tc2[1] = 1.0f - tc2[1];
