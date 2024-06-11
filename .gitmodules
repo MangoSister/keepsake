@@ -22,3 +22,6 @@
 [submodule "deps/imgui"]
 	path = deps/imgui
 	url = git@github.com:ocornut/imgui.git
+[submodule "data"]
+	path = test/data
+	url = git@github.com:MangoSister/keepsake_test_data.git
