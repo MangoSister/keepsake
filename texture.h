@@ -9,9 +9,12 @@
 namespace ks
 {
 
-// TODO: building mipmaps
 // TODO: EWA filtering
 // TODO: f16 data type?
+
+// NOTE: to mimic hardware sRGB textures, we will perform srgb <-> linear conversion on-the-fly in f32 as converting
+// srgb to linear and store in u8 results in precision loss on the dark end:
+// https://blog.demofox.org/2018/03/10/dont-convert-srgb-u8-to-linear-u8/
 
 enum class TextureDataType
 {
@@ -29,10 +32,11 @@ enum class TextureWrapMode
 struct Texture : public Configurable
 {
     Texture() = default;
-    Texture(int width, int height, int num_channels, TextureDataType data_type);
+    Texture(int width, int height, int num_channels, TextureDataType data_type, ColorSpace color_space);
     Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
-            bool build_mipmaps);
-    Texture(std::span<const std::byte *> mip_bytes, int width, int height, int num_channels, TextureDataType data_type);
+            ColorSpace color_space, bool build_mipmaps);
+    Texture(std::span<const std::byte *> mip_bytes, int width, int height, int num_channels, TextureDataType data_type,
+            ColorSpace color_space);
 
     const std::byte *fetch_raw(int x, int y, int level) const { return mips[level].fetch_multi(x, y); }
     void fetch_as_float(int x, int y, int level, std::span<float> out) const;
@@ -44,6 +48,7 @@ struct Texture : public Configurable
     int height = 0;
     int num_channels = 0;
     TextureDataType data_type = TextureDataType::u8;
+    ColorSpace color_space = ColorSpace::Linear;
 };
 
 struct TextureSampler

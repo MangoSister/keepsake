@@ -22,8 +22,8 @@ constexpr int byte_stride(TextureDataType data_type)
     }
 }
 
-Texture::Texture(int width, int height, int num_channels, TextureDataType data_type)
-    : width(width), height(height), num_channels(num_channels), data_type(data_type)
+Texture::Texture(int width, int height, int num_channels, TextureDataType data_type, ColorSpace color_space)
+    : width(width), height(height), num_channels(num_channels), data_type(data_type), color_space(color_space)
 {
     int stride = byte_stride(data_type) * num_channels;
     int levels = 1;
@@ -32,8 +32,8 @@ Texture::Texture(int width, int height, int num_channels, TextureDataType data_t
 }
 
 Texture::Texture(const std::byte *bytes, int width, int height, int num_channels, TextureDataType data_type,
-                 bool build_mipmaps)
-    : width(width), height(height), num_channels(num_channels), data_type(data_type)
+                 ColorSpace color_space, bool build_mipmaps)
+    : width(width), height(height), num_channels(num_channels), data_type(data_type), color_space(color_space)
 {
     int stride = byte_stride(data_type) * num_channels;
     // https://www.nvidia.com/en-us/drivers/np2-mipmapping/
@@ -360,8 +360,8 @@ Texture::Texture(const std::byte *bytes, int width, int height, int num_channels
 }
 
 Texture::Texture(std::span<const std::byte *> mip_bytes, int width, int height, int num_channels,
-                 TextureDataType data_type)
-    : width(width), height(height), num_channels(num_channels), data_type(data_type)
+                 TextureDataType data_type, ColorSpace color_space)
+    : width(width), height(height), num_channels(num_channels), data_type(data_type), color_space(color_space)
 {
     int stride = byte_stride(data_type) * num_channels;
     int levels = (int)mip_bytes.size();
@@ -381,10 +381,10 @@ Texture::Texture(std::span<const std::byte *> mip_bytes, int width, int height, 
 void Texture::fetch_as_float(int x, int y, int level, std::span<float> out) const
 {
     const std::byte *bytes = fetch_raw(x, y, level);
+    int nc = std::min(num_channels, (int)out.size());
     switch (data_type) {
     case TextureDataType::u8: {
         const uint8_t *u8_data = reinterpret_cast<const uint8_t *>(bytes);
-        int nc = std::min(num_channels, (int)out.size());
         for (int c = 0; c < nc; ++c) {
             out[c] = (float)u8_data[c] / 255.0f;
         }
@@ -392,7 +392,6 @@ void Texture::fetch_as_float(int x, int y, int level, std::span<float> out) cons
     }
     case TextureDataType::u16: {
         const uint16_t *u16_data = reinterpret_cast<const uint16_t *>(bytes);
-        int nc = std::min(num_channels, (int)out.size());
         for (int c = 0; c < nc; ++c) {
             out[c] = (float)u16_data[c] / 65535.0f;
         }
@@ -401,10 +400,19 @@ void Texture::fetch_as_float(int x, int y, int level, std::span<float> out) cons
     case TextureDataType::f32:
     default: {
         const float *f32_data = reinterpret_cast<const float *>(bytes);
-        int nc = std::min(num_channels, (int)out.size());
         std::copy(f32_data, f32_data + nc, out.data());
         break;
     }
+    }
+    switch (color_space) {
+    case ColorSpace::sRGB:
+        for (int c = 0; c < nc; ++c) {
+            out[c] = srgb_to_linear(out[c]);
+        }
+        break;
+    case ColorSpace::Linear:
+    default:
+        break;
     }
 }
 
@@ -416,14 +424,34 @@ void Texture::set_from_float(int x, int y, int level, std::span<const float> in)
     case TextureDataType::u8: {
         uint8_t *u8_data = reinterpret_cast<uint8_t *>(bytes);
         for (int c = 0; c < num_channels; ++c) {
-            u8_data[c] = (uint8_t)std::floor(in[c] * 255.0f);
+            float f32_value;
+            switch (color_space) {
+            case ColorSpace::sRGB:
+                f32_value = linear_to_srgb(in[c]);
+                break;
+            case ColorSpace::Linear:
+            default:
+                f32_value = in[c];
+                break;
+            }
+            u8_data[c] = (uint8_t)std::floor(f32_value * 255.0f);
         }
         break;
     }
     case TextureDataType::u16: {
         uint16_t *u16_data = reinterpret_cast<uint16_t *>(bytes);
         for (int c = 0; c < num_channels; ++c) {
-            u16_data[c] = (uint16_t)std::floor(in[c] * 65535.0f);
+            float f32_value;
+            switch (color_space) {
+            case ColorSpace::sRGB:
+                f32_value = linear_to_srgb(in[c]);
+                break;
+            case ColorSpace::Linear:
+            default:
+                f32_value = in[c];
+                break;
+            }
+            u16_data[c] = (uint16_t)std::floor(f32_value * 65535.0f);
         }
         break;
     }
@@ -431,6 +459,16 @@ void Texture::set_from_float(int x, int y, int level, std::span<const float> in)
     default: {
         float *f32_data = reinterpret_cast<float *>(bytes);
         std::copy(in.data(), in.data() + num_channels, f32_data);
+        switch (color_space) {
+        case ColorSpace::sRGB:
+            for (int c = 0; c < num_channels; ++c) {
+                f32_data[c] = linear_to_srgb(f32_data[c]);
+            }
+            break;
+        case ColorSpace::Linear:
+        default:
+            break;
+        }
         break;
     }
     }
@@ -612,11 +650,11 @@ std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, C
         data_type = TextureDataType::f32;
     } else {
         // TODO: support 16-bit pngs.
-        byte_data = load_from_ldr(path, ch, width, height, src_colorspace);
+        byte_data = load_from_ldr(path, ch, width, height);
         data_type = TextureDataType::u8;
     }
     ptr = float_data ? reinterpret_cast<const std::byte *>(float_data.get()) : byte_data.get();
-    return std::make_unique<Texture>(ptr, width, height, ch, data_type, build_mipmaps);
+    return std::make_unique<Texture>(ptr, width, height, ch, data_type, src_colorspace, build_mipmaps);
 }
 
 // We use lz4 to compress serialized textures for smaller file size and fast decompress speed.
@@ -736,7 +774,9 @@ std::unique_ptr<Texture> create_texture_from_serialized(const fs::path &path)
         w = std::max(1, (w + 1) / 2);
         h = std::max(1, (h + 1) / 2);
     }
-    return std::make_unique<Texture>(mip_bytes, width, height, num_channels, data_type);
+    // TODO: fix me!
+    ColorSpace color_space = ColorSpace::Linear;
+    return std::make_unique<Texture>(mip_bytes, width, height, num_channels, data_type, color_space);
 }
 
 std::unique_ptr<Texture> create_texture(const ConfigArgs &args)
