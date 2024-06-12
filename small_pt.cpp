@@ -250,6 +250,9 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
     uint32_t frame_start = frame_offset;
     uint32_t frame_end = frame_count == 0 ? n_frames : frame_offset + frame_count;
     for (uint32_t frame_idx = frame_start; frame_idx < frame_end; ++frame_idx) {
+        get_default_logger().info("Frame [{}/{}] | Start", frame_idx + 1, n_frames);
+        get_default_logger().flush();
+
         Camera camera_frame;
         if (camera_anim) {
             float anim_time = camera_anim->duration() * (frame_idx + 0.5f) / (float)n_frames;

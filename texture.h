@@ -12,7 +12,7 @@ namespace ks
 // NOTE: to mimic hardware sRGB textures, we will perform srgb <-> linear conversion on-the-fly in f32 as converting
 // srgb to linear and store in u8 results in precision loss on the dark end:
 // https://blog.demofox.org/2018/03/10/dont-convert-srgb-u8-to-linear-u8/
-// TODO: 8-bit sRGB to linear LUT.
+
 // TODO: f16 data type?
 // TODO: maybe need overall performance optimization...
 
