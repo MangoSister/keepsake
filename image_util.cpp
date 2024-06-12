@@ -103,6 +103,7 @@ void save_to_exr(const std::byte *data, bool half, int w, int h, int c, const fs
     ASSERT(c <= 4);
     EXRHeader header;
     InitEXRHeader(&header);
+    header.compression_type = TINYEXR_COMPRESSIONTYPE_PIZ;
     header.num_channels = c;
     header.channels = (EXRChannelInfo *)malloc(sizeof(EXRChannelInfo) * header.num_channels);
 
