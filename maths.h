@@ -622,6 +622,10 @@ constexpr float srgb_to_linear(float x)
 
 constexpr float linear_to_srgb(float x)
 {
+    if (x <= 0.0f)
+        return 0.0f;
+    if (x >= 1.0f)
+        return 1.0f;
     if (x < 0.0031308f) {
         return x * 12.92f;
     } else {
