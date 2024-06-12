@@ -704,35 +704,48 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                     dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
                 }
                 // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_specular/README.md
+                // But we don't really want to support colored specular, so we will multiply "specularFactor" by the
+                // mean of "specularColorFactor" and completely ignore "specularColorTexture".
                 if (auto it = src.extensions.find("KHR_materials_specular"); it != src.extensions.end()) {
                     const auto &specular_factor = it->second.Get("specularFactor");
+                    if (!(specular_factor.IsNumber() || specular_factor.Type() == tinygltf::NULL_TYPE)) {
+                        fprintf(stderr, "Unexpected specularFactor value type from KHR_materials_specular!\n");
+                    }
                     const auto &specular_texture = it->second.Get("specularTexture");
+                    if (!(specular_texture.IsObject() || specular_texture.Type() == tinygltf::NULL_TYPE)) {
+                        fprintf(stderr, "Unexpected specularTexture value type from KHR_materials_specular!\n");
+                    }
+                    const auto &specular_color_factor = it->second.Get("specularColorFactor");
+                    if (!(specular_color_factor.IsArray() || specular_color_factor.Type() == tinygltf::NULL_TYPE)) {
+                        fprintf(stderr, "Unexpected specularColorFactor value type from KHR_materials_specular!\n");
+                    }
+                    // const auto &specular_color_texture = it->second.Get("specularColorTexture");
+                    float sf = 0.5f;
+                    if (specular_factor.IsNumber() || specular_color_factor.IsArray()) {
+                        sf = 1.0f;
+                        if (specular_factor.IsNumber()) {
+                            sf = (float)specular_factor.GetNumberAsDouble();
+                        }
+                        if (specular_color_factor.IsArray()) {
+                            sf *= ((specular_color_factor.Get(0).GetNumberAsDouble() +
+                                    specular_color_factor.Get(1).GetNumberAsDouble() +
+                                    specular_color_factor.Get(2).GetNumberAsDouble()) /
+                                   3.0f);
+                        }
+                    }
                     if (specular_texture.Type() == tinygltf::OBJECT_TYPE) {
                         const auto &spec_tex_idx_ = specular_texture.Get("index");
                         ASSERT(spec_tex_idx_.Type() == tinygltf::INT_TYPE);
                         int spec_tex_idx = spec_tex_idx_.GetNumberAsInt();
                         const auto &spec_map = textures[src_textures[spec_tex_idx].source];
 
-                        float sf = 0.5f;
-                        if (specular_factor.Type() == tinygltf::REAL_TYPE) {
-                            sf = (float)specular_factor.GetNumberAsDouble();
-                        }
                         auto [uv_scale, uv_offset] = get_texture_transform(specular_texture);
 
                         dst_bsdf->specular_r0_mul =
                             create_texture_shader_field<1>(*spec_map, src_textures[spec_tex_idx].sampler, model,
                                                            color<1>(sf), {}, uv_scale, uv_offset);
-                    } else if (specular_factor.Type() == tinygltf::REAL_TYPE) {
-                        dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(
-                            color<1>((float)specular_factor.GetNumberAsDouble()));
                     } else {
-                        if (specular_texture.Type() != tinygltf::NULL_TYPE) {
-                            fprintf(stderr, "Unexpected specularTexture value type from KHR_materials_specular!\n");
-                        }
-                        if (specular_factor.Type() != tinygltf::NULL_TYPE) {
-                            fprintf(stderr, "Unexpected specularFactor value type from KHR_materials_specular!\n");
-                        }
-                        dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(0.5f));
+                        dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(sf));
                     }
                 } else {
                     dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(0.5f));
