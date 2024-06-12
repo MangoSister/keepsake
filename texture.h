@@ -9,7 +9,6 @@
 namespace ks
 {
 
-// TODO: EWA filtering
 // TODO: f16 data type?
 
 // NOTE: to mimic hardware sRGB textures, we will perform srgb <-> linear conversion on-the-fly in f32 as converting
