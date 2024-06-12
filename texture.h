@@ -56,6 +56,7 @@ struct TextureSampler
     virtual ~TextureSampler() = default;
     virtual void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const = 0;
     color4 operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy) const;
+    void bilinear(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const;
 
     TextureWrapMode wrap_mode_u = TextureWrapMode::Repeat;
     TextureWrapMode wrap_mode_v = TextureWrapMode::Repeat;
@@ -71,7 +72,6 @@ struct LinearSampler : public TextureSampler
 {
     using TextureSampler::operator();
     void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const;
-    void bilinear(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const;
 };
 
 struct CubicSampler : public TextureSampler
@@ -108,6 +108,19 @@ struct CubicSampler : public TextureSampler
     void bicubic(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const;
 
     vec4 ca, cb;
+};
+
+// EWA texture filtering ported from pbrt.
+struct EWASampler : public TextureSampler
+{
+    EWASampler(float anisotropy = 8.0f) : anisotropy(std::clamp(anisotropy, 1.0f, max_anisotropy)) {}
+
+    using TextureSampler::operator();
+    void operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const;
+    void ewa(const Texture &texture, int level, vec2 uv, vec2 duv_major, vec2 duv_minor, std::span<float> out) const;
+
+    static constexpr float max_anisotropy = 16.0f;
+    float anisotropy;
 };
 
 std::unique_ptr<Texture> create_texture_from_image(int channels, bool build_mipmap, ColorSpace src_colorspace,

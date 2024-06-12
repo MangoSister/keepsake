@@ -495,40 +495,7 @@ color4 TextureSampler::operator()(const Texture &texture, const vec2 &uv, const 
     return out;
 }
 
-void NearestSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
-{
-    float u = uv[0] * texture.mips[0].ures - 0.5f;
-    float v = uv[1] * texture.mips[0].vres - 0.5f;
-    int u0 = (int)std::floor(u);
-    int v0 = (int)std::floor(v);
-    u0 = wrap(u0, texture.mips[0].ures, wrap_mode_u);
-    v0 = wrap(v0, texture.mips[0].vres, wrap_mode_v);
-
-    texture.fetch_as_float(u0, v0, 0, out);
-}
-
-void LinearSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
-{
-    float width = duvdxy.cwiseAbs().maxCoeff();
-    float level = texture.levels() - 1 + std::log2(std::max(width, (float)1e-8));
-    if (level < 0 || texture.levels() == 1) {
-        bilinear(texture, 0, uv, out);
-    } else if (level >= texture.levels() - 1) {
-        texture.fetch_as_float(0, 0, texture.levels() - 1, out);
-    } else {
-        int ilevel = (int)std::floor(level);
-        float delta = level - ilevel;
-        size_t nc = std::min((size_t)texture.num_channels, out.size());
-        VLA(out0, float, nc);
-        bilinear(texture, ilevel, uv, {out0, nc});
-        VLA(out1, float, nc);
-        bilinear(texture, ilevel + 1, uv, {out1, nc});
-        for (int i = 0; i < nc; ++i)
-            out[i] = std::lerp(out0[i], out1[i], delta);
-    }
-}
-
-void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const
+void TextureSampler::bilinear(const Texture &texture, int level, const vec2 &uv, std::span<float> out) const
 {
     float u = uv[0] * texture.mips[level].ures - 0.5f;
     float v = uv[1] * texture.mips[level].vres - 0.5f;
@@ -560,6 +527,39 @@ void LinearSampler::bilinear(const Texture &texture, int level, const vec2 &uv, 
 
     for (int i = 0; i < nc; ++i)
         out[i] = w00 * out00[i] + w10 * out10[i] + w01 * out01[i] + w11 * out11[i];
+}
+
+void NearestSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
+{
+    float u = uv[0] * texture.mips[0].ures - 0.5f;
+    float v = uv[1] * texture.mips[0].vres - 0.5f;
+    int u0 = (int)std::floor(u);
+    int v0 = (int)std::floor(v);
+    u0 = wrap(u0, texture.mips[0].ures, wrap_mode_u);
+    v0 = wrap(v0, texture.mips[0].vres, wrap_mode_v);
+
+    texture.fetch_as_float(u0, v0, 0, out);
+}
+
+void LinearSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
+{
+    float width = duvdxy.cwiseAbs().maxCoeff();
+    float level = texture.levels() - 1 + std::log2(std::max(width, (float)1e-8));
+    if (level < 0 || texture.levels() == 1) {
+        bilinear(texture, 0, uv, out);
+    } else if (level >= texture.levels() - 1) {
+        texture.fetch_as_float(0, 0, texture.levels() - 1, out);
+    } else {
+        int ilevel = (int)std::floor(level);
+        float delta = level - ilevel;
+        size_t nc = std::min((size_t)texture.num_channels, out.size());
+        VLA(out0, float, nc);
+        bilinear(texture, ilevel, uv, {out0, nc});
+        VLA(out1, float, nc);
+        bilinear(texture, ilevel + 1, uv, {out1, nc});
+        for (int i = 0; i < nc; ++i)
+            out[i] = std::lerp(out0[i], out1[i], delta);
+    }
 }
 
 void CubicSampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
@@ -631,6 +631,249 @@ void CubicSampler::bicubic(const Texture &texture, int level, const vec2 &uv, st
     const float *c2 = &rows[2 * nc];
     const float *c3 = &rows[3 * nc];
     spline(dv, nc, c0, c1, c2, c3, ca, cb, out.data());
+}
+
+void EWASampler::operator()(const Texture &texture, const vec2 &uv, const mat2 &duvdxy, std::span<float> out) const
+{
+    vec2 duv_major = duvdxy.row(0);
+    float len_major = duv_major.norm();
+    vec2 duv_minor = duvdxy.row(1);
+    float len_minor = duv_minor.norm();
+    if (len_major < len_minor) {
+        std::swap(duv_major, duv_minor);
+        std::swap(len_major, len_minor);
+    }
+    // Clamp ellipse vector ratio if too large
+    if (len_minor * anisotropy < len_major && len_minor > 0) {
+        float scale = len_major / (len_minor * anisotropy);
+        duv_minor *= scale;
+        len_minor *= scale;
+    }
+    if (len_minor == 0) {
+        bilinear(texture, 0, uv, out);
+        return;
+    }
+
+    // Choose level of detail for EWA lookup and perform EWA filtering
+    float level = texture.levels() - 1 + std::log2(std::max(len_minor, (float)1e-8));
+    if (level < 0 || texture.levels() == 1) {
+        ewa(texture, 0, uv, duv_major, duv_minor, out);
+    } else if (level >= texture.levels() - 1) {
+        texture.fetch_as_float(0, 0, texture.levels() - 1, out);
+    } else {
+        int ilevel = (int)std::floor(level);
+        float delta = level - ilevel;
+        size_t nc = std::min((size_t)texture.num_channels, out.size());
+        VLA(out0, float, nc);
+        ewa(texture, ilevel, uv, duv_major, duv_minor, {out0, nc});
+        VLA(out1, float, nc);
+        ewa(texture, ilevel + 1, uv, duv_major, duv_minor, {out1, nc});
+        for (int i = 0; i < nc; ++i)
+            out[i] = std::lerp(out0[i], out1[i], delta);
+    }
+}
+
+/*
+        for (int i = 0; i < WeightLUTSize; ++i) {
+            float alpha = 2;
+            float r2 = float(i) / float(WeightLUTSize - 1);
+            weightLut[i] = std::exp(-alpha * r2) - std::exp(-alpha);
+        }
+*/
+static constexpr int ewa_lut_size = 128;
+static constexpr float ewa_lut[ewa_lut_size] = {0.864664733f,
+                                                0.849040031f,
+                                                0.83365953f,
+                                                0.818519294f,
+                                                0.80361563f,
+                                                0.788944781f,
+                                                0.774503231f,
+                                                0.760287285f,
+                                                0.746293485f,
+                                                0.732518315f,
+                                                0.718958378f,
+                                                0.705610275f,
+                                                0.692470789f,
+                                                0.679536581f,
+                                                0.666804492f,
+                                                0.654271305f,
+                                                0.641933978f,
+                                                0.629789352f,
+                                                0.617834508f,
+                                                0.606066525f,
+                                                0.594482362f,
+                                                0.583079159f,
+                                                0.571854174f,
+                                                0.560804546f,
+                                                0.549927592f,
+                                                0.539220572f,
+                                                0.528680861f,
+                                                0.518305838f,
+                                                0.50809288f,
+                                                0.498039544f,
+                                                0.488143265f,
+                                                0.478401601f,
+                                                0.468812168f,
+                                                0.45937258f,
+                                                0.450080454f,
+                                                0.440933526f,
+                                                0.431929469f,
+                                                0.423066139f,
+                                                0.414341331f,
+                                                0.405752778f,
+                                                0.397298455f,
+                                                0.388976216f,
+                                                0.380784035f,
+                                                0.372719884f,
+                                                0.364781618f,
+                                                0.356967449f,
+                                                0.34927541f,
+                                                0.341703475f,
+                                                0.334249914f,
+                                                0.32691282f,
+                                                0.319690347f,
+                                                0.312580705f,
+                                                0.305582166f,
+                                                0.298692942f,
+                                                0.291911423f,
+                                                0.285235822f,
+                                                0.278664529f,
+                                                0.272195935f,
+                                                0.265828371f,
+                                                0.259560347f,
+                                                0.253390193f,
+                                                0.247316495f,
+                                                0.241337672f,
+                                                0.235452279f,
+                                                0.229658857f,
+                                                0.223955944f,
+                                                0.21834214f,
+                                                0.212816045f,
+                                                0.207376286f,
+                                                0.202021524f,
+                                                0.196750447f,
+                                                0.191561714f,
+                                                0.186454013f,
+                                                0.181426153f,
+                                                0.176476851f,
+                                                0.171604887f,
+                                                0.166809067f,
+                                                0.162088141f,
+                                                0.157441005f,
+                                                0.152866468f,
+                                                0.148363426f,
+                                                0.143930718f,
+                                                0.139567271f,
+                                                0.135272011f,
+                                                0.131043866f,
+                                                0.126881793f,
+                                                0.122784719f,
+                                                0.11875169f,
+                                                0.114781633f,
+                                                0.11087364f,
+                                                0.107026696f,
+                                                0.103239879f,
+                                                0.0995122194f,
+                                                0.0958427936f,
+                                                0.0922307223f,
+                                                0.0886750817f,
+                                                0.0851749927f,
+                                                0.0817295909f,
+                                                0.0783380121f,
+                                                0.0749994367f,
+                                                0.0717130303f,
+                                                0.0684779733f,
+                                                0.0652934611f,
+                                                0.0621587038f,
+                                                0.0590728968f,
+                                                0.0560353249f,
+                                                0.0530452281f,
+                                                0.0501018465f,
+                                                0.0472044498f,
+                                                0.0443523228f,
+                                                0.0415447652f,
+                                                0.0387810767f,
+                                                0.0360605568f,
+                                                0.0333825648f,
+                                                0.0307464004f,
+                                                0.0281514227f,
+                                                0.0255970061f,
+                                                0.0230824798f,
+                                                0.0206072628f,
+                                                0.0181707144f,
+                                                0.0157722086f,
+                                                0.013411209f,
+                                                0.0110870898f,
+                                                0.0087992847f,
+                                                0.0065472275f,
+                                                0.00433036685f,
+                                                0.0021481365f,
+                                                0.f
+
+};
+
+void EWASampler::ewa(const Texture &texture, int level, vec2 uv, vec2 duv_major, vec2 duv_minor,
+                     std::span<float> out) const
+{
+    // Convert EWA coordinates to appropriate scale for level
+    uv[0] = uv[0] * texture.mips[level].ures - 0.5f;
+    uv[1] = uv[1] * texture.mips[level].vres - 0.5f;
+    duv_major[0] *= texture.mips[level].ures;
+    duv_major[1] *= texture.mips[level].vres;
+    duv_minor[0] *= texture.mips[level].ures;
+    duv_minor[1] *= texture.mips[level].vres;
+
+    // Find ellipse coefficients that bound EWA filter region
+    float A = sqr(duv_major[1]) + sqr(duv_minor[1]) + 1;
+    float B = -2 * (duv_major[0] * duv_major[1] + duv_minor[0] * duv_minor[1]);
+    float C = sqr(duv_major[0]) + sqr(duv_minor[0]) + 1;
+    float inv_F = 1 / (A * C - sqr(B) * 0.25f);
+    A *= inv_F;
+    B *= inv_F;
+    C *= inv_F;
+
+    // Compute the ellipse's $(s,t)$ bounding box in texture space
+    float det = -sqr(B) + 4 * A * C;
+    float inv_det = 1 / det;
+    float u_sqrt = safe_sqrt(det * C), vSqrt = safe_sqrt(A * det);
+    int u0 = std::ceil(uv[0] - 2 * inv_det * u_sqrt);
+    int u1 = std::floor(uv[0] + 2 * inv_det * u_sqrt);
+    int v0 = std::ceil(uv[1] - 2 * inv_det * vSqrt);
+    int v1 = std::floor(uv[1] + 2 * inv_det * vSqrt);
+
+    // Scan over ellipse bound and evaluate quadratic equation to filter image
+    size_t nc = std::min((size_t)texture.num_channels, out.size());
+    for (int c = 0; c < nc; ++c) {
+        out[c] = 0.0f;
+    }
+    float sum_weights = 0;
+    VLA(texel, float, nc);
+    for (int iv = v0; iv <= v1; ++iv) {
+        float vv = iv - uv[1];
+        int iv_wrap = wrap(iv, texture.mips[level].vres, wrap_mode_v);
+        for (int iu = u0; iu <= u1; ++iu) {
+            float uu = iu - uv[0];
+            // Compute squared radius and filter texel if it is inside the ellipse
+            float r2 = A * sqr(uu) + B * uu * vv + C * sqr(vv);
+            if (r2 < 1) {
+                int index = std::min<int>(r2 * ewa_lut_size, ewa_lut_size - 1);
+                float weight = ewa_lut[index];
+                int iu_wrap = wrap(iu, texture.mips[level].ures, wrap_mode_u);
+                texture.fetch_as_float(iu_wrap, iv_wrap, level, {texel, nc});
+                for (int c = 0; c < nc; ++c) {
+                    out[c] += weight * texel[c];
+                }
+                sum_weights += weight;
+            }
+        }
+    }
+
+    if (sum_weights > 0.0f) {
+        float inv_sum_weight = 1.0f / sum_weights;
+        for (int c = 0; c < nc; ++c) {
+            out[c] *= inv_sum_weight;
+        }
+    }
 }
 
 std::unique_ptr<Texture> create_texture_from_image(int ch, bool build_mipmaps, ColorSpace src_colorspace,
@@ -814,6 +1057,9 @@ std::unique_ptr<TextureSampler> create_texture_sampler(const ConfigArgs &args)
             kernel = CubicSampler::Kernel::CatmullRom;
         }
         sampler = std::make_unique<CubicSampler>(kernel);
+    } else if (type == "ewa") {
+        float anisotropy = args.load_float("anisotropy", 8.0f);
+        sampler = std::make_unique<EWASampler>(anisotropy);
     }
 
     std::string wu = args.load_string("wrap_mode_u", "repeat");

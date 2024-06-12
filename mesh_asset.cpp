@@ -34,7 +34,7 @@ static void parse_tinyobj_material(const tinyobj::material_t &mat, const fs::pat
     if (!mat.diffuse_texname.empty()) {
         fs::path path = base_path / mat.diffuse_texname;
         std::unique_ptr<Texture> albedo_map = create_texture_from_image(3, true, ColorSpace::sRGB, path);
-        std::unique_ptr<LinearSampler> sampler = std::make_unique<LinearSampler>();
+        std::unique_ptr<EWASampler> sampler = std::make_unique<EWASampler>();
         std::unique_ptr<TextureField<3>> albedo = std::make_unique<TextureField<3>>(*albedo_map, std::move(sampler));
         asset.textures.push_back(std::move(albedo_map));
         asset.texture_names.push_back(mat.diffuse_texname);
@@ -454,7 +454,7 @@ create_texture_shader_field(const Texture &texture, int sampler_idx, const tinyg
         src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST ||
         src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR ||
         src_sampler.minFilter == TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR) {
-        dst_sampler = std::make_unique<LinearSampler>();
+        dst_sampler = std::make_unique<EWASampler>();
     } else {
         dst_sampler = std::make_unique<NearestSampler>();
     }
