@@ -11,6 +11,7 @@ struct ToneMapper
     virtual color3 operator()(color3 c) const = 0;
 };
 
+// ACES and AgX are mainly based on three.js implementation.
 // TODO: maybe an actual spectral rendering/color production workflow someday...
 // TODO: The default AgX look seems a bit flat? expected?
 // https://github.com/google/filament/blob/main/filament/src/ToneMapper.cpp
@@ -19,228 +20,57 @@ struct ToneMapper
 // https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
 // https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_rd/shaders/effects/tonemap.glsl
 // https://dev.epicgames.com/documentation/en-us/unreal-engine/color-grading-and-the-filmic-ToneMapper-in-unreal-engine
+// https://github.com/mrdoob/three.js/blob/dev/src/renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js
 
+// sRGB => XYZ => D65_2_D60 => AP1 => RRT_SAT
 // clang-format off
-static const mat3 Rec2020_to_XYZ((mat3() <<
-        0.6369530f, 0.1446169f, 0.1688558f,
-        0.2626983f, 0.6780088f, 0.0592929f,
-        0.0000000f, 0.0280731f, 1.0608272f)
+static const mat3 ACESInputMat((mat3() <<
+        0.59719, 0.35458, 0.04823,
+        0.07600, 0.90834, 0.01566,
+        0.02840, 0.13383, 0.83777)
 .finished());
 // clang-format on
 
+// ODT_SAT => XYZ => D60_2_D65 => sRGB
 // clang-format off
-static const mat3 XYZ_to_Rec2020((mat3() <<
-        1.7166634f, -0.3556733f, -0.2533681f,
-        -0.6666738f, 1.6164557f, 0.0157683f,
-        0.0176425f, -0.0427770f, 0.9422433f)
+static const mat3 ACESOutputMat((mat3() <<
+        1.60475, -0.53108, -0.07367,
+        -0.10208, 1.10813, -0.00605,
+        -0.00327, -0.07276, 1.07602)
 .finished());
 // clang-format on
 
-// clang-format off
-static const mat3 AP1_to_XYZ((mat3() <<
-        0.6624541811f, 0.1340042065f, 0.1561876870f,
-        0.2722287168f, 0.6740817658f, 0.0536895174f,
-        -0.0055746495f, 0.0040607335f, 1.0103391003f)
-.finished());
-// clang-format on
-
-// clang-format off
-static const mat3 XYZ_to_AP1((mat3() <<
-        1.6410233797f, -0.3248032942f, -0.2364246952f,
-        -0.6636628587f, 1.6153315917f, 0.0167563477f,
-        0.0117218943f, -0.0082844420f, 0.9883948585f)
-.finished());
-// clang-format on
-
-// clang-format off
-static const mat3 AP1_to_AP0((mat3() <<
-        0.6954522414f, 0.1406786965f, 0.1638690622f,
-        0.0447945634f, 0.8596711185f, 0.0955343182f,
-        -0.0055258826f, 0.0040252103f, 1.0015006723f)
-.finished());
-// clang-format on
-
-// clang-format off
-static const mat3 AP0_to_AP1((mat3() <<
-        1.4514393161f, -0.2365107469f, -0.2149285693f,
-        -0.0765537734f, 1.1762296998f, -0.0996759264f,
-        0.0083161484f, -0.0060324498f, 0.9977163014f)
-.finished());
-// clang-format on
-
-static const mat3 Rec2020_to_AP0 = AP1_to_AP0 * XYZ_to_AP1 * Rec2020_to_XYZ;
-
-static const mat3 AP1_to_Rec2020 = XYZ_to_Rec2020 * AP1_to_XYZ;
-
-static const color3 LUMINANCE_AP1(0.272229f, 0.674082f, 0.0536895f);
-
-inline float rgb_2_saturation(color3 rgb)
+// source: https://github.com/selfshadow/ltc_code/blob/master/webgl/shaders/ltc/ltc_blit.fs
+inline color3 RRTAndODTFit(color3 v)
 {
-    // Input:  ACES
-    // Output: OCES
-    constexpr float TINY = 1e-5f;
-    float mi = rgb.minCoeff();
-    float ma = rgb.maxCoeff();
-    return (std::max(ma, TINY) - std::max(mi, TINY)) / std::max(ma, 1e-2f);
-}
-
-inline float rgb_2_yc(color3 rgb)
-{
-    constexpr float ycRadiusWeight = 1.75f;
-
-    // Converts RGB to a luminance proxy, here called YC
-    // YC is ~ Y + K * Chroma
-    // Constant YC is a cone-shaped surface in RGB space, with the tip on the
-    // neutral axis, towards white.
-    // YC is normalized: RGB 1 1 1 maps to YC = 1
-    //
-    // ycRadiusWeight defaults to 1.75, although can be overridden in function
-    // call to rgb_2_yc
-    // ycRadiusWeight = 1 -> YC for pure cyan, magenta, yellow == YC for neutral
-    // of same value
-    // ycRadiusWeight = 2 -> YC for pure red, green, blue  == YC for  neutral of
-    // same value.
-
-    float r = rgb[0];
-    float g = rgb[1];
-    float b = rgb[2];
-
-    float chroma = std::sqrt(b * (b - g) + g * (g - r) + r * (r - b));
-
-    return (b + g + r + ycRadiusWeight * chroma) / 3.0f;
-}
-
-inline float sigmoid_shaper(float x)
-{
-    // Sigmoid function in the range 0 to 1 spanning -2 to +2.
-    float t = std::max(1.0f - std::abs(x / 2.0f), 0.0f);
-    float y = 1.0f + sgn(x) * (1.0f - t * t);
-    return y / 2.0f;
-}
-
-inline float glow_fwd(float ycIn, float glowGainIn, float glowMid)
-{
-    float glowGainOut;
-
-    if (ycIn <= 2.0f / 3.0f * glowMid) {
-        glowGainOut = glowGainIn;
-    } else if (ycIn >= 2.0f * glowMid) {
-        glowGainOut = 0.0f;
-    } else {
-        glowGainOut = glowGainIn * (glowMid / ycIn - 1.0f / 2.0f);
-    }
-
-    return glowGainOut;
-}
-
-inline float rgb_2_hue(color3 rgb)
-{
-    // Returns a geometric hue angle in degrees (0-360) based on RGB values.
-    // For neutral colors, hue is undefined and the function will return a quiet NaN value.
-    float hue = 0.0f;
-    // RGB triplets where RGB are equal have an undefined hue
-    if (!(rgb.x() == rgb.y() && rgb.y() == rgb.z())) {
-        hue = to_degree(std::atan2(std::sqrt(3.0f) * (rgb.y() - rgb.z()), 2.0f * rgb.x() - rgb.y() - rgb.z()));
-    }
-    return (hue < 0.0f) ? hue + 360.0f : hue;
-}
-
-inline float center_hue(float hue, float centerH)
-{
-    float hueCentered = hue - centerH;
-    if (hueCentered < -180.0f) {
-        hueCentered = hueCentered + 360.0f;
-    } else if (hueCentered > 180.0f) {
-        hueCentered = hueCentered - 360.0f;
-    }
-    return hueCentered;
-}
-
-inline color3 xyY_to_XYZ(color3 v)
-{
-    const float a = v.z() / std::max(v.y(), 1e-5f);
-    return color3{v.x() * a, v.z(), (1.0f - v.x() - v.y()) * a};
-}
-
-inline color3 XYZ_to_xyY(color3 v)
-{
-    float denom = std::max(v.x() + v.y() + v.z(), 1e-5f);
-    return {v.x() / denom, v.y() / denom, v.y()};
-}
-
-inline color3 darkSurround_to_dimSurround(color3 linearCV)
-{
-    constexpr float DIM_SURROUND_GAMMA = 0.9811f;
-
-    color3 XYZ = AP1_to_XYZ * linearCV.matrix();
-    color3 xyY = XYZ_to_xyY(XYZ);
-
-    xyY.z() = std::clamp(xyY.z(), 0.0f, (float)std::numeric_limits<float>::max());
-    xyY.z() = std::pow(xyY.z(), DIM_SURROUND_GAMMA);
-
-    XYZ = xyY_to_XYZ(xyY);
-    return XYZ_to_AP1 * XYZ.matrix();
+    color3 a = v * (v + 0.0245786) - 0.000090537;
+    color3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+    return a / b;
 }
 
 struct ACESToneMapper : public ToneMapper
 {
-    color3 operator()(color3 input) const final
+    ACESToneMapper(float exposure) : exposure(exposure) {}
+
+    color3 operator()(color3 v) const final
     {
-        // "Glow" module constants
-        constexpr float RRT_GLOW_GAIN = 0.05f;
-        constexpr float RRT_GLOW_MID = 0.08f;
+        // This exposure boost follows three.js implementation.
+        v *= exposure / 0.6;
 
-        // Red modifier constants
-        constexpr float RRT_RED_SCALE = 0.82f;
-        constexpr float RRT_RED_PIVOT = 0.03f;
-        constexpr float RRT_RED_HUE = 0.0f;
-        constexpr float RRT_RED_WIDTH = 135.0f;
+        v = ACESInputMat * v.matrix();
 
-        // Desaturation constants
-        constexpr float RRT_SAT_FACTOR = 0.96f;
-        constexpr float ODT_SAT_FACTOR = 0.93f;
+        // Apply RRT and ODT
+        v = RRTAndODTFit(v);
 
-        color3 ap0 = Rec2020_to_AP0 * input.matrix();
+        v = ACESOutputMat * v.matrix();
 
-        // Glow module
-        float saturation = rgb_2_saturation(ap0);
-        float ycIn = rgb_2_yc(ap0);
-        float s = sigmoid_shaper((saturation - 0.4f) / 0.2f);
-        float addedGlow = 1.0f + glow_fwd(ycIn, RRT_GLOW_GAIN * s, RRT_GLOW_MID);
-        ap0 *= addedGlow;
+        // Clamp to [0, 1]
+        v = clamp(v, color3::Zero(), color3::Ones());
 
-        // Red modifier
-        float hue = rgb_2_hue(ap0);
-        float centeredHue = center_hue(hue, RRT_RED_HUE);
-        float hueWeight = smoothstep(0.0f, 1.0f, 1.0f - std::abs(2.0f * centeredHue / RRT_RED_WIDTH));
-        hueWeight *= hueWeight;
-
-        ap0[0] += hueWeight * saturation * (RRT_RED_PIVOT - ap0[0]) * (1.0f - RRT_RED_SCALE);
-
-        // ACES to RGB rendering space
-        color3 ap1 = clamp((AP0_to_AP1 * ap0.matrix()).array(), color3::Zero(),
-                           color3::Constant(std::numeric_limits<float>::max()));
-
-        // Global desaturation
-        ap1 = lerp(color3(ap1.matrix().dot(LUMINANCE_AP1.matrix())), ap1, RRT_SAT_FACTOR);
-
-        // Fitting of RRT + ODT (RGB monitor 100 nits dim) from:
-        // https://github.com/colour-science/colour-unity/blob/master/Assets/Colour/Notebooks/CIECAM02_Unity.ipynb
-        constexpr float a = 2.785085f;
-        constexpr float b = 0.107772f;
-        constexpr float c = 2.936045f;
-        constexpr float d = 0.887122f;
-        constexpr float e = 0.806889f;
-        color3 rgbPost = (ap1 * (a * ap1 + b)) / (ap1 * (c * ap1 + d) + e);
-
-        // Apply gamma adjustment to compensate for dim surround
-        color3 linearCV = darkSurround_to_dimSurround(rgbPost);
-
-        // Apply desaturation to compensate for luminance difference
-        linearCV = lerp(color3(linearCV.matrix().dot(LUMINANCE_AP1.matrix())), linearCV, ODT_SAT_FACTOR);
-
-        return AP1_to_Rec2020 * linearCV.matrix();
+        return v;
     }
+
+    float exposure;
 };
 
 enum class AgXLook
@@ -255,9 +85,8 @@ inline color3 agxDefaultContrastApprox(color3 x)
 {
     color3 x2 = x * x;
     color3 x4 = x2 * x2;
-    color3 x6 = x4 * x2;
-    return -17.86f * x6 * x + 78.01f * x6 - 126.7f * x4 * x + 92.06f * x4 - 28.72f * x2 * x + 4.361f * x2 -
-           0.1718f * x + 0.002857f;
+
+    return +15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
 }
 
 // Adapted from https://iolite-engine.com/blog_posts/minimal_agx_implementation
@@ -312,6 +141,22 @@ static const mat3 AgXOutsetMatrixInv((mat3() <<
 
 static const mat3 AgXOutsetMatrix = AgXOutsetMatrixInv.inverse();
 
+// clang-format off
+static const mat3 LINEAR_REC2020_TO_LINEAR_SRGB ((mat3() <<
+        1.6605, -0.5876, -0.0728,
+        -0.1246, 1.1329, -0.0083,
+        -0.0182, -0.1006, 1.1187)
+.finished());
+// clang-format on
+
+// clang-format off
+static const mat3 LINEAR_SRGB_TO_LINEAR_REC2020  ((mat3() <<
+        0.6274, 0.3293, 0.0433,
+        0.0691, 0.9195, 0.0113,
+        0.0164, 0.0880, 0.8956)
+.finished());
+// clang-format on
+
 // LOG2_MIN      = -10.0
 // LOG2_MAX      =  +6.5
 // MIDDLE_GRAY   =  0.18
@@ -320,12 +165,16 @@ const float AgxMaxEv = 4.026069f;  // log2(pow(2, LOG2_MAX) * MIDDLE_GRAY)
 
 struct AgXToneMapper : public ToneMapper
 {
-    explicit AgXToneMapper(AgXLook look = AgXLook::None) : look(look) {}
+    AgXToneMapper(float exposure = 1.0f, AgXLook look = AgXLook::None) : exposure(exposure), look(look) {}
 
     color3 operator()(color3 v) const final
     {
+        v *= exposure;
+
         // Ensure no negative values
         v = v.cwiseMax(0.0f);
+
+        v = LINEAR_SRGB_TO_LINEAR_REC2020 * v.matrix();
 
         v = AgXInsetMatrix * v.matrix();
 
@@ -347,17 +196,51 @@ struct AgXToneMapper : public ToneMapper
         // Linearize
         v = pow(v.cwiseMax(color3(0.0f)), 2.2f);
 
+        v = LINEAR_REC2020_TO_LINEAR_SRGB * v.matrix();
+
+        // Gamut mapping. Simple clamp for now.
+        v = clamp(v, color3::Zero(), color3::Ones());
+
         return v;
     }
 
+    float exposure;
     AgXLook look;
+};
+
+struct KhronosPBRNeutralToneMapper : public ToneMapper
+{
+    explicit KhronosPBRNeutralToneMapper(float exposure = 1.0f) : exposure(exposure) {}
+
+    color3 operator()(color3 v) const final
+    {
+        v *= exposure;
+
+        constexpr float F90 = 0.04f;
+        constexpr float Ks = 0.8f - F90;
+        constexpr float Kd = 0.15f;
+
+        float x = v.minCoeff();
+        float f = x <= 2.0f * F90 ? (x - sqr(x) / (4.0f * F90)) : F90;
+        float p = std::max(std::max(v[0] - f, v[1] - f), v[2] - f);
+        float pn = 1.0f - sqr(1.0f - Ks) / (p + 1.0f - 2.0f * Ks);
+        float g = 1.0f / (Kd * (p - pn) + 1.0f);
+        if (p <= Ks) {
+            return v - f;
+        } else {
+            return (v - f) * (pn / p) * g + color3::Constant(pn) * (1.0f - g);
+        }
+    }
+
+    float exposure;
 };
 
 inline std::unique_ptr<ToneMapper> create_tone_mapper(const ConfigArgs &args)
 {
+    float exposure = args.load_float("exposure", 1.0f);
     std::string type = args.load_string("type");
     if (type == "aces") {
-        return std::make_unique<ACESToneMapper>();
+        return std::make_unique<ACESToneMapper>(exposure);
     } else if (type == "agx") {
         std::string look_str = args.load_string("look");
         AgXLook look = AgXLook::None;
@@ -371,7 +254,9 @@ inline std::unique_ptr<ToneMapper> create_tone_mapper(const ConfigArgs &args)
             fprintf(stderr, "Invalid AgX tone mapper look [%s]", look_str.c_str());
             std::abort();
         }
-        return std::make_unique<AgXToneMapper>(look);
+        return std::make_unique<AgXToneMapper>(exposure, look);
+    } else if (type == "khronos_pbr_neutral") {
+        return std::make_unique<KhronosPBRNeutralToneMapper>();
     }
     fprintf(stderr, "Invalid tone mapper type [%s]", type.c_str());
     std::abort();

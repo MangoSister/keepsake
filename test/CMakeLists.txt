@@ -58,6 +58,7 @@ set(KS_SRC
   ../render_target.h
   ../render_target.cpp
   ../tonemap.h
+  ../tonemap.cpp
   ../scene.h
   ../scene.cpp  
   ../subsurface.h
