@@ -68,6 +68,7 @@ set(KS_SRC
   ../ray.h
   ../ray.cpp  
   ../rng.h
+  ../rng.cpp
   ../image_util.h
   ../image_util.cpp
   # ../vulkan/ksvk.h
@@ -77,6 +78,8 @@ set(KS_SRC
   ../sat.h
   ../small_pt.h
   ../small_pt.cpp
+  ../colormap.h
+  ../colormap.cpp
   ../yui/sol/config.hpp
   ../yui/sol/forward.hpp
   ../yui/sol/sol.hpp    
