@@ -112,12 +112,6 @@ struct MeshTriLight : public Light
     bool delta_position() const { return false; };
     bool delta_direction() const { return false; };
 
-    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
-    {
-        // TODO
-        ASSERT(false);
-        return color3::Zero();
-    }
     color3 eval(const Intersection &it) const;
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
