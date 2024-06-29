@@ -84,7 +84,7 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
             // Unidirectional (bsdf sampling) strategy
             for (auto [light_index, sky] : in.light_sampler->get_sky_lights()) {
                 vec3 wi = ray.dir.normalized();
-                color3 Le = sky->eval(ray.origin, wi);
+                color3 Le = sky->eval(wi);
                 if (bounce == 0) {
                     if (in.include_background) {
                         L += beta * Le;

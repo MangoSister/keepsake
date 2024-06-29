@@ -40,7 +40,7 @@ struct SkyLight : public Light
     bool delta_direction() const { return false; };
 
     // NOTE: the shading point is ignored for skylight
-    color3 eval(const vec3 &p_shade, const vec3 &wi) const;
+    color3 eval(const vec3 &wi) const;
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;

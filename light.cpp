@@ -47,7 +47,7 @@ SkyLight::SkyLight(const color3 &ambient)
     distrib = DistribTable2D(&lum, map.ures, map.vres);
 }
 
-color3 SkyLight::eval(const vec3 &p, const vec3 &wi) const
+color3 SkyLight::eval(const vec3 &wi) const
 {
     vec3 wi_local = l2w.inverse().direction(wi);
 
@@ -98,7 +98,7 @@ color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &wi_dist, 
     }
     wi = l2w.direction(wi_local);
     wi_dist = inf;
-    return eval(p, wi) / pdf;
+    return eval(wi) / pdf;
 }
 
 float SkyLight::pdf(const vec3 &p, const vec3 &wi, float wi_dist) const
@@ -136,7 +136,7 @@ color3 SkyLight::power(const AABB3 &scene_bound) const
         for (int col = 0; col < map.ures; ++col) {
             float phi = (col + 0.5f) / (float)map.ures * two_pi;
             vec3 dir = to_cartesian(phi, theta);
-            row_sum += eval(vec3::Zero(), dir) * sin_theta;
+            row_sum += eval(dir) * sin_theta;
         }
         for (int c = 0; c < 3; ++c)
             sum[c].fetch_add(row_sum[c]);
