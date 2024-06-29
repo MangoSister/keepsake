@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assertion.h"
+#include "hash.h"
 #include "maths.h"
 #include <array>
 #include <cstdint>
