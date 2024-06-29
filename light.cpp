@@ -47,7 +47,7 @@ SkyLight::SkyLight(const color3 &ambient)
     distrib = DistribTable2D(&lum, map.ures, map.vres);
 }
 
-color3 SkyLight::eval(const vec3 &p, const vec3 &wi, float &wi_dist) const
+color3 SkyLight::eval(const vec3 &p, const vec3 &wi) const
 {
     vec3 wi_local = l2w.inverse().direction(wi);
 
@@ -73,7 +73,6 @@ color3 SkyLight::eval(const vec3 &p, const vec3 &wi, float &wi_dist) const
     L += t[0] * t[1] * map(uv1[0], uv1[1]);
     L *= strength;
 
-    wi_dist = inf;
     return L;
 }
 
@@ -98,7 +97,8 @@ color3 SkyLight::sample(const vec3 &p, const vec2 &u, vec3 &wi, float &wi_dist, 
         return color3::Zero();
     }
     wi = l2w.direction(wi_local);
-    return eval(p, wi, wi_dist) / pdf;
+    wi_dist = inf;
+    return eval(p, wi) / pdf;
 }
 
 float SkyLight::pdf(const vec3 &p, const vec3 &wi, float wi_dist) const
@@ -136,8 +136,7 @@ color3 SkyLight::power(const AABB3 &scene_bound) const
         for (int col = 0; col < map.ures; ++col) {
             float phi = (col + 0.5f) / (float)map.ures * two_pi;
             vec3 dir = to_cartesian(phi, theta);
-            float wi_dist;
-            row_sum += eval(vec3::Zero(), dir, wi_dist) * sin_theta;
+            row_sum += eval(vec3::Zero(), dir) * sin_theta;
         }
         for (int c = 0; c < 3; ++c)
             sum[c].fetch_add(row_sum[c]);
@@ -148,12 +147,6 @@ color3 SkyLight::power(const AABB3 &scene_bound) const
     float scene_radius = 0.5f * scene_bound.extents().norm();
     Phi *= pi * sqr(scene_radius);
     return Phi;
-}
-
-color3 DirectionalLight::eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
-{
-    wi_dist = inf;
-    return color3::Zero();
 }
 
 color3 DirectionalLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const
@@ -170,12 +163,6 @@ color3 DirectionalLight::power(const AABB3 &scene_bound) const
 {
     float scene_radius = 0.5f * scene_bound.extents().norm();
     return L * pi * sqr(scene_radius);
-}
-
-color3 PointLight::eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const
-{
-    wi_dist = (pos - p_shade).norm();
-    return color3::Zero();
 }
 
 color3 PointLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const

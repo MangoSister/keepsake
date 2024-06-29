@@ -25,7 +25,6 @@ struct Light
     bool delta() const { return delta_direction() || delta_position(); };
 
     // NOTE: the point passed in is the shading point
-    virtual color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const = 0;
     // NOTE: return throughput weight: (L / pdf)
     virtual color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const = 0;
     virtual float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const = 0;
@@ -41,7 +40,7 @@ struct SkyLight : public Light
     bool delta_direction() const { return false; };
 
     // NOTE: the shading point is ignored for skylight
-    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
+    color3 eval(const vec3 &p_shade, const vec3 &wi) const;
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
@@ -61,7 +60,6 @@ struct DirectionalLight : public Light
 
     bool delta_position() const { return false; };
     bool delta_direction() const { return true; };
-    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     // NOTE: return throughput weight: (L / pdf)
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
@@ -78,7 +76,6 @@ struct PointLight : public Light
 
     bool delta_position() const { return true; };
     bool delta_direction() const { return false; };
-    color3 eval(const vec3 &p_shade, const vec3 &wi, float &wi_dist) const;
     color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const;
     float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const;
     color3 power(const AABB3 &scene_bound) const;
