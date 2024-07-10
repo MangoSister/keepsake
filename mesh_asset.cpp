@@ -462,7 +462,65 @@ create_texture_shader_field(const Texture &texture, int sampler_idx, const tinyg
                                              scale);
 }
 
-void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials)
+static void traverse_gltf_scene_graph(const tinygltf::Model &model,
+                                      const std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
+                                                               const Transform &to_world)> &callback)
+{
+    auto dfs = [&](int node_idx, Transform transform, auto &self) -> bool {
+        const auto &node = model.nodes[node_idx];
+
+        Transform local_transform;
+        if (!node.matrix.empty()) {
+            mat4 m;
+            std::copy(node.matrix.begin(), node.matrix.end(), m.data());
+            local_transform = Transform(m);
+        } else {
+            vec3 scale = vec3::Ones();
+            quat rotation = quat::Identity();
+            vec3 translation = vec3::Zero();
+            if (!node.scale.empty()) {
+                scale[0] = node.scale[0];
+                scale[1] = node.scale[1];
+                scale[2] = node.scale[2];
+            }
+            if (!node.rotation.empty()) {
+                // GLTF rotations are stored as XYZW quaternions
+                rotation.w() = node.rotation[3];
+                rotation.x() = node.rotation[0];
+                rotation.y() = node.rotation[1];
+                rotation.z() = node.rotation[2];
+            }
+            if (!node.translation.empty()) {
+                translation[0] = node.translation[0];
+                translation[1] = node.translation[1];
+                translation[2] = node.translation[2];
+            }
+            local_transform = Transform(scale_rotate_translate(scale, rotation, translation));
+        }
+
+        transform = transform * local_transform;
+
+        if (!callback(model, node, transform)) {
+            return false;
+        }
+
+        for (int child_idx : node.children) {
+            if (!self(child_idx, transform, self)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    for (int root : model.scenes[model.defaultScene].nodes) {
+        Transform transform;
+        if (!dfs(root, transform, dfs)) {
+            break;
+        }
+    }
+}
+
+static tinygltf::Model load_gltf_from_file(const fs::path &path)
 {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
@@ -482,6 +540,21 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
     if (!warn.empty()) {
         std::cout << "GLTF Loader Warning: " << warn << "\n";
     }
+    return model;
+}
+
+void traverse_gltf_scene_graph(const fs::path &path,
+                               const std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
+                                                        const Transform &to_world)> &callback)
+{
+    tinygltf::Model model = load_gltf_from_file(path);
+    traverse_gltf_scene_graph(model, callback);
+}
+
+void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials)
+{
+    tinygltf::Model model = load_gltf_from_file(path);
+
     const std::vector<tinygltf::Mesh> &src_meshes = model.meshes;
     const std::vector<tinygltf::Material> &src_materials = model.materials;
     const std::vector<tinygltf::Texture> &src_textures = model.textures;
@@ -817,54 +890,14 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
         prototypes[i] = std::move(mesh_asset);
     }
 
-    auto dfs_add_instance = [&](int node_idx, Transform transform, auto &self) -> void {
-        const auto &node = model.nodes[node_idx];
-
-        Transform local_transform;
-        if (!node.matrix.empty()) {
-            mat4 m;
-            std::copy(node.matrix.begin(), node.matrix.end(), m.data());
-            local_transform = Transform(m);
-        } else {
-            vec3 scale = vec3::Ones();
-            quat rotation = quat::Identity();
-            vec3 translation = vec3::Zero();
-            if (!node.scale.empty()) {
-                scale[0] = node.scale[0];
-                scale[1] = node.scale[1];
-                scale[2] = node.scale[2];
-            }
-            if (!node.rotation.empty()) {
-                // GLTF rotations are stored as XYZW quaternions
-                rotation.w() = node.rotation[3];
-                rotation.x() = node.rotation[0];
-                rotation.y() = node.rotation[1];
-                rotation.z() = node.rotation[2];
-            }
-            if (!node.translation.empty()) {
-                translation[0] = node.translation[0];
-                translation[1] = node.translation[1];
-                translation[2] = node.translation[2];
-            }
-            local_transform = Transform(scale_rotate_translate(scale, rotation, translation));
-        }
-
-        transform = transform * local_transform;
-
-        if (node.mesh >= 0) {
-            uint32_t prototype = model.nodes[node_idx].mesh;
-            instances.push_back({prototype, transform});
-        }
-
-        for (int child_idx : node.children) {
-            self(child_idx, transform, self);
-        }
-    };
-
-    for (int root : model.scenes[model.defaultScene].nodes) {
-        Transform transform;
-        dfs_add_instance(root, transform, dfs_add_instance);
-    }
+    traverse_gltf_scene_graph(model,
+                              [&](const tinygltf::Model &model, const tinygltf::Node &node, const Transform &to_world) {
+                                  if (node.mesh >= 0) {
+                                      uint32_t prototype = node.mesh;
+                                      instances.push_back({prototype, to_world});
+                                  }
+                                  return true;
+                              });
 
     return;
 }

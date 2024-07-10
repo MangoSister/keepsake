@@ -5,9 +5,16 @@
 #include "scene.h"
 #include "texture.h"
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <span>
 namespace fs = std::filesystem;
+
+namespace tinygltf
+{
+class Model;
+class Node;
+} // namespace tinygltf
 
 namespace ks
 {
@@ -36,6 +43,10 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args);
 // Convenient function: create a scene from a single mesh asset.
 Scene create_scene_from_mesh_asset(const MeshAsset &mesh_asset, const EmbreeDevice &device);
 void assign_material_list(Scene &scene, const ConfigArgs &args_materials);
+
+void traverse_gltf_scene_graph(const fs::path &path,
+                               const std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
+                                                        const Transform &to_world)> &callback);
 
 struct CompoundMeshAsset : public Configurable
 {

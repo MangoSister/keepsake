@@ -190,23 +190,7 @@ vec2 MeshGeometry::interpolate_texcoord(uint32_t prim_id, const vec2 &bary) cons
     return tc.head(2);
 }
 
-vec3 MeshGeometry::compute_geometry_normal(uint32_t prim_id) const
-{
-    int i0 = data->indices[3 * prim_id];
-    int i1 = data->indices[3 * prim_id + 1];
-    int i2 = data->indices[3 * prim_id + 2];
-    vec3 v0 = data->get_pos(i0);
-    vec3 v1 = data->get_pos(i1);
-    vec3 v2 = data->get_pos(i2);
-
-    // NOTE: somehow this line is bugged in release...??
-    // vec3 ng = ((v1 - v0).cross(v2 - v1)).normalized();
-    vec3 e01 = v1 - v0;
-    vec3 e12 = v2 - v1;
-    vec3 ng = e01.cross(e12);
-    ng.normalize();
-    return ng;
-}
+vec3 MeshGeometry::compute_geometry_normal(uint32_t prim_id) const { return data->compute_geometry_normal(prim_id); }
 
 vec3 MeshGeometry::interpolate_vertex_normal(uint32_t prim_id, const vec2 &bary, vec3 *ng_out) const
 {

@@ -182,7 +182,8 @@ inline void filter_backface_culling(const RTCFilterFunctionNArguments *args)
 
 inline void filter_local_geometry(const RTCFilterFunctionNArguments *args, void *payload)
 {
-    uint32_t geom_id = *(uint32_t *)payload;
+    uint32_t geom_id = ((uint32_t *)payload)[0];
+    uint32_t inst_id = ((uint32_t *)payload)[1];
 
     uint32_t N = args->N;
     int *valid = args->valid;
@@ -190,8 +191,10 @@ inline void filter_local_geometry(const RTCFilterFunctionNArguments *args, void 
     RTCHitN *hit = args->hit;
     for (uint32_t i = 0; i < N; ++i) {
         if (valid[i] != 0) {
-            if (geom_id != RTCHitN_geomID(hit, N, i))
+            if (geom_id != RTCHitN_geomID(hit, N, i) ||
+                (inst_id != (uint32_t)(~0) && inst_id != RTCHitN_instID(hit, N, i, 0))) {
                 valid[i] = 0;
+            }
         }
     }
 }

@@ -60,14 +60,27 @@ void SubScene::create_rtc_scene(const EmbreeDevice &device)
     rtcCommitScene(rtcscene);
 }
 
+AABB3 SubScene::bound() const
+{
+    ASSERT(rtcscene);
+    RTCBounds b;
+    rtcGetSceneBounds(rtcscene, &b);
+    return AABB3(vec3(b.lower_x, b.lower_y, b.lower_z), vec3(b.upper_x, b.upper_y, b.upper_z));
+}
+
 Scene::~Scene()
 {
     if (rtcscene) {
         rtcReleaseScene(rtcscene);
         rtcscene = nullptr;
-        for (int i = 0; i < (int)instances.size(); ++i) {
-            rtcReleaseGeometry(instances[i].rtgeom_inst);
-        }
+    }
+    for (auto [inst_id, local_rtcscene] : per_instance_intersectors) {
+        rtcReleaseScene(local_rtcscene);
+    }
+    per_instance_intersectors.clear();
+
+    for (int i = 0; i < (int)instances.size(); ++i) {
+        rtcReleaseGeometry(instances[i].rtgeom_inst);
     }
 }
 
@@ -109,7 +122,8 @@ void Scene::add_subscene(SubScene &&subscene)
     subscenes.emplace_back(std::make_unique<SubScene>(std::move(subscene)));
 }
 
-void Scene::add_instance(const EmbreeDevice &device, uint32_t subscene_id, const Transform &transform)
+void Scene::add_instance(const EmbreeDevice &device, uint32_t subscene_id, const Transform &transform,
+                         bool local_intersector)
 {
     ASSERT(subscene_id < subscenes.size());
     RTCGeometry rtcgeom_inst = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_INSTANCE);
@@ -118,6 +132,13 @@ void Scene::add_instance(const EmbreeDevice &device, uint32_t subscene_id, const
     rtcCommitGeometry(rtcgeom_inst);
 
     instances.push_back({subscene_id, transform, rtcgeom_inst});
+
+    if (local_intersector) {
+        RTCScene local_rtcscene = rtcNewScene(device);
+        // Later useful for different custom precomputation operations.
+        rtcSetSceneFlags(local_rtcscene, RTC_SCENE_FLAG_CONTEXT_FILTER_FUNCTION);
+        per_instance_intersectors.insert({(uint32_t)instances.size() - 1, local_rtcscene});
+    }
 }
 
 void Scene::create_rtc_scene(const EmbreeDevice &device)
@@ -134,9 +155,13 @@ void Scene::create_rtc_scene(const EmbreeDevice &device)
     for (int j = 0; j < instances.size(); ++j) {
         rtcAttachGeometry(rtcscene, instances[j].rtgeom_inst);
     }
-
     // build bvh, etc.
     rtcCommitScene(rtcscene);
+
+    for (auto [inst_id, local_rtcscene] : per_instance_intersectors) {
+        rtcAttachGeometry(local_rtcscene, instances[inst_id].rtgeom_inst);
+        rtcCommitScene(local_rtcscene);
+    }
 }
 
 AABB3 Scene::bound() const
@@ -216,6 +241,51 @@ bool Scene::occlude1(const Ray &ray, const IntersectContext &ctx) const
 
     RTCRay rtcray = spawn_ray(ray.origin, ray.dir, ray.tmin, ray.tmax);
     return ks::occlude1(rtcscene, ctx, rtcray);
+}
+
+bool Scene::intersect1_local(uint32_t inst_id, const Ray &ray, SceneHit &hit, const IntersectContext &ctx) const
+{
+    ctx.add_filter(filter_opacity_map, (void *)this);
+
+    RTCRayHit rayhit = spawn_rtcrayhit(ray.origin, ray.dir, ray.tmin, ray.tmax);
+
+    RTCScene local_rtcscene = per_instance_intersectors.at(inst_id);
+
+    if (!ks::intersect1(local_rtcscene, ctx, rayhit)) {
+        return false;
+    }
+
+    // Use the original inst_id in the global scene.
+    hit.inst_id = inst_id;
+    hit.subscene_id = instances[inst_id].prototype;
+    // geom_id and prim_id are fine.
+    hit.geom_id = rayhit.hit.geomID;
+    hit.prim_id = rayhit.hit.primID;
+
+    const SubScene &subscene = *subscenes[hit.subscene_id];
+    const Geometry &geom = *subscene.geometries[hit.geom_id];
+    const Transform &transform = instances[inst_id].transform;
+
+    hit.it = geom.compute_intersection(rayhit, ray, transform);
+
+    if (!subscene.materials.empty()) {
+        hit.material = subscene.materials[rayhit.hit.geomID];
+        if (hit.material->normal_map) {
+            hit.material->normal_map->apply(hit.it);
+        }
+    }
+
+    return true;
+}
+
+bool Scene::occlude1_local(uint32_t inst_id, const Ray &ray, const IntersectContext &ctx) const
+{
+    ctx.add_filter(filter_opacity_map, (void *)this);
+
+    RTCScene local_rtcscene = per_instance_intersectors.at(inst_id);
+
+    RTCRay rtcray = spawn_ray(ray.origin, ray.dir, ray.tmin, ray.tmax);
+    return ks::occlude1(local_rtcscene, ctx, rtcray);
 }
 
 const Transform &Scene::get_instance_transform(uint32_t inst_id) const { return instances[inst_id].transform; }

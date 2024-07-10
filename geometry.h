@@ -42,6 +42,24 @@ struct MeshData
         return vec3(vertex_normals[offset], vertex_normals[offset + 1], vertex_normals[offset + 2]);
     }
 
+    vec3 compute_geometry_normal(uint32_t prim_id) const
+    {
+        int i0 = indices[3 * prim_id];
+        int i1 = indices[3 * prim_id + 1];
+        int i2 = indices[3 * prim_id + 2];
+        vec3 v0 = get_pos(i0);
+        vec3 v1 = get_pos(i1);
+        vec3 v2 = get_pos(i2);
+
+        // NOTE: somehow this line is bugged in release...??
+        // vec3 ng = ((v1 - v0).cross(v2 - v1)).normalized();
+        vec3 e01 = v1 - v0;
+        vec3 e12 = v2 - v1;
+        vec3 ng = e01.cross(e12);
+        ng.normalize();
+        return ng;
+    }
+
     // When the buffer will be used as a vertex buffer (RTC_BUFFER_TYPE_VER-
     // TEX and RTC_BUFFER_TYPE_VERTEX_ATTRIBUTE), the last buffer element must
     // be readable using 16-byte SSE load instructions, thus padding the last element is

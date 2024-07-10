@@ -31,6 +31,7 @@ struct SubScene
     SubScene &operator=(SubScene &&other);
 
     void create_rtc_scene(const EmbreeDevice &device);
+    AABB3 bound() const;
 
     std::vector<std::unique_ptr<Geometry>> geometries;
     std::vector<const Material *> materials;
@@ -53,11 +54,15 @@ struct Scene
     Scene &operator=(Scene &&other);
 
     void add_subscene(SubScene &&subscene);
-    void add_instance(const EmbreeDevice &device, uint32_t subscene_id, const Transform &transform);
+    void add_instance(const EmbreeDevice &device, uint32_t subscene_id, const Transform &transform,
+                      bool local_intersector = false);
     void create_rtc_scene(const EmbreeDevice &device);
     AABB3 bound() const;
     bool intersect1(const Ray &ray, SceneHit &hit, const IntersectContext &ctx = IntersectContext()) const;
     bool occlude1(const Ray &ray, const IntersectContext &ctx = IntersectContext()) const;
+    bool intersect1_local(uint32_t inst_id, const Ray &ray, SceneHit &hit,
+                          const IntersectContext &ctx = IntersectContext()) const;
+    bool occlude1_local(uint32_t inst_id, const Ray &ray, const IntersectContext &ctx = IntersectContext()) const;
 
     // Convenience methods
     const Transform &get_instance_transform(uint32_t inst_id) const;
@@ -69,6 +74,12 @@ struct Scene
 
     std::vector<std::unique_ptr<SubScene>> subscenes;
     std::vector<SubSceneInstance> instances;
+
+    // Follow Blender and create a dedicated "local" intersector for each subsurface object or object with similar
+    // needs: https://developer.blender.org/docs/features/cycles/bvh/
+    // (inst_id, local_scene)
+    std::unordered_map<uint32_t, RTCScene> per_instance_intersectors;
+
     // TODO: instanced mesh lights
     std::vector<std::unique_ptr<MeshLightShared>> mesh_lights;
 
@@ -79,6 +90,7 @@ struct LocalGeometry
 {
     const Scene *scene = nullptr;
     uint32_t geom_id = 0;
+    uint32_t inst_id = (uint32_t)(~0);
 
     bool intersect1(const Ray &ray, SceneHit &hit) const;
 };
