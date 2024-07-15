@@ -551,7 +551,7 @@ void traverse_gltf_scene_graph(const fs::path &path,
     traverse_gltf_scene_graph(model, callback);
 }
 
-void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials)
+void CompoundMeshAsset::load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options)
 {
     tinygltf::Model model = load_gltf_from_file(path);
 
@@ -564,7 +564,7 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
     const std::vector<tinygltf::BufferView> &bufferviews = model.bufferViews;
     const std::vector<tinygltf::Accessor> &accessors = model.accessors;
 
-    if (load_materials) {
+    if (load_material_options.enable) {
         // Determine color spaces for all texture images.
         std::vector<ColorSpace> colorspaces;
         colorspaces.resize(src_images.size(), ColorSpace::Linear);
@@ -665,7 +665,7 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
             // interface correctly.
             mesh_data.twosided = true;
 
-            if (load_materials) {
+            if (load_material_options.enable) {
                 // Try our best to convert to PrincipledBSDF....some features are not supported yet or behave
                 // differently.
                 // TODO: support a lot of features such as:
@@ -681,38 +681,49 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 // mesh_data.twosided = src.doubleSided;
 
                 auto dst_mat = std::make_unique<Material>();
-                auto dst_bsdf = std::make_unique<PrincipledBSDF>();
-                dst_mat->bsdf = dst_bsdf.get();
+                // TODO: refactor loading different types of BSDFs...
+                std::unique_ptr<PrincipledBSDF> dst_bsdf;
+                std::unique_ptr<PrincipledBRDF> dst_brdf;
+                if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                    dst_bsdf = std::make_unique<PrincipledBSDF>();
+                    dst_mat->bsdf = dst_bsdf.get();
+                } else {
+                    dst_brdf = std::make_unique<PrincipledBRDF>();
+                    dst_mat->bsdf = dst_brdf.get();
+                }
 
-                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_emissive_strength/README.md
-                float emissive_strength = 1.0f;
-                if (auto it = src.extensions.find("KHR_materials_emissive_strength"); it != src.extensions.end()) {
-                    const auto &emissive_strength_ = it->second.Get("emissiveStrength");
-                    if (emissive_strength_.Type() == tinygltf::REAL_TYPE ||
-                        emissive_strength_.Type() == tinygltf::INT_TYPE) {
-                        emissive_strength = emissive_strength_.GetNumberAsDouble();
-                    } else {
-                        if (emissive_strength_.Type() != tinygltf::NULL_TYPE) {
-                            fprintf(stderr, "Unexpected ior value type from KHR_materials_ior!\n");
+                if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                    // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_emissive_strength/README.md
+                    float emissive_strength = 1.0f;
+                    if (auto it = src.extensions.find("KHR_materials_emissive_strength"); it != src.extensions.end()) {
+                        const auto &emissive_strength_ = it->second.Get("emissiveStrength");
+                        if (emissive_strength_.Type() == tinygltf::REAL_TYPE ||
+                            emissive_strength_.Type() == tinygltf::INT_TYPE) {
+                            emissive_strength = emissive_strength_.GetNumberAsDouble();
+                        } else {
+                            if (emissive_strength_.Type() != tinygltf::NULL_TYPE) {
+                                fprintf(stderr, "Unexpected ior value type from KHR_materials_ior!\n");
+                            }
                         }
                     }
-                }
-                if (src.emissiveTexture.index >= 0) {
-                    const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
-                    auto [uv_scale, uv_offset] = get_texture_transform(src.emissiveTexture);
-                    dst_bsdf->emissive = create_texture_shader_field<3>(
-                        *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
-                        emissive_strength * color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]),
-                        {}, uv_scale, uv_offset);
-                } else {
-                    dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
-                        emissive_strength *
-                        color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
-                }
-                // TODO: check black texture?
-                if (emissive_strength > 0.0f &&
-                    (src.emissiveFactor[0] > 0.0f || src.emissiveFactor[1] > 0.0f || src.emissiveFactor[2] > 0.0f)) {
-                    dst_mat->emission = dst_bsdf->emissive.get();
+                    if (src.emissiveTexture.index >= 0) {
+                        const auto &emissive_map = textures[src_textures[src.emissiveTexture.index].source];
+                        auto [uv_scale, uv_offset] = get_texture_transform(src.emissiveTexture);
+                        dst_bsdf->emissive = create_texture_shader_field<3>(
+                            *emissive_map, src_textures[src.emissiveTexture.index].sampler, model,
+                            emissive_strength *
+                                color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]),
+                            {}, uv_scale, uv_offset);
+                    } else {
+                        dst_bsdf->emissive = std::make_unique<ConstantField<color3>>(
+                            emissive_strength *
+                            color3(src.emissiveFactor[0], src.emissiveFactor[1], src.emissiveFactor[2]));
+                    }
+                    // TODO: check black texture?
+                    if (emissive_strength > 0.0f && (src.emissiveFactor[0] > 0.0f || src.emissiveFactor[1] > 0.0f ||
+                                                     src.emissiveFactor[2] > 0.0f)) {
+                        dst_mat->emission = dst_bsdf->emissive.get();
+                    }
                 }
 
                 std::unique_ptr<OpacityMap> om;
@@ -723,10 +734,15 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                 if (pbr.baseColorTexture.index >= 0) {
                     const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];
                     auto [uv_scale, uv_offset] = get_texture_transform(pbr.baseColorTexture);
-                    dst_bsdf->basecolor = create_texture_shader_field<3>(
+                    auto bc = create_texture_shader_field<3>(
                         *basecolor_map, src_textures[pbr.baseColorTexture.index].sampler, model,
                         color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]), {}, uv_scale,
                         uv_offset);
+                    if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                        dst_bsdf->basecolor = std::move(bc);
+                    } else {
+                        dst_brdf->basecolor = std::move(bc);
+                    }
                     if (om) {
                         ASSERT(basecolor_map->num_channels == 4); // Must be rgba
                         om->map = create_texture_shader_field<1>(
@@ -734,8 +750,13 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                             color<1>(pbr.baseColorFactor[3]), arri<1>(3), uv_scale, uv_offset);
                     }
                 } else {
-                    dst_bsdf->basecolor = std::make_unique<ConstantField<color3>>(
+                    auto bc = std::make_unique<ConstantField<color3>>(
                         color3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
+                    if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                        dst_bsdf->basecolor = std::move(bc);
+                    } else {
+                        dst_brdf->basecolor = std::move(bc);
+                    }
                     if (om) {
                         om->map = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.baseColorFactor[3]));
                     }
@@ -750,31 +771,47 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                     // roughness to be encoded in the green (G) channel of the same image.
                     const auto &mr_map = textures[src_textures[pbr.metallicRoughnessTexture.index].source];
                     auto [uv_scale, uv_offset] = get_texture_transform(pbr.metallicRoughnessTexture);
-                    dst_bsdf->roughness = create_texture_shader_field<1>(
+                    auto rough = create_texture_shader_field<1>(
                         *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model,
                         color<1>(pbr.roughnessFactor), arri<1>(1), uv_scale, uv_offset);
-                    dst_bsdf->metallic = create_texture_shader_field<1>(
+                    auto metal = create_texture_shader_field<1>(
                         *mr_map, src_textures[pbr.metallicRoughnessTexture.index].sampler, model,
                         color<1>(pbr.metallicFactor), arri<1>(2), uv_scale, uv_offset);
-                } else {
-                    dst_bsdf->roughness = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.roughnessFactor));
-                    dst_bsdf->metallic = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.metallicFactor));
-                }
-
-                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md
-                if (auto it = src.extensions.find("KHR_materials_ior"); it != src.extensions.end()) {
-                    const auto &ior_ = it->second.Get("ior");
-                    if (ior_.Type() == tinygltf::REAL_TYPE || ior_.Type() == tinygltf::INT_TYPE) {
-                        dst_bsdf->ior =
-                            std::make_unique<ConstantField<color<1>>>(color<1>((float)ior_.GetNumberAsDouble()));
+                    if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                        dst_bsdf->roughness = std::move(rough);
+                        dst_bsdf->metallic = std::move(metal);
                     } else {
-                        if (ior_.Type() != tinygltf::NULL_TYPE) {
-                            fprintf(stderr, "Unexpected ior value type from KHR_materials_ior!\n");
-                        }
-                        dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
+                        dst_brdf->roughness = std::move(rough);
+                        dst_brdf->metallic = std::move(metal);
                     }
                 } else {
-                    dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
+                    auto rough = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.roughnessFactor));
+                    auto metal = std::make_unique<ConstantField<color<1>>>(color<1>(pbr.metallicFactor));
+                    if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                        dst_bsdf->roughness = std::move(rough);
+                        dst_bsdf->metallic = std::move(metal);
+                    } else {
+                        dst_brdf->roughness = std::move(rough);
+                        dst_brdf->metallic = std::move(metal);
+                    }
+                }
+
+                if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                    // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md
+                    if (auto it = src.extensions.find("KHR_materials_ior"); it != src.extensions.end()) {
+                        const auto &ior_ = it->second.Get("ior");
+                        if (ior_.Type() == tinygltf::REAL_TYPE || ior_.Type() == tinygltf::INT_TYPE) {
+                            dst_bsdf->ior =
+                                std::make_unique<ConstantField<color<1>>>(color<1>((float)ior_.GetNumberAsDouble()));
+                        } else {
+                            if (ior_.Type() != tinygltf::NULL_TYPE) {
+                                fprintf(stderr, "Unexpected ior value type from KHR_materials_ior!\n");
+                            }
+                            dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
+                        }
+                    } else {
+                        dst_bsdf->ior = std::make_unique<ConstantField<color<1>>>(color<1>(1.5f));
+                    }
                 }
                 // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_specular/README.md
                 // But we don't really want to support colored specular, so we will multiply "specularFactor" by the
@@ -814,57 +851,77 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
 
                         auto [uv_scale, uv_offset] = get_texture_transform(specular_texture);
 
-                        dst_bsdf->specular_r0_mul =
-                            create_texture_shader_field<1>(*spec_map, src_textures[spec_tex_idx].sampler, model,
-                                                           color<1>(sf), {}, uv_scale, uv_offset);
+                        auto spec = create_texture_shader_field<1>(*spec_map, src_textures[spec_tex_idx].sampler, model,
+                                                                   color<1>(sf), {}, uv_scale, uv_offset);
+                        if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                            dst_bsdf->specular_r0_mul = std::move(spec);
+                        } else {
+                            dst_brdf->specular = std::move(spec);
+                        }
                     } else {
-                        dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(sf));
+                        auto spec = std::make_unique<ConstantField<color<1>>>(color<1>(sf));
+                        if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                            dst_bsdf->specular_r0_mul = std::move(spec);
+                        } else {
+                            dst_brdf->specular = std::move(spec);
+                        }
                     }
                 } else {
-                    dst_bsdf->specular_r0_mul = std::make_unique<ConstantField<color<1>>>(color<1>(0.5f));
-                }
-                // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_transmission/README.md
-                if (auto it = src.extensions.find("KHR_materials_transmission"); it != src.extensions.end()) {
-                    // NOTE: set to single sided per discussion earlier.
-                    mesh_data.twosided = false;
-
-                    const auto &trans_factor = it->second.Get("transmissionFactor");
-                    const auto &trans_texture = it->second.Get("transmissionTexture");
-                    if (trans_texture.Type() == tinygltf::OBJECT_TYPE) {
-                        const auto &trans_tex_idx_ = trans_texture.Get("index");
-                        ASSERT(trans_tex_idx_.Type() == tinygltf::INT_TYPE);
-                        int trans_tex_idx = trans_tex_idx_.GetNumberAsInt();
-                        const auto &trans_map = textures[src_textures[trans_tex_idx].source];
-
-                        float t = 0.0f;
-                        if (trans_factor.Type() == tinygltf::REAL_TYPE || trans_factor.Type() == tinygltf::INT_TYPE) {
-                            t = (float)trans_factor.GetNumberAsDouble();
-                        }
-                        auto [uv_scale, uv_offset] = get_texture_transform(trans_texture);
-
-                        dst_bsdf->specular_trans =
-                            create_texture_shader_field<1>(*trans_map, src_textures[trans_tex_idx].sampler, model,
-                                                           color<1>(t), {}, uv_scale, uv_offset);
-                    } else if (trans_factor.Type() == tinygltf::REAL_TYPE ||
-                               trans_factor.Type() == tinygltf::INT_TYPE) {
-                        dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(
-                            color<1>((float)trans_factor.GetNumberAsDouble()));
+                    auto spec = std::make_unique<ConstantField<color<1>>>(color<1>(0.5f));
+                    if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                        dst_bsdf->specular_r0_mul = std::move(spec);
                     } else {
-                        if (trans_texture.Type() != tinygltf::NULL_TYPE) {
-                            fprintf(stderr,
-                                    "Unexpected transmissionTexture value type from KHR_materials_transmission!\n");
+                        dst_brdf->specular = std::move(spec);
+                    }
+                }
+                if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                    // https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_transmission/README.md
+                    if (auto it = src.extensions.find("KHR_materials_transmission"); it != src.extensions.end()) {
+                        // NOTE: set to single sided per discussion earlier.
+                        mesh_data.twosided = false;
+
+                        const auto &trans_factor = it->second.Get("transmissionFactor");
+                        const auto &trans_texture = it->second.Get("transmissionTexture");
+                        if (trans_texture.Type() == tinygltf::OBJECT_TYPE) {
+                            const auto &trans_tex_idx_ = trans_texture.Get("index");
+                            ASSERT(trans_tex_idx_.Type() == tinygltf::INT_TYPE);
+                            int trans_tex_idx = trans_tex_idx_.GetNumberAsInt();
+                            const auto &trans_map = textures[src_textures[trans_tex_idx].source];
+
+                            float t = 0.0f;
+                            if (trans_factor.Type() == tinygltf::REAL_TYPE ||
+                                trans_factor.Type() == tinygltf::INT_TYPE) {
+                                t = (float)trans_factor.GetNumberAsDouble();
+                            }
+                            auto [uv_scale, uv_offset] = get_texture_transform(trans_texture);
+
+                            dst_bsdf->specular_trans =
+                                create_texture_shader_field<1>(*trans_map, src_textures[trans_tex_idx].sampler, model,
+                                                               color<1>(t), {}, uv_scale, uv_offset);
+                        } else if (trans_factor.Type() == tinygltf::REAL_TYPE ||
+                                   trans_factor.Type() == tinygltf::INT_TYPE) {
+                            dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(
+                                color<1>((float)trans_factor.GetNumberAsDouble()));
+                        } else {
+                            if (trans_texture.Type() != tinygltf::NULL_TYPE) {
+                                fprintf(stderr,
+                                        "Unexpected transmissionTexture value type from KHR_materials_transmission!\n");
+                            }
+                            if (trans_factor.Type() != tinygltf::NULL_TYPE) {
+                                fprintf(stderr,
+                                        "Unexpected transmissionFactor value type from KHR_materials_transmission!\n");
+                            }
+                            dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
                         }
-                        if (trans_factor.Type() != tinygltf::NULL_TYPE) {
-                            fprintf(stderr,
-                                    "Unexpected transmissionFactor value type from KHR_materials_transmission!\n");
-                        }
+                    } else {
                         dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
                     }
-                } else {
-                    dst_bsdf->specular_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
                 }
-                dst_bsdf->microfacet = MicrofacetType::GGX;
-
+                if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                    dst_bsdf->microfacet = MicrofacetType::GGX;
+                } else {
+                    dst_brdf->microfacet = MicrofacetType::GGX;
+                }
                 if (src.normalTexture.index >= 0) {
                     const auto &normal_texture = textures[src_textures[src.normalTexture.index].source];
                     auto nm = std::make_unique<NormalMap>();
@@ -879,7 +936,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, bool load_materials
                     mesh_asset.normal_maps.push_back(std::move(nm));
                 }
 
-                mesh_asset.bsdfs.push_back(std::move(dst_bsdf));
+                if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
+                    mesh_asset.bsdfs.push_back(std::move(dst_bsdf));
+                } else {
+                    mesh_asset.bsdfs.push_back(std::move(dst_brdf));
+                }
                 mesh_asset.materials.push_back(std::move(dst_mat));
                 mesh_asset.material_names.push_back(src.name);
             }
@@ -909,8 +970,12 @@ std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &
     fs::path path = args.load_path("path");
     std::string fmt = args.load_string("format", "glb");
     if (fmt == "glb" || fmt == "gltf") {
-        bool load_materials = args.load_bool("load_materials");
-        compound->load_from_gltf(path, load_materials);
+        CompoundMeshAsset::LoadMaterialOptions options;
+        options.enable = args.load_bool("load_materials");
+        options.bsdf_type = args.load_string("bsdf_type", "principled_bsdf") == "principled_bsdf"
+                                ? CompoundMeshAsset::LoadMaterialOptions::BSDFType::PrincipledBSDF
+                                : CompoundMeshAsset::LoadMaterialOptions::BSDFType::PrincipledBRDF;
+        compound->load_from_gltf(path, options);
     } else {
         ASSERT(false, "Unsupported mesh asset format [%s].", fmt.c_str());
     }

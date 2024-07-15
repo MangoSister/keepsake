@@ -50,7 +50,18 @@ void traverse_gltf_scene_graph(const fs::path &path,
 
 struct CompoundMeshAsset : public Configurable
 {
-    void load_from_gltf(const fs::path &path, bool load_materials);
+    struct LoadMaterialOptions
+    {
+        bool enable;
+        enum class BSDFType
+        {
+            PrincipledBSDF,
+            PrincipledBRDF,
+        };
+        BSDFType bsdf_type;
+    };
+
+    void load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options);
 
     std::vector<MeshAsset> prototypes;
     std::vector<std::pair<uint32_t, Transform>> instances;
