@@ -920,15 +920,15 @@ inline Transform operator*(const Transform &a, const Transform &b)
     return ret;
 }
 
-inline Transform ortho_proj(float right, float left, float top, float bottom, float near, float far)
+inline Transform ortho_proj(float right, float left, float top, float bottom, float near_clip, float far_clip)
 {
     mat4 m = mat4::Identity();
     m(0, 0) = 2 / (right - left);
     m(1, 1) = 2 / (top - bottom);
-    m(2, 2) = 2 / (near - far);
+    m(2, 2) = 2 / (near_clip - far_clip);
     m(0, 3) = -(right + left) / (right - left);
     m(1, 3) = -(top + bottom) / (top - bottom);
-    m(2, 3) = -(near + far) / (near - far);
+    m(2, 3) = -(near_clip + far_clip) / (near_clip - far_clip);
     m(3, 3) = 1;
     return Transform(m);
 }
