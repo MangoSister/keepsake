@@ -25,3 +25,6 @@
 [submodule "data"]
 	path = test/data
 	url = git@github.com:MangoSister/keepsake_test_data.git
+[submodule "deps/spdlog"]
+	path = deps/spdlog
+	url = git@github.com:gabime/spdlog.git
