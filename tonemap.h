@@ -242,7 +242,7 @@ inline std::unique_ptr<ToneMapper> create_tone_mapper(const ConfigArgs &args)
     if (type == "aces") {
         return std::make_unique<ACESToneMapper>(exposure);
     } else if (type == "agx") {
-        std::string look_str = args.load_string("look");
+        std::string look_str = args.load_string("look", "none");
         AgXLook look = AgXLook::None;
         if (look_str == "none") {
             look = AgXLook::None;

@@ -157,6 +157,9 @@ void RenderTarget2::composite_and_save_to_png(const fs::path &path_prefix, const
                 pixel_weights[i][0] == 0 ? color<N>::Zero() : color<N>(plane.pixels[i] / (double)(pixel_weights[i][0]));
             color<N> c = lerp(plane.backdrop, fg, (float)w);
             for (int d = 0; d < N; ++d) {
+                c[d] = linear_to_srgb(c[d]);
+            }
+            for (int d = 0; d < N; ++d) {
                 buf[N * i + d] = (uint8_t)std::clamp(std::floor(c[d] * 255.0f), 0.0f, 255.0f);
             }
         });
@@ -351,7 +354,7 @@ void RenderTarget2::composite_and_save_to_exr(const fs::path &path_prefix, const
                 pixel_weights[i][0] == 0 ? color<N>::Zero() : color<N>(plane.pixels[i] / (double)(pixel_weights[i][0]));
             color<N> c = lerp(plane.backdrop, fg, (float)w);
 
-            std::byte *ptr = &buf.get()[i * 1 * component_size];
+            std::byte *ptr = &buf.get()[i * N * component_size];
             for (int d = 0; d < N; ++d) {
                 if (write_fp16) {
                     short h = convert_float_to_half(std::bit_cast<int>(c[d]));
