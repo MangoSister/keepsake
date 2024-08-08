@@ -21,6 +21,7 @@
 #include "tiny_gltf.h"
 // clang-format on
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <unordered_map>
@@ -729,7 +730,11 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, LoadMaterialOptions
                 std::unique_ptr<OpacityMap> om;
                 // We will use stochastic test for all non-opaque mode
                 if (src.alphaMode != "OPAQUE") {
-                    om = std::make_unique<OpacityMap>();
+                    if (!load_material_options.opacity_map_filter ||
+                        (load_material_options.opacity_map_filter &&
+                         load_material_options.opacity_map_filter(src.name))) {
+                        om = std::make_unique<OpacityMap>();
+                    }
                 }
                 if (pbr.baseColorTexture.index >= 0) {
                     const auto &basecolor_map = textures[src_textures[pbr.baseColorTexture.index].source];

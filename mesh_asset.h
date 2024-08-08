@@ -59,6 +59,8 @@ struct CompoundMeshAsset : public Configurable
             PrincipledBRDF,
         };
         BSDFType bsdf_type;
+        // Hack: sometimes we want to ignore the (incorrectly set up) opacity map from some assets...
+        std::function<bool(const std::string &mat_name)> opacity_map_filter;
     };
 
     void load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options);

@@ -620,6 +620,17 @@ constexpr float srgb_to_linear(float x)
     }
 }
 
+template <typename Derived>
+Derived srgb_to_linear(const Eigen::ArrayBase<Derived> &x)
+{
+    Derived y;
+    y.resize(x.size());
+    for (int i = 0; i < x.size(); ++i) {
+        y[i] = srgb_to_linear(x[i]);
+    }
+    return y;
+}
+
 constexpr float linear_to_srgb(float x)
 {
     if (x <= 0.0f)
@@ -631,6 +642,17 @@ constexpr float linear_to_srgb(float x)
     } else {
         return std::pow(x, 1.0f / 2.4f) * 1.055f - 0.055f;
     }
+}
+
+template <typename Derived>
+Derived linear_to_srgb(const Eigen::ArrayBase<Derived> &x)
+{
+    Derived y;
+    y.resize(x.size());
+    for (int i = 0; i < x.size(); ++i) {
+        y[i] = linear_to_srgb(x[i]);
+    }
+    return y;
 }
 
 inline float luminance(const color3 &rgb)
