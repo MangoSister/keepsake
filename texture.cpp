@@ -9,19 +9,6 @@
 namespace ks
 {
 
-constexpr int byte_stride(TextureDataType data_type)
-{
-    switch (data_type) {
-    case TextureDataType::u8:
-        return 1;
-    case TextureDataType::u16:
-        return 2;
-    case TextureDataType::f32:
-    default:
-        return 4;
-    }
-}
-
 Texture::Texture(int width, int height, int num_channels, TextureDataType data_type, ColorSpace color_space)
     : width(width), height(height), num_channels(num_channels), data_type(data_type), color_space(color_space)
 {

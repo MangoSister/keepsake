@@ -552,7 +552,8 @@ void traverse_gltf_scene_graph(const fs::path &path,
     traverse_gltf_scene_graph(model, callback);
 }
 
-void CompoundMeshAsset::load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options)
+CompoundMeshAsset::LoadStats CompoundMeshAsset::load_from_gltf(const fs::path &path,
+                                                               LoadMaterialOptions load_material_options)
 {
     tinygltf::Model model = load_gltf_from_file(path);
 
@@ -965,7 +966,35 @@ void CompoundMeshAsset::load_from_gltf(const fs::path &path, LoadMaterialOptions
                                   return true;
                               });
 
-    return;
+    LoadStats stats;
+    stats.unique_tri_count = 0;
+    stats.instanced_tri_count = 0;
+    stats.size_bytes = 0;
+    for (const auto &prototype : prototypes) {
+        for (const auto &mesh : prototype.meshes) {
+            stats.unique_tri_count += mesh->tri_count();
+            stats.size_bytes += mesh->vertex_count() * sizeof(float[3]);
+            stats.size_bytes += mesh->tri_count() * sizeof(uint32_t);
+            if (mesh->has_texcoord()) {
+                stats.size_bytes += mesh->vertex_count() * sizeof(float[2]);
+            }
+            if (mesh->has_vertex_normal()) {
+                stats.size_bytes += mesh->vertex_count() * sizeof(float[3]);
+            }
+        }
+    }
+    for (const auto &texture : textures) {
+        for (const auto &mip : texture->mips) {
+            stats.size_bytes += mip.ures * mip.vres * texture->num_channels * byte_stride(texture->data_type);
+        }
+    }
+    for (const auto &inst : instances) {
+        for (const auto &mesh : prototypes[inst.first].meshes) {
+            stats.instanced_tri_count += mesh->tri_count();
+        }
+    }
+
+    return stats;
 }
 
 std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &args)

@@ -23,6 +23,19 @@ enum class TextureDataType
     f32,
 };
 
+inline constexpr int byte_stride(TextureDataType data_type)
+{
+    switch (data_type) {
+    case TextureDataType::u8:
+        return 1;
+    case TextureDataType::u16:
+        return 2;
+    case TextureDataType::f32:
+    default:
+        return 4;
+    }
+}
+
 enum class TextureWrapMode
 {
     Repeat,

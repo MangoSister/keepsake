@@ -63,7 +63,14 @@ struct CompoundMeshAsset : public Configurable
         std::function<bool(const std::string &mat_name)> opacity_map_filter;
     };
 
-    void load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options);
+    struct LoadStats
+    {
+        size_t unique_tri_count = 0;
+        size_t instanced_tri_count = 0;
+        size_t size_bytes = 0;
+    };
+
+    LoadStats load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options);
 
     std::vector<MeshAsset> prototypes;
     std::vector<std::pair<uint32_t, Transform>> instances;
