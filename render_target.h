@@ -246,7 +246,7 @@ struct RenderTarget2
     RenderTarget2() = default;
     RenderTarget2(const RenderTargetArgs &args);
 
-    void add(uint32_t x, uint32_t y, const RenderTargetPixel &pixel);
+    void add(uint32_t x, uint32_t y, float alpha, const RenderTargetPixel &pixel);
 
     void add_miss(uint32_t x, uint32_t y);
 
@@ -283,7 +283,7 @@ struct RenderTarget2
                                    bool write_fp16 = false) const;
 
     uint32_t width, height;
-    std::vector<arr2u> pixel_weights;
+    std::vector<arr2d> pixel_weights;
     AOVPlane<double, 3> main;
     std::vector<AOVPlane<float, 1>> aovs1;
     std::vector<AOVPlane<float, 2>> aovs2;

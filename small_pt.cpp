@@ -56,7 +56,7 @@ void SmallPT::run(const SmallPTInput &in) const
                 if (hit) {
                     RenderTargetPixel pixel;
                     pixel.main = L;
-                    rt.add(pixel_x, pixel_y, pixel);
+                    rt.add(pixel_x, pixel_y, 1.0f, pixel);
                 } else {
                     rt.add_miss(pixel_x, pixel_y);
                 }

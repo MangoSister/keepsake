@@ -47,7 +47,7 @@ std::unique_ptr<PixelFilter> create_pixel_filter(const ConfigArgs &args)
 RenderTarget2::RenderTarget2(const RenderTargetArgs &args) : width(args.width), height(args.height)
 {
     size_t n = width * height;
-    pixel_weights.resize(n, arr2u::Zero());
+    pixel_weights.resize(n, arr2d::Zero());
     main = AOVPlane<double, 3>("", args.backdrop, n);
     for (auto [name, bd] : args.aov1) {
         this->aovs1.emplace_back(name, bd, n);
@@ -80,22 +80,24 @@ RenderTarget2::RenderTarget2(const RenderTargetArgs &args) : width(args.width), 
     }
 }
 
-void RenderTarget2::add(uint32_t x, uint32_t y, const RenderTargetPixel &pixel)
+void RenderTarget2::add(uint32_t x, uint32_t y, float alpha, const RenderTargetPixel &pixel)
 {
     uint32_t idx = y * width + x;
-    main.pixels[idx] += pixel.main.cast<double>();
-    ++pixel_weights[idx][0];
+    alpha = saturate(alpha);
+    pixel_weights[idx][0] += alpha;
+    pixel_weights[idx][1] += 1.0f - alpha;
+    main.pixels[idx] += pixel.main.cast<double>() * alpha;
     for (uint32_t j = 0; j < (uint32_t)pixel.aov1.size(); ++j) {
-        aovs1[j].pixels[idx] += pixel.aov1[j];
+        aovs1[j].pixels[idx] += pixel.aov1[j] * alpha;
     }
     for (uint32_t j = 0; j < (uint32_t)pixel.aov2.size(); ++j) {
-        aovs2[j].pixels[idx] += pixel.aov2[j];
+        aovs2[j].pixels[idx] += pixel.aov2[j] * alpha;
     }
     for (uint32_t j = 0; j < (uint32_t)pixel.aov3.size(); ++j) {
-        aovs3[j].pixels[idx] += pixel.aov3[j];
+        aovs3[j].pixels[idx] += pixel.aov3[j] * alpha;
     }
     for (uint32_t j = 0; j < (uint32_t)pixel.aov4.size(); ++j) {
-        aovs4[j].pixels[idx] += pixel.aov4[j];
+        aovs4[j].pixels[idx] += pixel.aov4[j] * alpha;
     }
 }
 
@@ -108,7 +110,7 @@ void RenderTarget2::add_miss(uint32_t x, uint32_t y)
 void RenderTarget2::clear()
 {
     std::fill(main.pixels.begin(), main.pixels.end(), color3d::Zero());
-    std::fill(pixel_weights.begin(), pixel_weights.end(), arr2u::Zero());
+    std::fill(pixel_weights.begin(), pixel_weights.end(), arr2d::Zero());
     for (auto &plane : aovs1) {
         std::fill(plane.pixels.begin(), plane.pixels.end(), color<1>::Zero());
     }
@@ -128,11 +130,8 @@ void RenderTarget2::composite_and_save_to_png(const fs::path &path_prefix, const
 {
     auto buf = std::make_unique<std::uint8_t[]>(width * height * 4); // allocate for max 4 components.
     parallel_for((uint32_t)main.pixels.size(), [&](uint32_t i) {
-        uint32_t w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
-        double w = w_sum == 0 ? 0.0f : (double)pixel_weights[i][0] / (double)(w_sum);
-        color3d fg =
-            pixel_weights[i][0] == 0 ? color3d::Zero() : color3d(main.pixels[i] / (double)(pixel_weights[i][0]));
-        color3 c = lerp(main.backdrop.cast<double>(), fg, w).cast<float>();
+        double w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
+        color3 c = ((main.pixels[i] + pixel_weights[i][1] * main.backdrop.cast<double>()) / w_sum).cast<float>();
         if (tonemapper) {
             c = (*tonemapper)(c);
         }
@@ -151,11 +150,8 @@ void RenderTarget2::composite_and_save_to_png(const fs::path &path_prefix, const
 
     auto save_plane = [&]<int N>(const AOVPlane<float, N> &plane) {
         parallel_for((uint32_t)plane.pixels.size(), [&](uint32_t i) {
-            uint32_t w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
-            double w = w_sum == 0 ? 0.0f : (double)pixel_weights[i][0] / (double)(w_sum);
-            color<N> fg =
-                pixel_weights[i][0] == 0 ? color<N>::Zero() : color<N>(plane.pixels[i] / (double)(pixel_weights[i][0]));
-            color<N> c = lerp(plane.backdrop, fg, (float)w);
+            double w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
+            color<N> c = ((plane.pixels[i] + pixel_weights[i][1] * plane.backdrop) / w_sum).cast<float>();
             for (int d = 0; d < N; ++d) {
                 c[d] = linear_to_srgb(c[d]);
             }
