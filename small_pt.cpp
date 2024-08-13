@@ -269,7 +269,7 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
             float interval_render_time =
                 std::chrono::duration<float>(interval_render_end - interval_render_start).count();
 
-            get_default_logger().info("Frame [{}/{}] | [{}/{}] spp interval took: {:.1f} sec", frame_idx + 1, n_frames,
+            get_default_logger().info("Frame [{}/{}] | [{}/{}] spp interval took: {:.2f} sec", frame_idx + 1, n_frames,
                                       spp_finished, input.spp, interval_render_time);
             get_default_logger().flush();
             fs::path save_path_prefix = task_dir / string_format("small_pt_spp%d", spp_finished);
@@ -285,7 +285,7 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
         small_pt.run(input);
         auto render_end = std::chrono::steady_clock::now();
         std::chrono::duration<float> render_time_sec = render_end - render_start;
-        get_default_logger().info("Frame [{}/{}] | Rendering time: {:.1f} sec", frame_idx + 1, n_frames,
+        get_default_logger().info("Frame [{}/{}] | Rendering time: {:.2f} sec", frame_idx + 1, n_frames,
                                   render_time_sec.count());
         get_default_logger().flush();
     }
