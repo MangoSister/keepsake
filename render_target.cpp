@@ -151,7 +151,7 @@ void RenderTarget2::composite_and_save_to_png(const fs::path &path_prefix, const
     auto save_plane = [&]<int N>(const AOVPlane<float, N> &plane) {
         parallel_for((uint32_t)plane.pixels.size(), [&](uint32_t i) {
             double w_sum = (pixel_weights[i][0] + pixel_weights[i][1]);
-            color<N> c = ((plane.pixels[i] + pixel_weights[i][1] * plane.backdrop) / w_sum).cast<float>();
+            color<N> c = ((plane.pixels[i] + pixel_weights[i][1] * plane.backdrop) / w_sum).template cast<float>();
             for (int d = 0; d < N; ++d) {
                 c[d] = linear_to_srgb(c[d]);
             }
