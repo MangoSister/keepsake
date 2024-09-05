@@ -146,6 +146,9 @@ std::pair<bool, color3> SmallPT::trace(const SmallPTInput &in, Ray ray, PTRender
         MaterialSample s =
             hit.material->sample_with_nee(wo, hit.it, *in.scene, local_geom, *in.light_sampler, sampler, wi, exit);
         thread_monitor_check(s.beta.allFinite());
+        if (bounce >= 1 && in.clamp_indirect > 0.0f) {
+            s.Ld = s.Ld.cwiseMin(color3::Constant(in.clamp_indirect));
+        }
 
         L += beta * s.Ld;
         beta *= s.beta;
@@ -218,6 +221,7 @@ void small_pt(const ConfigArgs &args, const fs::path &task_dir, int task_id)
         input.include_background = true;
     }
     input.bounces = args.load_integer("bounces");
+    input.clamp_indirect = args.load_float("clamp_indirect", 10.0f);
     input.render_width = args.load_integer("render_width");
     input.render_height = args.load_integer("render_height");
     input.crop_start_x = args.load_integer("crop_start_x", 0);
