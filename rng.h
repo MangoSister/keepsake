@@ -4,6 +4,7 @@
 #include "hash.h"
 #include "maths.h"
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <random>
 #include <span>
