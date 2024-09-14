@@ -122,6 +122,13 @@ T safe_acos(T x)
     return std::acos(std::clamp(x, T(-1.0), T(1.0)));
 }
 
+inline std::floating_point auto safe_pow(std::floating_point auto a, std::floating_point auto b)
+{
+    if (a == 0.0 && b == 0.0f)
+        return 0.0f;
+    return std::pow(a, b);
+}
+
 template <typename T>
 inline T mod(T a, T b)
 {

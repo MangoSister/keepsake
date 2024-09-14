@@ -40,51 +40,6 @@ inline int volume_sample_channel(const color3 &albedo, const color3 &throughput,
     return color3::SizeAtCompileTime - 1;
 }
 
-inline float safe_powf(float a, float b)
-{
-    if (a == 0.0 && b == 0.0f)
-        return 0.0f;
-    return std::pow(a, b);
-}
-
-/* Given cosine between rays, return probability density that a photon bounces
- * to that direction. The g parameter controls how different it is from the
- * uniform sphere. g=0 uniform diffuse-like, g=1 close to sharp single ray. */
-inline float single_peaked_henyey_greenstein(float cos_theta, float g)
-{
-    return ((1.0f - g * g) / safe_powf(1.0f + g * g - 2.0f * g * cos_theta, 1.5f)) * (inv_pi * 0.25f);
-};
-
-vec3 henyey_greenstrein_sample(const vec3 &D, float g, float randu, float randv, float *pdf)
-{
-    /* match pdf for small g */
-    float cos_theta;
-    bool isotropic = fabsf(g) < 1e-3f;
-
-    if (isotropic) {
-        cos_theta = (1.0f - 2.0f * randu);
-        if (pdf) {
-            *pdf = inv_pi * 0.25f;
-        }
-    } else {
-        float k = (1.0f - g * g) / (1.0f - g + 2.0f * g * randu);
-        cos_theta = (1.0f + g * g - k * k) / (2.0f * g);
-        if (pdf) {
-            *pdf = single_peaked_henyey_greenstein(cos_theta, g);
-        }
-    }
-
-    float sin_theta = safe_sqrt(1.0f - cos_theta * cos_theta);
-    float phi = two_pi * randv;
-    vec3 dir(sin_theta * cosf(phi), sin_theta * sinf(phi), cos_theta);
-
-    vec3 T, B;
-    orthonormal_basis(D, T, B);
-    dir = dir.x() * T + dir.y() * B + dir.z() * D;
-
-    return dir;
-}
-
 void subsurface_random_walk_remap(const float albedo, const float d, float g, float *sigma_t, float *alpha)
 {
     /* Compute attenuation and scattering coefficients from albedo. */
@@ -428,7 +383,7 @@ bool subsurface_random_walk(SubsurfaceProfile profile, const LocalGeometry &loca
                 hg_pdf = single_peaked_henyey_greenstein(ray.dir.dot(newD), anisotropy);
                 ray.dir = newD;
             } else {
-                vec3 newD = henyey_greenstrein_sample(ray.dir, anisotropy, rand_scatter.x(), rand_scatter.y(), &hg_pdf);
+                vec3 newD = sample_henyey_greenstein(ray.dir, anisotropy, rand_scatter.x(), rand_scatter.y(), &hg_pdf);
                 cos_theta = newD.dot(N);
                 ray.dir = newD;
             }

@@ -261,6 +261,10 @@ PrincipledBSDF::Closure PrincipledBSDF::eval_closure(const Intersection &it) con
     closure.specular_r0_mul = std::max(closure.specular_r0_mul, 0.0f);
     closure.specular_trans = (*specular_trans)(it)[0];
     closure.specular_trans = clamp(closure.specular_trans, 0.0f, 1.0f);
+    closure.diffuse_trans = (*diffuse_trans)(it)[0];
+    closure.diffuse_trans = clamp(closure.diffuse_trans, 0.0f, 1.0f);
+    closure.diffuse_trans_fwd = (*diffuse_trans_fwd)(it)[0];
+    closure.diffuse_trans_fwd = clamp(closure.diffuse_trans_fwd, 0.0f, 1.0f);
     closure.emissive = (*emissive)(it);
     closure.emissive = closure.emissive.cwiseMax(0.0f);
     if (microfacet == MicrofacetType::GGX) {
@@ -312,6 +316,9 @@ ks::color3 PrincipledBSDF::internal::eval(const ks::vec3 &wo, const ks::vec3 &wi
         f += eval_diffuse(wo, wi, closure);
         f += eval_metallic_specular(wo, wi, closure);
     }
+    if (wo.z() > 0.0f && wi.z() < 0.0f) {
+        f += eval_diffuse_transmission(wo, wi, closure);
+    }
     f += eval_dielectric_specular(wo, wi, closure);
     return f;
 }
@@ -324,42 +331,59 @@ ks::color3 PrincipledBSDF::internal::sample(const ks::vec3 &wo, ks::vec3 &wi, co
         return color3::Zero();
     }
 
-    vec3 sample_weights = lobe_sample_weights(wo, closure);
+    vec4 sample_weights = lobe_sample_weights(wo, closure);
     if (sample_weights.isZero()) {
         pdf = 0.0f;
         return color3::Zero();
     }
     float u_lobe_remap;
-    int lobe = sample_small_distrib({sample_weights.data(), 3}, u_lobe, &u_lobe_remap);
-
-    vec3 pdf_lobe = vec3::Zero();
+    int lobe = sample_small_distrib({sample_weights.data(), (size_t)sample_weights.size()}, u_lobe, &u_lobe_remap);
+    // 0: diffuse
+    // 1: diffuse transmission
+    // 2: metallic specular
+    // 3: dielectric specular
+    vec4 pdf_lobe = vec4::Zero();
     if (lobe == 0) {
-        wi = sample_diffuse(wo, closure, u_wi, pdf_lobe[0]);
+        wi = sample_diffuse(closure, u_wi, pdf_lobe[0]);
         if (wi.isZero() || pdf_lobe[0] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
         }
+        // pdf_lobe[1] = 0
         if (wo.z() > 0.0f && wi.z() > 0.0f)
-            pdf_lobe[1] = pdf_metallic_specular(wo, wi, closure);
-        pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
+            pdf_lobe[2] = pdf_metallic_specular(wo, wi, closure);
+        pdf_lobe[3] = pdf_dielectric_specular(wo, wi, closure);
     } else if (lobe == 1) {
-        wi = sample_metallic_specular(wo, closure, u_wi, pdf_lobe[1]);
+        wi = sample_diffuse_transmission(wo, closure, u_wi, pdf_lobe[1]);
         if (wi.isZero() || pdf_lobe[1] == 0.0f) {
+            pdf = 0.0f;
+            return color3::Zero();
+        }
+        // pdf_lobe[0] = 0
+        // pdf_lobe[2] = 0
+        pdf_lobe[3] = pdf_dielectric_specular(wo, wi, closure);
+    } else if (lobe == 2) {
+        wi = sample_metallic_specular(wo, closure, u_wi, pdf_lobe[2]);
+        if (wi.isZero() || pdf_lobe[2] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
         }
         if (wo.z() > 0.0f && wi.z() > 0.0f)
             pdf_lobe[0] = pdf_diffuse(wo, wi, closure);
-        pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
+        // pdf_lobe[1] = 0
+        pdf_lobe[3] = pdf_dielectric_specular(wo, wi, closure);
     } else {
-        wi = sample_dielectric_specular(wo, closure, u_lobe_remap, u_wi, pdf_lobe[2]);
-        if (wi.isZero() || pdf_lobe[2] == 0.0f) {
+        wi = sample_dielectric_specular(wo, closure, u_lobe_remap, u_wi, pdf_lobe[3]);
+        if (wi.isZero() || pdf_lobe[3] == 0.0f) {
             pdf = 0.0f;
             return color3::Zero();
         }
         if (wo.z() > 0.0f && wi.z() > 0.0f) {
             pdf_lobe[0] = pdf_diffuse(wo, wi, closure);
-            pdf_lobe[1] = pdf_metallic_specular(wo, wi, closure);
+            pdf_lobe[2] = pdf_metallic_specular(wo, wi, closure);
+        }
+        if (wo.z() > 0.0f && wi.z() < 0.0f) {
+            pdf_lobe[1] = pdf_diffuse_transmission(wo, wi, closure);
         }
     }
 
@@ -374,29 +398,31 @@ float PrincipledBSDF::internal::pdf(const ks::vec3 &wo, const ks::vec3 &wi, cons
         return 0.0f;
     }
 
-    vec3 weights = lobe_sample_weights(wo, closure);
+    vec4 weights = lobe_sample_weights(wo, closure);
+    // 0: diffuse
+    // 1: diffuse transmission
+    // 2: metallic specular
+    // 3: dielectric specular
     if (weights.isZero()) {
         return 0.0f;
     }
-    if (wo.z() <= 0.0f || wi.z() <= 0.0f) {
-        weights[0] = 0.0f;
-        weights[1] = 0.0f;
-        weights[2] = 1.0f;
-    }
 
-    vec3 pdf_lobe = vec3::Zero();
+    vec4 pdf_lobe = vec4::Zero();
     if (wo.z() > 0.0f && wi.z() > 0.0f) {
         pdf_lobe[0] = pdf_diffuse(wo, wi, closure);
-        pdf_lobe[1] = pdf_metallic_specular(wo, wi, closure);
+        pdf_lobe[2] = pdf_metallic_specular(wo, wi, closure);
     }
-    pdf_lobe[2] = pdf_dielectric_specular(wo, wi, closure);
+    if (wo.z() > 0.0f && wi.z() < 0.0f) {
+        pdf_lobe[1] = pdf_diffuse_transmission(wo, wi, closure);
+    }
+    pdf_lobe[3] = pdf_dielectric_specular(wo, wi, closure);
 
     return pdf_lobe.dot(weights);
 }
 
 color3 PrincipledBSDF::internal::eval_diffuse(const vec3 &wo, const vec3 &wi, const Closure &c)
 {
-    float lobe_weight = (1.0f - c.metallic) * (1.0f - c.specular_trans);
+    float lobe_weight = (1.0f - c.metallic) * (1.0f - c.specular_trans) * (1.0f - c.diffuse_trans);
     if (lobe_weight == 0.0f) {
         return color3::Zero();
     }
@@ -406,6 +432,17 @@ color3 PrincipledBSDF::internal::eval_diffuse(const vec3 &wo, const vec3 &wi, co
     float disney_retro =
         std::lerp(1.0f, Fd90, fresnel_schlick(wi.z())) * std::lerp(1.0f, Fd90, fresnel_schlick(wo.z()));
     return lobe_weight * c.basecolor * inv_pi * disney_retro * wi.z();
+}
+
+color3 PrincipledBSDF::internal::eval_diffuse_transmission(const vec3 &wo, const vec3 &wi, const Closure &c)
+{
+    float lobe_weight = (1.0f - c.metallic) * (1.0f - c.specular_trans) * c.diffuse_trans;
+    if (lobe_weight == 0.0f) {
+        return color3::Zero();
+    }
+
+    float fwd_scatter = single_peaked_henyey_greenstein(wo.dot(-wi), c.diffuse_trans_fwd);
+    return lobe_weight * c.basecolor * inv_pi * (-wi.z()) * fwd_scatter;
 }
 
 color3 PrincipledBSDF::internal::eval_metallic_specular(const vec3 &wo, const vec3 &wi, const Closure &c)
@@ -478,12 +515,13 @@ float PrincipledBSDF::internal::dielectric_specular_adjust(float wo_dot_wh, cons
     return std::lerp(closure.specular_r0_mul * R0, 1.0f, schlick) / std::lerp(R0, 1.0f, schlick);
 }
 
-vec3 PrincipledBSDF::internal::lobe_sample_weights(const vec3 &wo, const Closure &c)
+vec4 PrincipledBSDF::internal::lobe_sample_weights(const vec3 &wo, const Closure &c)
 {
     float lum_basecolor = luminance(c.basecolor);
 
-    float weight_diffuse =
-        wo.z() > 0.0f ? (1.0f - c.metallic) * (1.0f - c.specular_trans) * lum_basecolor * inv_pi : 0.0f;
+    float wd = wo.z() > 0.0f ? (1.0f - c.metallic) * (1.0f - c.specular_trans) * lum_basecolor * inv_pi : 0.0f;
+    float weight_diffuse = wd * (1.0f - c.diffuse_trans);
+    float weight_diffuse_transmission = wd * c.diffuse_trans;
     // wh isn't available at this point...
     float weight_metallic_specular =
         wo.z() > 0.0f ? c.metallic * std::lerp(lum_basecolor, 1.0f, fresnel_schlick(wo.z())) : 0.0f;
@@ -491,25 +529,37 @@ vec3 PrincipledBSDF::internal::lobe_sample_weights(const vec3 &wo, const Closure
     // TODO: incorporate specular_r0_mul here? in general need a better heuristic...
     float weight_dielectric_specular = (1.0f - c.metallic) * fresnel_dielectric(std::abs(wo.z()), 1.0f / eta);
 
-    float sum = weight_diffuse + weight_metallic_specular + weight_dielectric_specular;
+    float sum = weight_diffuse + weight_diffuse_transmission + weight_metallic_specular + weight_dielectric_specular;
     if (sum == 0.0f) {
-        return vec3::Zero();
+        return vec4::Zero();
     }
-    float inv_sum = 1.0f / sum;
-    weight_diffuse = weight_diffuse * inv_sum;
-    weight_metallic_specular = weight_metallic_specular * inv_sum;
-    weight_dielectric_specular = weight_dielectric_specular * inv_sum;
+    vec4 weights(weight_diffuse, weight_diffuse_transmission, weight_metallic_specular, weight_dielectric_specular);
+    weights /= sum;
 
-    vec3 weights(weight_diffuse, weight_metallic_specular, weight_dielectric_specular);
     ASSERT(weights.allFinite() && (weights.array() >= 0.0f).all());
     return weights;
 }
 
-vec3 PrincipledBSDF::internal::sample_diffuse(const vec3 &wo, const Closure &closure, const vec2 &u, float &pdf)
+vec3 PrincipledBSDF::internal::sample_diffuse(const Closure &closure, const vec2 &u, float &pdf)
 {
     vec3 wi = sample_cosine_hemisphere(u);
     pdf = wi.z() * inv_pi;
     return wi;
+}
+
+constexpr float diffuse_trans_strategy_switch = 0.05f;
+vec3 PrincipledBSDF::internal::sample_diffuse_transmission(const vec3 &wo, const Closure &closure, const vec2 &u,
+                                                           float &pdf)
+{
+    // Switch to cosine sampling when approaching isotropic.
+    if (closure.diffuse_trans_fwd > diffuse_trans_strategy_switch) {
+        return sample_henyey_greenstein(-wo, closure.diffuse_trans_fwd, u[0], u[1], &pdf);
+    } else {
+        vec3 wi = sample_cosine_hemisphere(u);
+        pdf = wi.z() * inv_pi;
+        wi.z() = -wi.z();
+        return wi;
+    }
 }
 
 vec3 PrincipledBSDF::internal::sample_metallic_specular(const vec3 &wo, const Closure &c, const vec2 &u, float &pdf)
@@ -595,6 +645,15 @@ float PrincipledBSDF::internal::pdf_diffuse(const vec3 &wo, const vec3 &wi, cons
     return wi.z() * inv_pi;
 }
 
+float PrincipledBSDF::internal::pdf_diffuse_transmission(const vec3 &wo, const vec3 &wi, const Closure &c)
+{
+    if (c.diffuse_trans_fwd > diffuse_trans_strategy_switch) {
+        return single_peaked_henyey_greenstein(wo.dot(-wi), c.diffuse_trans_fwd);
+    } else {
+        return -wi.z() * inv_pi;
+    }
+}
+
 float PrincipledBSDF::internal::pdf_metallic_specular(const vec3 &wo, const vec3 &wi, const Closure &c)
 {
     vec3 wh = (wo + wi).normalized();
@@ -657,6 +716,9 @@ std::unique_ptr<PrincipledBSDF> create_principled_bsdf(const ConfigArgs &args)
     bsdf->ior = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["ior"]);
     bsdf->specular_r0_mul = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular_r0_mul"]);
     bsdf->specular_trans = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["specular_trans"]);
+    bsdf->diffuse_trans = args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["diffuse_trans"]);
+    bsdf->diffuse_trans_fwd =
+        args.asset_table().create_in_place<ShaderField1>("shader_field_1", args["diffuse_trans_fwd"]);
     bsdf->emissive = args.asset_table().create_in_place<ShaderField3>("shader_field_3", args["emissive"]);
 
     std::string m = args.load_string("microfacet", "ggx");

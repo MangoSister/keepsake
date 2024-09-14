@@ -61,4 +61,34 @@ std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args)
     return bsdf;
 }
 
+vec3 sample_henyey_greenstein(const vec3 &D, float g, float randu, float randv, float *pdf)
+{
+    /* match pdf for small g */
+    float cos_theta;
+    bool isotropic = fabsf(g) < 1e-3f;
+
+    if (isotropic) {
+        cos_theta = (1.0f - 2.0f * randu);
+        if (pdf) {
+            *pdf = inv_pi * 0.25f;
+        }
+    } else {
+        float k = (1.0f - g * g) / (1.0f - g + 2.0f * g * randu);
+        cos_theta = (1.0f + g * g - k * k) / (2.0f * g);
+        if (pdf) {
+            *pdf = single_peaked_henyey_greenstein(cos_theta, g);
+        }
+    }
+
+    float sin_theta = safe_sqrt(1.0f - cos_theta * cos_theta);
+    float phi = two_pi * randv;
+    vec3 dir(sin_theta * cosf(phi), sin_theta * sinf(phi), cos_theta);
+
+    vec3 T, B;
+    orthonormal_basis(D, T, B);
+    dir = dir.x() * T + dir.y() * B + dir.z() * D;
+
+    return dir;
+}
+
 } // namespace ks

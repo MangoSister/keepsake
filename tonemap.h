@@ -256,7 +256,7 @@ inline std::unique_ptr<ToneMapper> create_tone_mapper(const ConfigArgs &args)
         }
         return std::make_unique<AgXToneMapper>(exposure, look);
     } else if (type == "khronos_pbr_neutral") {
-        return std::make_unique<KhronosPBRNeutralToneMapper>();
+        return std::make_unique<KhronosPBRNeutralToneMapper>(exposure);
     }
     fprintf(stderr, "Invalid tone mapper type [%s]", type.c_str());
     std::abort();

@@ -925,6 +925,9 @@ CompoundMeshAsset::LoadStats CompoundMeshAsset::load_from_gltf(const fs::path &p
                 }
                 if (load_material_options.bsdf_type == LoadMaterialOptions::BSDFType::PrincipledBSDF) {
                     dst_bsdf->microfacet = MicrofacetType::GGX;
+                    // No support in GLTF (yet).
+                    dst_bsdf->diffuse_trans = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
+                    dst_bsdf->diffuse_trans_fwd = std::make_unique<ConstantField<color<1>>>(color<1>(0.0f));
                 } else {
                     dst_brdf->microfacet = MicrofacetType::GGX;
                 }

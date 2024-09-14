@@ -85,6 +85,8 @@ struct PrincipledBSDF : public ks::BSDF
         float ior;
         float specular_r0_mul;
         float specular_trans;
+        float diffuse_trans;
+        float diffuse_trans_fwd;
         ks::color3 emissive;
 
         const ks::MicrofacetAdapter *microfacet;
@@ -109,18 +111,21 @@ struct PrincipledBSDF : public ks::BSDF
         static float pdf(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
 
         static ks::color3 eval_diffuse(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
+        static ks::color3 eval_diffuse_transmission(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static ks::color3 eval_metallic_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static ks::color3 eval_dielectric_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static float dielectric_specular_adjust(float wo_dot_wh, const Closure &closure);
-
-        static ks::vec3 lobe_sample_weights(const ks::vec3 &wo, const Closure &closure);
-        static ks::vec3 sample_diffuse(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u, float &pdf);
+        static ks::vec4 lobe_sample_weights(const ks::vec3 &wo, const Closure &closure);
+        static ks::vec3 sample_diffuse(const Closure &closure, const ks::vec2 &u, float &pdf);
+        static ks::vec3 sample_diffuse_transmission(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u,
+                                                    float &pdf);
         static ks::vec3 sample_metallic_specular(const ks::vec3 &wo, const Closure &closure, const ks::vec2 &u,
                                                  float &pdf);
         static ks::vec3 sample_dielectric_specular(const ks::vec3 &wo, const Closure &closure, float u_lobe,
                                                    const ks::vec2 &u_wi, float &pdf);
 
         static float pdf_diffuse(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
+        static float pdf_diffuse_transmission(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static float pdf_metallic_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
         static float pdf_dielectric_specular(const ks::vec3 &wo, const ks::vec3 &wi, const Closure &closure);
     };
@@ -131,6 +136,10 @@ struct PrincipledBSDF : public ks::BSDF
     std::unique_ptr<ks::ShaderField1> ior;
     std::unique_ptr<ks::ShaderField1> specular_r0_mul;
     std::unique_ptr<ks::ShaderField1> specular_trans;
+    // diffuse_trans transfers energy from the diffuse reflection lobe to the diffuse transmission lobe;
+    std::unique_ptr<ks::ShaderField1> diffuse_trans;
+    // HG lobe g parameter but forward only ([0, 1]).
+    std::unique_ptr<ks::ShaderField1> diffuse_trans_fwd;
     // TODO: make emission at material level, not bsdf level.
     std::unique_ptr<ks::ShaderField3> emissive;
 

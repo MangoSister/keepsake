@@ -41,4 +41,14 @@ struct Lambertian : public BSDF
 std::unique_ptr<Lambertian> create_lambertian(const ConfigArgs &args);
 std::unique_ptr<BSDF> create_bsdf(const ConfigArgs &args);
 
+/* Given cosine between rays, return probability density that a photon bounces
+ * to that direction. The g parameter controls how different it is from the
+ * uniform sphere. g=0 uniform diffuse-like, g=1 close to sharp single ray. */
+inline float single_peaked_henyey_greenstein(float cos_theta, float g)
+{
+    return ((1.0f - g * g) / safe_pow(1.0f + g * g - 2.0f * g * cos_theta, 1.5f)) * (inv_pi * 0.25f);
+};
+
+vec3 sample_henyey_greenstein(const vec3 &D, float g, float randu, float randv, float *pdf);
+
 } // namespace ks
