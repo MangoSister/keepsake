@@ -1,5 +1,6 @@
 #include "tonemap.h"
 #include "image_util.h"
+#include "log_util.h"
 #include "render_target.h"
 
 namespace ks
@@ -17,7 +18,7 @@ void tonemap(const ConfigArgs &args, const fs::path &task_dir, int task_id)
     } else if (ext == ".hdr") {
         float_data = load_from_hdr(input_path, 3, width, height);
     } else {
-        fprintf(stderr, "Invalid image extension [%s]", ext.c_str());
+        get_default_logger().error("Invalid image extension {}", ext.c_str());
         std::abort();
     }
     std::unique_ptr<ToneMapper> tone_mapper = create_tone_mapper(args["tone_mapper"]);
