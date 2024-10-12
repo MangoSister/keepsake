@@ -274,6 +274,15 @@ constexpr uint32_t reverse_bits_32(uint32_t bits)
     return bits;
 }
 
+constexpr bool is_aligned(std::integral auto x, size_t a) noexcept { return (x & (decltype(x)(a) - 1)) == 0; }
+
+constexpr auto align_up(std::integral auto x, size_t a) noexcept
+{
+    return decltype(x)((x + (decltype(x)(a) - 1)) & ~decltype(x)(a - 1));
+}
+
+constexpr auto align_down(std::integral auto x, size_t a) noexcept { return decltype(x)(x & ~decltype(x)(a - 1)); }
+
 // Jeannerod, Claude-Pierre, Nicolas Louvet, and Jean-Michel Muller.
 // "Further analysis of Kahan’s algorithm for the accurate computation of 2× 2 determinants." Mathematics of
 // Computation 82.284 (2013): 2245-2264.
