@@ -180,7 +180,8 @@ struct AgXToneMapper : public ToneMapper
 
         // Log2 encoding
         v = v.cwiseMax(1E-10f); // avoid 0 or negative numbers for log2
-        v = log2(v);
+        for (int i = 0; i < 3; ++i)
+            v[i] = std::log2(v[i]);
         v = (v - AgxMinEv) / (AgxMaxEv - AgxMinEv);
 
         v = clamp(v, color3::Zero(), color3::Ones());
