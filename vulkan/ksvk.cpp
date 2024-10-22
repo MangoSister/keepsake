@@ -1615,6 +1615,9 @@ void ParameterBlockMeta::init(VkDevice device, uint32_t max_sets, DescriptorSetH
     this->device = device;
     this->max_sets = max_sets;
 
+    if (helper.last_unbounded_array) {
+    }
+
     desc_pool = desc_set_helper.create_pool(device, max_sets);
     desc_set_layout = desc_set_helper.create_set_layout(device);
     allocated_sets = 0;
@@ -1636,12 +1639,24 @@ void ParameterBlockMeta::allocate_blocks(uint32_t num, std::span<ParameterBlock>
 
     std::vector<VkDescriptorSetLayout> set_layouts(num, desc_set_layout);
 
-    VkDescriptorSetAllocateInfo allocInfo{.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                                          .descriptorPool = desc_pool,
-                                          .descriptorSetCount = num,
-                                          .pSetLayouts = set_layouts.data()};
+    VkDescriptorSetVariableDescriptorCountAllocateInfo set_counts = {};
+    if (last_unbounded_array) {
+        uint32_t counts[1];
+        counts[0] = 32; // Set 0 has a variable count descriptor with a maximum of 32 elements
+        set_counts.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+        set_counts.descriptorSetCount = 1;
+        set_counts.pDescriptorCounts = counts;
+    }
+    VkDescriptorSetAllocateInfo alloc_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = last_unbounded_array ? &set_counts : nullptr,
+        .descriptorPool = desc_pool,
+        .descriptorSetCount = num,
+        .pSetLayouts = set_layouts.data(),
+    };
+
     std::vector<VkDescriptorSet> sets(num);
-    vk_check(vkAllocateDescriptorSets(device, &allocInfo, sets.data()));
+    vk_check(vkAllocateDescriptorSets(device, &alloc_info, sets.data()));
     for (uint32_t i = 0; i < num; ++i) {
         out[i].desc_set = sets[i];
         out[i].meta = this;
