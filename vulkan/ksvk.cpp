@@ -133,13 +133,19 @@ Allocator::~Allocator()
     vmaDestroyAllocator(vma);
 }
 
-Buffer Allocator::create_buffer(const VkBufferCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+Buffer Allocator::create_buffer(const VkBufferCreateInfo &info_, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
                                 const std::byte *data)
 {
     Buffer buf;
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
     allocCI.flags = flags;
+
+    VkBufferCreateInfo info = info_;
+    if (data) {
+        info.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+
     vk_check(vmaCreateBuffer(vma, &info, &allocCI, &buf.buffer, &buf.allocation, nullptr));
 
     // Get the device address if requested
@@ -195,6 +201,32 @@ TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBuf
     vk_check(vkCreateBufferView(device, &buffer_view_info, nullptr, &tb.buffer_view));
 
     return tb;
+}
+
+FrequentUniformBuffer Allocator::create_frequent_uniform_buffer(const VkBufferCreateInfo &info_)
+{
+    VkBufferCreateInfo info = info_;
+    info.usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VmaAllocationCreateFlags alloc_flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                           VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
+                                           VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    Buffer dest = create_buffer(info, VMA_MEMORY_USAGE_AUTO, alloc_flags);
+    VkMemoryPropertyFlags memPropFlags;
+    vmaGetAllocationMemoryProperties(vma, dest.allocation, &memPropFlags);
+
+    if (memPropFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        // Allocation ended up in a mappable memory and is already mapped - write to it directly.
+        return FrequentUniformBuffer{dest, Buffer()};
+    } else {
+        // Allocation ended up in a non-mappable memory - a transfer using a staging buffer is required.
+        Buffer staging = create_buffer(
+            VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                               .size = info.size,
+                               .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT},
+            VMA_MEMORY_USAGE_AUTO,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, nullptr);
+        return FrequentUniformBuffer{dest, staging};
+    }
 }
 
 std::byte *Allocator::map(VmaAllocation allocation)
@@ -338,10 +370,11 @@ Image Allocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usag
 }
 
 ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                                VmaMemoryUsage usage)
+                                                VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
 {
     VmaAllocationCreateInfo allocCI{};
     allocCI.usage = usage;
+    allocCI.flags = flags;
     ImageWithView image;
     vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
     view_info.image = image.image;
@@ -350,10 +383,11 @@ ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, V
     return image;
 }
 
-ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cubeMap)
+ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                                VmaAllocationCreateFlags flags, bool cubeMap)
 {
     VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cubeMap);
-    return create_image_with_view(info, viewInfo, usage);
+    return create_image_with_view(info, viewInfo, usage, flags);
 }
 
 ImageWithView Allocator::create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
@@ -387,7 +421,7 @@ ImageWithView Allocator::create_color_buffer(uint32_t width, uint32_t height, Vk
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
-    return create_image_with_view(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
+    return create_image_with_view(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY, VmaAllocationCreateFlags(0));
 }
 
 ImageWithView Allocator::create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage)
@@ -420,13 +454,14 @@ ImageWithView Allocator::create_depth_buffer(uint32_t width, uint32_t height, bo
     depthViewInfo.subresourceRange.baseArrayLayer = 0;
     depthViewInfo.subresourceRange.layerCount = 1;
 
-    return create_image_with_view(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY);
+    return create_image_with_view(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY, VmaAllocationCreateFlags(0));
 }
 
 ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                                  VmaMemoryUsage usage, VkImageLayout layout)
+                                                  VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+                                                  VkImageLayout layout)
 {
-    ImageWithView image = create_image_with_view(info, view_info, usage);
+    ImageWithView image = create_image_with_view(info, view_info, usage, flags);
 
     ASSERT(upload_cb);
 
@@ -451,22 +486,40 @@ ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info,
 }
 
 ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                  VkImageLayout layout, bool cube_map)
+                                                  VmaAllocationCreateFlags flags, VkImageLayout layout, bool cube_map)
 {
     VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
-    return create_and_transit_image(info, viewInfo, usage, layout);
+    return create_and_transit_image(info, viewInfo, usage, flags, layout);
 }
 
 ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                 const std::byte *data, size_t byte_size, VkImageLayout layout,
+                                                 VmaAllocationCreateFlags flags, const std::byte *data,
+                                                 size_t byte_size, VkImageLayout layout, MipmapOption mipmap_option,
+                                                 bool cube_map)
+{
+    return create_and_upload_image(
+        info, usage, flags, [&](std::byte *dest) { memcpy(dest, (const void *)data, byte_size); }, layout,
+        mipmap_option, cube_map);
+}
+
+ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info_, VmaMemoryUsage usage,
+                                                 VmaAllocationCreateFlags flags,
+                                                 const std::function<void(std::byte *)> &copy_fn, VkImageLayout layout,
                                                  MipmapOption mipmap_option, bool cube_map)
 {
+
     ASSERT(upload_cb);
 
-    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
-    ImageWithView image = create_image_with_view(info, viewInfo, usage);
+    VkImageCreateInfo info = info_;
+    info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if (mipmap_option == MipmapOption::AutoGenerate) {
+        info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
 
-    Buffer staging = create_staging_buffer(image_size(info), data, byte_size);
+    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
+    ImageWithView image = create_image_with_view(info, viewInfo, usage, flags);
+
+    Buffer staging = create_staging_buffer(image_size(info), copy_fn);
 
     VkImageMemoryBarrier allToDst = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     allToDst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -650,20 +703,14 @@ ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info, 
     return image;
 }
 
-Texture Allocator::create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info, bool own_image)
-{
-    Texture texture;
-    texture.image = image;
-    vk_check(vkCreateSampler(device, &sampler_info, nullptr, &texture.sampler));
-    texture.own_image = own_image;
-
-    return texture;
-}
-
 Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size)
 {
     ASSERT(buffer_size >= data_size);
+    return create_staging_buffer(buffer_size, [&](std::byte *dest) { memcpy(dest, (const void *)data, data_size); });
+}
 
+Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::function<void(std::byte *)> &copy_fn)
+{
     VkBufferCreateInfo bufferCI{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufferCI.size = buffer_size;
     bufferCI.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -676,7 +723,10 @@ Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byt
     VmaAllocationInfo info;
     vk_check(vmaCreateBuffer(vma, &bufferCI, &allocCI, &buffer.buffer, &buffer.allocation, &info));
 
-    memcpy(info.pMappedData, (const void *)data, data_size);
+    //
+    copy_fn(reinterpret_cast<std::byte *>(info.pMappedData));
+    //
+
     vk_check(vmaFlushAllocation(vma, buffer.allocation, 0, VK_WHOLE_SIZE));
 
     staging_buffers.push_back(buffer);
@@ -733,21 +783,18 @@ void Allocator::destroy(const PerFrameBuffer &per_frame_buffer)
     vmaDestroyBuffer(vma, per_frame_buffer.buffer, per_frame_buffer.allocation);
 }
 
+void Allocator::destroy(const FrequentUniformBuffer &uniform_buffer)
+{
+    destroy(uniform_buffer.dest);
+    destroy(uniform_buffer.staging);
+}
+
 void Allocator::destroy(const Image &image) { vmaDestroyImage(vma, image.image, image.allocation); }
 
 void Allocator::destroy(const ImageWithView &image)
 {
     vmaDestroyImage(vma, image.image, image.allocation);
     vkDestroyImageView(device, image.view, nullptr);
-}
-
-void Allocator::destroy(const Texture &texture)
-{
-    vkDestroySampler(device, texture.sampler, nullptr);
-    if (texture.own_image && texture.image.image != VK_NULL_HANDLE) {
-        vkDestroyImageView(device, texture.image.view, nullptr);
-        vmaDestroyImage(vma, texture.image.image, texture.image.allocation);
-    }
 }
 
 void Allocator::destroy(const AccelKHR &accel)
@@ -1061,6 +1108,8 @@ void Context::create_device(const ContextCreateInfo &info, CompatibleDevice comp
     vmf_vk_fns.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
 
     VmaAllocatorCreateInfo vmaInfo{};
+    // TODO: should set based on VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress
+    vmaInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     vmaInfo.pVulkanFunctions = &vmf_vk_fns;
     vmaInfo.physicalDevice = physical_device;
     vmaInfo.device = device;
@@ -1521,18 +1570,21 @@ VkDescriptorSetLayout DescriptorSetHelper::create_set_layout(VkDevice device) co
     setLayoutCI.bindingCount = (uint32_t)bindings.size();
     setLayoutCI.pBindings = bindings.data();
 
+    VkDescriptorSetLayout setLayout;
     if (last_unbounded_array) {
         std::vector<VkDescriptorBindingFlags> flags(bindings.size(), (VkFlags)0);
         flags.back() = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
         VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-            .bindingCount = 3,
+            .bindingCount = (uint32_t)bindings.size(),
             .pBindingFlags = flags.data(),
         };
         setLayoutCI.pNext = &binding_flags;
+        vkCreateDescriptorSetLayout(device, &setLayoutCI, nullptr, &setLayout);
+    } else {
+        vkCreateDescriptorSetLayout(device, &setLayoutCI, nullptr, &setLayout);
     }
-    VkDescriptorSetLayout setLayout;
-    vkCreateDescriptorSetLayout(device, &setLayoutCI, nullptr, &setLayout);
+
     return setLayout;
 }
 
@@ -1615,8 +1667,7 @@ void ParameterBlockMeta::init(VkDevice device, uint32_t max_sets, DescriptorSetH
     this->device = device;
     this->max_sets = max_sets;
 
-    if (helper.last_unbounded_array) {
-    }
+    last_unbounded_array = helper.last_unbounded_array;
 
     desc_pool = desc_set_helper.create_pool(device, max_sets);
     desc_set_layout = desc_set_helper.create_set_layout(device);
@@ -1630,60 +1681,154 @@ void ParameterBlockMeta::deinit()
     }
     vkDestroyDescriptorSetLayout(device, desc_set_layout, nullptr);
     vkDestroyDescriptorPool(device, desc_pool, nullptr);
+
+    desc_set_helper = DescriptorSetHelper();
+    desc_set_layout = VK_NULL_HANDLE;
+    desc_pool = VK_NULL_HANDLE;
+    device = VK_NULL_HANDLE;
+
+    max_sets = 0;
+    allocated_sets = 0;
+    last_unbounded_array = false;
 }
 
-void ParameterBlockMeta::allocate_blocks(uint32_t num, std::span<ParameterBlock> out)
+void ParameterBlockMeta::allocate_blocks(uint32_t num, std::span<ParameterBlock> out,
+                                         std::optional<uint32_t> unbounded_array_max_size)
 {
     ASSERT(allocated_sets + num <= max_sets, "Exceeds max sets!");
     allocated_sets += num;
 
     std::vector<VkDescriptorSetLayout> set_layouts(num, desc_set_layout);
 
-    VkDescriptorSetVariableDescriptorCountAllocateInfo set_counts = {};
-    if (last_unbounded_array) {
-        uint32_t counts[1];
-        counts[0] = 32; // Set 0 has a variable count descriptor with a maximum of 32 elements
-        set_counts.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
-        set_counts.descriptorSetCount = 1;
-        set_counts.pDescriptorCounts = counts;
-    }
-    VkDescriptorSetAllocateInfo alloc_info{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .pNext = last_unbounded_array ? &set_counts : nullptr,
-        .descriptorPool = desc_pool,
-        .descriptorSetCount = num,
-        .pSetLayouts = set_layouts.data(),
-    };
+    VkDescriptorSetVariableDescriptorCountAllocateInfo set_counts = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
 
     std::vector<VkDescriptorSet> sets(num);
-    vk_check(vkAllocateDescriptorSets(device, &alloc_info, sets.data()));
+    if (last_unbounded_array) {
+        ASSERT(unbounded_array_max_size);
+        std::vector<uint32_t> counts(num, *unbounded_array_max_size);
+        set_counts.descriptorSetCount = (uint32_t)counts.size();
+        set_counts.pDescriptorCounts = counts.data();
+        VkDescriptorSetAllocateInfo alloc_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .pNext = &set_counts,
+            .descriptorPool = desc_pool,
+            .descriptorSetCount = num,
+            .pSetLayouts = set_layouts.data(),
+        };
+        vk_check(vkAllocateDescriptorSets(device, &alloc_info, sets.data()));
+    } else {
+        VkDescriptorSetAllocateInfo alloc_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .descriptorPool = desc_pool,
+            .descriptorSetCount = num,
+            .pSetLayouts = set_layouts.data(),
+        };
+        vk_check(vkAllocateDescriptorSets(device, &alloc_info, sets.data()));
+    }
+
     for (uint32_t i = 0; i < num; ++i) {
         out[i].desc_set = sets[i];
         out[i].meta = this;
     }
 }
 
-ParameterWrite ParameterBlock::write(const std::string &binding_name,
-                                     const std::optional<VkDescriptorBufferInfo> buffer_info,
-                                     const std::optional<VkDescriptorImageInfo> image_info,
-                                     VkBufferView texel_buffer_view) const
+void ParameterBlock::write_buffers(const std::string &binding_name,
+                                   std::span<const VkDescriptorBufferInfo> buffer_infos, uint32_t start,
+                                   ParameterWriteArray &write_array) const
 {
-    ParameterWrite write;
-    write.write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    VkWriteDescriptorSet write;
+    if (buffer_infos.size() == 1) {
+        write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    } else {
+        write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start, (uint32_t)buffer_infos.size());
+    }
+    write.pBufferInfo = buffer_infos.data();
 
-    if (buffer_info) {
-        write.buffer_info = std::make_unique<VkDescriptorBufferInfo>(*buffer_info);
-        write.write.pBufferInfo = write.buffer_info.get();
+    write_array.writes.push_back(write);
+    write_array.buffer_infos.push_back(buffer_infos);
+}
+
+void ParameterBlock::write_buffer(const std::string &binding_name, const VkDescriptorBufferInfo &buffer_info,
+                                  ParameterWriteArray &write_array) const
+{
+    VkWriteDescriptorSet write;
+    write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    write.pBufferInfo = &buffer_info;
+
+    write_array.writes.push_back(write);
+    write_array.buffer_infos.push_back({&buffer_info, 1});
+}
+
+void ParameterBlock::write_images(const std::string &binding_name, std::span<const VkDescriptorImageInfo> image_infos,
+                                  uint32_t start, ParameterWriteArray &write_array) const
+{
+    VkWriteDescriptorSet write;
+    if (image_infos.size() == 1) {
+        write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    } else {
+        write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start, (uint32_t)image_infos.size());
     }
-    if (image_info) {
-        write.image_info = std::make_unique<VkDescriptorImageInfo>(*image_info);
-        write.write.pImageInfo = write.image_info.get();
+    write.pImageInfo = image_infos.data();
+
+    write_array.writes.push_back(write);
+    write_array.image_infos.push_back(image_infos);
+}
+
+void ParameterBlock::write_image(const std::string &binding_name, const VkDescriptorImageInfo &image_info,
+                                 ParameterWriteArray &write_array) const
+{
+    VkWriteDescriptorSet write;
+    write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    write.pImageInfo = &image_info;
+
+    write_array.writes.push_back(write);
+    write_array.image_infos.push_back({&image_info, 1});
+}
+
+void ParameterBlock::write_texel_buffers(const std::string &binding_name, std::span<const VkBufferView> buffer_views,
+                                         uint32_t start, ParameterWriteArray &write_array) const
+{
+    VkWriteDescriptorSet write;
+    if (buffer_views.size() == 1) {
+        write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    } else {
+        write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start, (uint32_t)buffer_views.size());
     }
-    if (texel_buffer_view != VK_NULL_HANDLE) {
-        write.texel_buffer_view = std::make_unique<VkBufferView>(texel_buffer_view);
-        write.write.pTexelBufferView = write.texel_buffer_view.get();
+    write.pTexelBufferView = buffer_views.data();
+
+    write_array.writes.push_back(write);
+    write_array.texel_buffer_views.push_back(buffer_views);
+}
+
+void ParameterBlock::write_texel_buffer(const std::string &binding_name, const VkBufferView &buffer_view,
+                                        ParameterWriteArray &write_array) const
+{
+    VkWriteDescriptorSet write;
+    write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    write.pTexelBufferView = &buffer_view;
+
+    write_array.writes.push_back(write);
+    write_array.texel_buffer_views.push_back({&buffer_view, 1});
+}
+
+void ParameterBlock::write_accels(const std::string &binding_name,
+                                  const VkWriteDescriptorSetAccelerationStructureKHR &accels, uint32_t start,
+                                  ParameterWriteArray &write_array) const
+{
+    VkWriteDescriptorSet write;
+    if (accels.accelerationStructureCount == 1) {
+        write = meta->desc_set_helper.make_write(desc_set, binding_name);
+    } else {
+        write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start,
+                                                       (uint32_t)accels.accelerationStructureCount);
     }
-    return write;
+
+    write.pNext = &accels;
+
+    write_array.writes.push_back(write);
+    write_array.accels.push_back(accels);
 }
 
 //-----------------------------------------------------------------------------
@@ -2171,25 +2316,48 @@ VkDeviceSize getMaxScratchSize(const std::vector<AccelerationStructureBuildData>
 //
 RaytracingBuilderKHR::RaytracingBuilderKHR(const VkDevice &device, Allocator &allocator, uint32_t queueIndex)
 {
+    init(device, allocator, queueIndex);
+}
+
+void RaytracingBuilderKHR::init(const VkDevice &device, Allocator &allocator, uint32_t queueIndex)
+{
+    if (is_init()) {
+        return;
+    }
     m_device = device;
     m_queueIndex = queueIndex;
     m_debug.setup(device);
     m_alloc = &allocator;
 }
 
+bool RaytracingBuilderKHR::is_init() const { return m_device != VK_NULL_HANDLE; }
+
 //--------------------------------------------------------------------------------------------------
 // Destroying all allocations
 //
-RaytracingBuilderKHR::~RaytracingBuilderKHR()
+
+void RaytracingBuilderKHR::deinit()
 {
-    if (m_alloc) {
-        for (auto &b : m_blas) {
-            m_alloc->destroy(b);
-        }
-        m_alloc->destroy(m_tlas);
+    if (!is_init()) {
+        return;
+    }
+
+    for (auto &b : m_blas) {
+        m_alloc->destroy(b);
     }
     m_blas.clear();
+
+    m_alloc->destroy(m_tlas);
+    m_tlas = {};
+
+    m_queueIndex = 0;
+    m_debug = {};
+
+    m_device = VK_NULL_HANDLE;
+    m_alloc = nullptr;
 }
+
+RaytracingBuilderKHR::~RaytracingBuilderKHR() { deinit(); }
 
 //--------------------------------------------------------------------------------------------------
 // Returning the constructed top-level acceleration structure
@@ -2370,6 +2538,213 @@ void RaytracingBuilderKHR::updateBlas(uint32_t blasIdx, BlasInput &blas, VkBuild
     genCmdBuf.submitAndWait(cmdBuf);
 
     m_alloc->destroy(scratchBuffer);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Default setup
+//
+void SBTWrapper::setup(VkDevice device, uint32_t familyIndex, Allocator *allocator,
+                       const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties)
+{
+    m_device = device;
+    m_queueIndex = familyIndex;
+    m_pAlloc = allocator;
+    m_debug.setup(device);
+
+    m_handleSize = rtProperties.shaderGroupHandleSize;           // Size of a program identifier
+    m_handleAlignment = rtProperties.shaderGroupHandleAlignment; // Alignment in bytes for each SBT entry
+    m_shaderGroupBaseAlignment = rtProperties.shaderGroupBaseAlignment;
+}
+
+//--------------------------------------------------------------------------------------------------
+// Destroying the allocated buffers and clearing all vectors
+//
+void SBTWrapper::destroy()
+{
+    if (m_pAlloc) {
+        for (auto &b : m_buffer)
+            m_pAlloc->destroy(b);
+    }
+
+    for (auto &i : m_index)
+        i = {};
+}
+
+//--------------------------------------------------------------------------------------------------
+// Finding the handle index position of each group type in the pipeline creation info.
+// If the pipeline was created like: raygen, miss, hit, miss, hit, hit
+// The result will be: raygen[0], miss[1, 3], hit[2, 4, 5], callable[]
+//
+void SBTWrapper::addIndices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
+                            const std::vector<VkRayTracingPipelineCreateInfoKHR> &libraries)
+{
+    for (auto &i : m_index)
+        i = {};
+
+    // Libraries contain stages referencing their internal groups. When those groups
+    // are used in the final pipeline we need to offset them to ensure each group has
+    // a unique index
+    uint32_t groupOffset = 0;
+
+    for (size_t i = 0; i < libraries.size() + 1; i++) {
+        // When using libraries, their groups and stages are appended after the groups and
+        // stages defined in the main VkRayTracingPipelineCreateInfoKHR
+        const auto &info = (i == 0) ? rayPipelineInfo : libraries[i - 1];
+
+        // Finding the handle position of each group, splitting by raygen, miss and hit group
+        for (uint32_t g = 0; g < info.groupCount; g++) {
+            if (info.pGroups[g].type == VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR) {
+                uint32_t genShader = info.pGroups[g].generalShader;
+                assert(genShader < info.stageCount);
+                if (info.pStages[genShader].stage == VK_SHADER_STAGE_RAYGEN_BIT_KHR) {
+                    m_index[eRaygen].push_back(g + groupOffset);
+                } else if (info.pStages[genShader].stage == VK_SHADER_STAGE_MISS_BIT_KHR) {
+                    m_index[eMiss].push_back(g + groupOffset);
+                } else if (info.pStages[genShader].stage == VK_SHADER_STAGE_CALLABLE_BIT_KHR) {
+                    m_index[eCallable].push_back(g + groupOffset);
+                }
+            } else {
+                m_index[eHit].push_back(g + groupOffset);
+            }
+        }
+
+        groupOffset += info.groupCount;
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// This function creates 4 buffers, for raygen, miss, hit and callable shader.
+// Each buffer will have the handle + 'data (if any)', .. n-times they have entries in the pipeline.
+//
+void SBTWrapper::create(VkPipeline rtPipeline, VkRayTracingPipelineCreateInfoKHR rayPipelineInfo /*= {}*/,
+                        const std::vector<VkRayTracingPipelineCreateInfoKHR> &librariesInfo /*= {}*/)
+{
+    for (auto &b : m_buffer)
+        m_pAlloc->destroy(b);
+
+    // Get the total number of groups and handle index position
+    uint32_t totalGroupCount{0};
+    std::vector<uint32_t> groupCountPerInput;
+    // A pipeline is defined by at least its main VkRayTracingPipelineCreateInfoKHR, plus a number of external libraries
+    groupCountPerInput.reserve(1 + librariesInfo.size());
+    if (rayPipelineInfo.sType == VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR) {
+        addIndices(rayPipelineInfo, librariesInfo);
+        groupCountPerInput.push_back(rayPipelineInfo.groupCount);
+        totalGroupCount += rayPipelineInfo.groupCount;
+        for (const auto &lib : librariesInfo) {
+            groupCountPerInput.push_back(lib.groupCount);
+            totalGroupCount += lib.groupCount;
+        }
+    } else {
+        // Find how many groups when added manually, by finding the largest index and adding 1
+        // See also addIndex for manual entries
+        for (auto &i : m_index) {
+            if (!i.empty())
+                totalGroupCount = std::max(totalGroupCount, *std::max_element(std::begin(i), std::end(i)));
+        }
+        totalGroupCount++;
+        groupCountPerInput.push_back(totalGroupCount);
+    }
+
+    // Fetch all the shader handles used in the pipeline, so that they can be written in the SBT
+    uint32_t sbtSize = totalGroupCount * m_handleSize;
+    std::vector<uint8_t> shaderHandleStorage(sbtSize);
+
+    vk_check(vkGetRayTracingShaderGroupHandlesKHR(m_device, rtPipeline, 0, totalGroupCount, sbtSize,
+                                                  shaderHandleStorage.data()));
+    // Find the max stride, minimum is the handle size + size of 'data (if any)' aligned to shaderGroupBaseAlignment
+    auto findStride = [&](auto entry, auto &stride) {
+        stride = align_up(m_handleSize, m_handleAlignment); // minimum stride
+        for (auto &e : entry) {
+            // Find the largest data + handle size, all aligned
+            uint32_t dataHandleSize =
+                align_up(static_cast<uint32_t>(m_handleSize + e.second.size() * sizeof(uint8_t)), m_handleAlignment);
+            stride = std::max(stride, dataHandleSize);
+        }
+    };
+    findStride(m_data[eRaygen], m_stride[eRaygen]);
+    findStride(m_data[eMiss], m_stride[eMiss]);
+    findStride(m_data[eHit], m_stride[eHit]);
+    findStride(m_data[eCallable], m_stride[eCallable]);
+
+    // Special case, all Raygen must start aligned on GroupBase
+    m_stride[eRaygen] = align_up(m_stride[eRaygen], m_shaderGroupBaseAlignment);
+
+    // Buffer holding the staging information
+    std::array<std::vector<uint8_t>, 4> stage;
+    stage[eRaygen] = std::vector<uint8_t>(m_stride[eRaygen] * indexCount(eRaygen));
+    stage[eMiss] = std::vector<uint8_t>(m_stride[eMiss] * indexCount(eMiss));
+    stage[eHit] = std::vector<uint8_t>(m_stride[eHit] * indexCount(eHit));
+    stage[eCallable] = std::vector<uint8_t>(m_stride[eCallable] * indexCount(eCallable));
+
+    // Write the handles in the SBT buffer + data info (if any)
+    auto copyHandles = [&](std::vector<uint8_t> &buffer, std::vector<uint32_t> &indices, uint32_t stride, auto &data) {
+        auto *pBuffer = buffer.data();
+        for (uint32_t index = 0; index < static_cast<uint32_t>(indices.size()); index++) {
+            auto *pStart = pBuffer;
+            // Copy the handle
+            memcpy(pBuffer, shaderHandleStorage.data() + (indices[index] * m_handleSize), m_handleSize);
+            // If there is data for this group index, copy it too
+            auto it = data.find(index);
+            if (it != std::end(data)) {
+                pBuffer += m_handleSize;
+                memcpy(pBuffer, it->second.data(), it->second.size() * sizeof(uint8_t));
+            }
+            pBuffer = pStart + stride; // Jumping to next group
+        }
+    };
+
+    // Copy the handles/data to each staging buffer
+    copyHandles(stage[eRaygen], m_index[eRaygen], m_stride[eRaygen], m_data[eRaygen]);
+    copyHandles(stage[eMiss], m_index[eMiss], m_stride[eMiss], m_data[eMiss]);
+    copyHandles(stage[eHit], m_index[eHit], m_stride[eHit], m_data[eHit]);
+    copyHandles(stage[eCallable], m_index[eCallable], m_stride[eCallable], m_data[eCallable]);
+
+    // Creating device local buffers where handles will be stored
+    VkBufferUsageFlags usage_flags =
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR;
+    VkMemoryPropertyFlags mem_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    // CommandPool genCmdBuf(m_device, m_queueIndex);
+    // VkCommandBuffer cmdBuf = genCmdBuf.createCommandBuffer();
+
+    m_pAlloc->stage_session([&](Allocator &alloc) {
+        for (uint32_t i = 0; i < 4; i++) {
+            if (!stage[i].empty()) {
+                m_buffer[i] = alloc.create_buffer(
+                    VkBufferCreateInfo{
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                        .usage = usage_flags,
+                    },
+                    VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE, VmaAllocationCreateFlags(0), stage[i]);
+                NAME_IDX_VK(m_buffer[i].buffer, i);
+            }
+        }
+    });
+
+    // genCmdBuf.submitAndWait(cmdBuf);
+    // m_pAlloc->finalizeAndReleaseStaging();
+}
+
+VkDeviceAddress SBTWrapper::getAddress(GroupType t) const
+{
+    if (m_buffer[t].buffer == VK_NULL_HANDLE)
+        return 0;
+    VkBufferDeviceAddressInfo i{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr, m_buffer[t].buffer};
+    return vkGetBufferDeviceAddress(
+        m_device, &i); // Aligned on VkMemoryRequirements::alignment which includes shaderGroupBaseAlignment
+}
+
+const VkStridedDeviceAddressRegionKHR SBTWrapper::getRegion(GroupType t, uint32_t indexOffset) const
+{
+    return VkStridedDeviceAddressRegionKHR{getAddress(t) + indexOffset * getStride(t), getStride(t), getSize(t)};
+}
+
+const std::array<VkStridedDeviceAddressRegionKHR, 4> SBTWrapper::getRegions(uint32_t rayGenIndexOffset) const
+{
+    std::array<VkStridedDeviceAddressRegionKHR, 4> regions{getRegion(eRaygen, rayGenIndexOffset), getRegion(eMiss),
+                                                           getRegion(eHit), getRegion(eCallable)};
+    return regions;
 }
 
 //-----------------------------------------------------------------------------

@@ -236,6 +236,18 @@ inline float hash_float(Args... args)
     return uint32_t(hash(args...)) * 0x1p-32f;
 }
 
+template <typename T>
+struct ByteHash
+{
+    size_t operator()(const T &obj) const { return hash(obj); }
+};
+
+template <typename T>
+struct ByteEqual
+{
+    bool operator()(const T &a, const T &b) const { return std::memcmp(&a, &b, sizeof(T)) == 0; }
+};
+
 // heterogeneous lookup: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1690r1.html
 // https://www.cppstories.com/2021/heterogeneous-access-cpp20/
 struct string_hash

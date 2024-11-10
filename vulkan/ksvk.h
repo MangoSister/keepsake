@@ -1,5 +1,6 @@
 #pragma once
 #include "../assertion.h"
+#include "../file_util.h"
 #include "../hash.h"
 
 #include <array>
@@ -33,6 +34,7 @@ namespace vk
 // TODO: consider integration with:
 // https://github.com/wolfpld/tracy
 // https://developer.nvidia.com/nsight-aftermath
+// https://github.com/KhronosGroup/Vulkan-Profiles
 
 inline void vk_check(VkResult err, const std::source_location location = std::source_location::current())
 {
@@ -268,6 +270,15 @@ struct PerFrameBuffer
     uint32_t num_frames;
 };
 
+// https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
+// "Advanced data uploading"
+struct FrequentUniformBuffer
+{
+    bool require_staging() const { return staging.buffer != VK_NULL_HANDLE; }
+    Buffer dest;
+    Buffer staging;
+};
+
 struct Image
 {
     VkImage image = VK_NULL_HANDLE;
@@ -279,14 +290,6 @@ struct ImageWithView
     VkImage image = VK_NULL_HANDLE;
     VmaAllocation allocation = nullptr;
     VkImageView view;
-};
-
-struct Texture
-{
-    ImageWithView image;
-    VkSampler sampler;
-
-    bool own_image;
 };
 
 enum class MipmapOption
@@ -344,6 +347,8 @@ struct Allocator
                                     VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO, VmaAllocationCreateFlags flags = 0,
                                     const std::byte *data = nullptr);
 
+    FrequentUniformBuffer create_frequent_uniform_buffer(const VkBufferCreateInfo &info_);
+
     std::byte *map(VmaAllocation allocation);
     void unmap(VmaAllocation allocation);
     void flush(VmaAllocation allocation);
@@ -357,6 +362,16 @@ struct Allocator
             this->flush(allocation);
         }
         unmap(allocation);
+    }
+
+    template <typename TWork>
+    void map(const FrequentUniformBuffer &uniform_buf, bool flush, const TWork &work)
+    {
+        if (!uniform_buf.require_staging()) {
+            map(uniform_buf.dest.allocation, flush, work);
+        } else {
+            map(uniform_buf.staging.allocation, flush, work);
+        }
     }
 
     PerFrameBuffer create_per_frame_buffer(const VkBufferCreateInfo &per_frame_info, VmaMemoryUsage usage,
@@ -391,25 +406,29 @@ struct Allocator
 
     Image create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags);
     ImageWithView create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                         VmaMemoryUsage usage);
-    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage, bool cube_map);
+                                         VmaMemoryUsage usage, VmaAllocationCreateFlags flags);
+    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                         VmaAllocationCreateFlags flags, bool cube_map);
     ImageWithView create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample, bool storage);
     ImageWithView create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage);
     ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                           VmaMemoryUsage usage, VkImageLayout layout);
-    ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VkImageLayout layout,
-                                           bool cube_map);
+                                           VmaMemoryUsage usage, VmaAllocationCreateFlags flags, VkImageLayout layout);
+    ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                           VmaAllocationCreateFlags flags, VkImageLayout layout, bool cube_map);
     // Regular 2D texture or 2D texture array only (TODO: cube map, 3D texture, etc).
-    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, const std::byte *data,
-                                          size_t byte_size, VkImageLayout layout, MipmapOption mipmap_option,
-                                          bool cube_map);
-    Texture create_texture(const ImageWithView &image, const VkSamplerCreateInfo &sampler_info, bool own_image);
+    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                          VmaAllocationCreateFlags flags, const std::byte *data, size_t byte_size,
+                                          VkImageLayout layout, MipmapOption mipmap_option, bool cube_map);
+    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                          VmaAllocationCreateFlags flags,
+                                          const std::function<void(std::byte *)> &copy_fn, VkImageLayout layout,
+                                          MipmapOption mipmap_option, bool cube_map);
 
     AccelKHR create_accel(const VkAccelerationStructureCreateInfoKHR &accel_info);
 
     template <typename T, typename... Args>
         requires(std::same_as<T, Buffer> || std::same_as<T, TexelBuffer> || std::same_as<T, PerFrameBuffer> ||
-                 std::same_as<T, Image> || std::same_as<T, ImageWithView> || std::same_as<T, Texture> ||
+                 std::same_as<T, FrequentUniformBuffer> || std::same_as<T, Image> || std::same_as<T, ImageWithView> ||
                  std::same_as<T, AccelKHR>)
     T create(Args &&...args)
     {
@@ -419,23 +438,25 @@ struct Allocator
             return create_texel_buffer(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, PerFrameBuffer>) {
             return create_per_frame_buffer(std::forward<Args>(args)...);
+        } else if constexpr (std::is_same_v<T, FrequentUniformBuffer>) {
+            return create_frequent_uniform_buffer(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, Image>) {
             return create_image(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, ImageWithView>) {
             return create_image_with_view(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, AccelKHR>) {
-            return create_texture(std::forward<Args>(args)...);
-        } else {
             return create_accel(std::forward<Args>(args)...);
+        } else {
+            static_assert(!sizeof(T));
         }
     }
 
     void destroy(const Buffer &buffer);
     void destroy(const TexelBuffer &texel_buffer);
     void destroy(const PerFrameBuffer &per_frame_buffer);
+    void destroy(const FrequentUniformBuffer &uniform_buffer);
     void destroy(const Image &image);
     void destroy(const ImageWithView &image_with_view);
-    void destroy(const Texture &texture);
     void destroy(const AccelKHR &accel);
 
   public:
@@ -444,6 +465,7 @@ struct Allocator
   private:
     // Note: delay destruction of staging buffers.
     Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size);
+    Buffer create_staging_buffer(VkDeviceSize buffer_size, const std::function<void(std::byte *)> &copy_fn);
     void clear_staging_buffer();
 
     VmaAllocator vma = VK_NULL_HANDLE;
@@ -459,10 +481,22 @@ struct Allocator
     VkDeviceSize min_texel_buffer_offset_alignment = 0;
 };
 
+inline VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
+{
+    if (buffer == VK_NULL_HANDLE)
+        return 0ULL;
+
+    VkBufferDeviceAddressInfo info = {VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+    info.buffer = buffer;
+    return vkGetBufferDeviceAddress(device, &info);
+}
+
 template <typename T>
 struct AutoRelease
 {
     AutoRelease() = default;
+
+    AutoRelease(T &&obj, std::shared_ptr<Allocator> allocator) : obj(std::move(obj)), allocator(allocator) {}
 
     template <typename... Args>
     AutoRelease(std::shared_ptr<Allocator> allocator, Args &&...args)
@@ -489,7 +523,7 @@ struct AutoRelease
     const T *operator->() const { return &obj; }
 
     T &operator*() { return obj; }
-    const T *&operator*() const { return obj; }
+    const T &operator*() const { return obj; }
 
     T obj;
     std::shared_ptr<Allocator> allocator;
@@ -919,54 +953,42 @@ struct DescriptorSetHelper
 
 struct ParameterBlockMeta;
 
-struct ParameterWrite
-{
-    VkWriteDescriptorSet write{};
-    std::unique_ptr<VkDescriptorBufferInfo> buffer_info;
-    std::unique_ptr<VkDescriptorImageInfo> image_info;
-    std::unique_ptr<VkBufferView> texel_buffer_view;
-};
-
 struct ParameterWriteArray
 {
-    static void make_recurse(ParameterWriteArray &arr) {}
-
-    template <std::same_as<ParameterWrite>... W>
-    static void make_recurse(ParameterWriteArray &arr, ParameterWrite &&w, W &&...args)
+    void update_writes(VkDevice device) const
     {
-        arr.writes.emplace_back(std::move(w.write));
-        arr.buffer_infos.emplace_back(std::move(w.buffer_info));
-        arr.image_infos.emplace_back(std::move(w.image_info));
-        arr.texel_buffer_views.emplace_back(std::move(w.texel_buffer_view));
-
-        make_recurse(arr, std::forward<W>(args)...);
-    }
-
-    template <std::same_as<ParameterWrite>... W>
-    static ParameterWriteArray make(W &&...writes)
-    {
-        constexpr size_t N = (sizeof(writes) + ... + 0) / sizeof(ParameterWrite);
-        ParameterWriteArray arr;
-        arr.writes.reserve(N);
-        arr.buffer_infos.reserve(N);
-        arr.image_infos.reserve(N);
-        arr.texel_buffer_views.reserve(N);
-
-        make_recurse(arr, std::forward<W>(writes)...);
-        return arr;
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
     }
 
     std::vector<VkWriteDescriptorSet> writes;
-    std::vector<std::unique_ptr<VkDescriptorBufferInfo>> buffer_infos;
-    std::vector<std::unique_ptr<VkDescriptorImageInfo>> image_infos;
-    std::vector<std::unique_ptr<VkBufferView>> texel_buffer_views;
+    std::vector<std::span<const VkDescriptorBufferInfo>> buffer_infos;
+    std::vector<std::span<const VkDescriptorImageInfo>> image_infos;
+    std::vector<std::span<const VkBufferView>> texel_buffer_views;
+    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> accels;
 };
 
 struct ParameterBlock
 {
-    ParameterWrite write(const std::string &binding_name, const std::optional<VkDescriptorBufferInfo> buffer_info = {},
-                         const std::optional<VkDescriptorImageInfo> image_info = {},
-                         VkBufferView texel_buffer_view = VK_NULL_HANDLE) const;
+    void write_buffers(const std::string &binding_name, std::span<const VkDescriptorBufferInfo> buffer_infos,
+                       uint32_t start, ParameterWriteArray &write_array) const;
+
+    void write_buffer(const std::string &binding_name, const VkDescriptorBufferInfo &buffer_info,
+                      ParameterWriteArray &write_array) const;
+
+    void write_images(const std::string &binding_name, std::span<const VkDescriptorImageInfo> image_infos,
+                      uint32_t start, ParameterWriteArray &write_array) const;
+
+    void write_image(const std::string &binding_name, const VkDescriptorImageInfo &image_infos,
+                     ParameterWriteArray &write_array) const;
+
+    void write_texel_buffers(const std::string &binding_name, std::span<const VkBufferView> buffer_views,
+                             uint32_t start, ParameterWriteArray &write_array) const;
+
+    void write_texel_buffer(const std::string &binding_name, const VkBufferView &buffer_view,
+                            ParameterWriteArray &write_array) const;
+
+    void write_accels(const std::string &binding_name, const VkWriteDescriptorSetAccelerationStructureKHR &accels,
+                      uint32_t start, ParameterWriteArray &write_array) const;
 
     VkDescriptorSet desc_set = VK_NULL_HANDLE;
     ParameterBlockMeta *meta = nullptr;
@@ -999,13 +1021,14 @@ struct ParameterBlockMeta
 
     NO_COPY_AND_SWAP_AS_MOVE(ParameterBlockMeta)
 
-    ParameterBlock allocate_block()
+    ParameterBlock allocate_block(std::optional<uint32_t> unbounded_array_max_size = {})
     {
         ParameterBlock block;
-        allocate_blocks(1, {&block, 1});
+        allocate_blocks(1, {&block, 1}, unbounded_array_max_size);
         return block;
     }
-    void allocate_blocks(uint32_t num, std::span<ParameterBlock> out);
+    void allocate_blocks(uint32_t num, std::span<ParameterBlock> out,
+                         std::optional<uint32_t> unbounded_array_max_size = {});
 
     DescriptorSetHelper desc_set_helper;
     VkDescriptorSetLayout desc_set_layout = VK_NULL_HANDLE;
@@ -1016,11 +1039,31 @@ struct ParameterBlockMeta
 
     uint32_t max_sets = 0;
     uint32_t allocated_sets = 0;
+    bool last_unbounded_array = false;
 };
 
 //-----------------------------------------------------------------------------
 // [Other convenience wrappers]
 //-----------------------------------------------------------------------------
+
+inline VkShaderModule createShaderModule(VkDevice device, const std::span<const std::byte> binarycode)
+{
+    VkShaderModuleCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = binarycode.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t *>(binarycode.data());
+
+    VkShaderModule shaderModule = VK_NULL_HANDLE;
+    vk_check(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule));
+    return shaderModule;
+}
+
+inline VkShaderModule createShaderModule(VkDevice device, const fs::path &file_path)
+{
+    std::vector<std::byte> bytes = read_file_as_bytes(file_path);
+
+    return createShaderModule(device, bytes);
+}
 
 template <uint32_t DIM_X, uint32_t DIM_Y, uint32_t DIM_Z>
 void dispatch_compute(VkCommandBuffer cb, ks::arr3u n_elements)
@@ -1269,9 +1312,13 @@ class BlasBuilder
 // Ray tracing BLAS and TLAS builder
 struct RaytracingBuilderKHR
 {
+    RaytracingBuilderKHR() = default;
     RaytracingBuilderKHR(const VkDevice &device, Allocator &allocator, uint32_t queueIndex);
-
     ~RaytracingBuilderKHR();
+
+    void init(const VkDevice &device, Allocator &allocator, uint32_t queueIndex);
+    bool is_init() const;
+    void deinit();
 
     // Inputs used to build Bottom-level acceleration structure.
     // You manage the lifetime of the buffer(s) referenced by the VkAccelerationStructureGeometryKHRs within.
@@ -1326,7 +1373,7 @@ struct RaytracingBuilderKHR
         uint32_t countInstance = static_cast<uint32_t>(instances.size());
 
         // Create a buffer holding the actual instance data (matrices++) for use by the AS builder
-        // This uses a separate command pool/buffer. Consider consolidating?
+        // Staging uses a separate command pool/buffer. Consider consolidating?
         Buffer instancesBuffer; // Buffer of instances containing the matrices and BLAS ids
         m_alloc->stage_session([&](Allocator &alloc) {
             instancesBuffer = alloc.create_buffer(
@@ -1386,6 +1433,153 @@ struct RaytracingBuilderKHR
     DebugUtil m_debug;
 
     bool hasFlag(VkFlags item, VkFlags flag) { return (item & flag) == flag; }
+};
+
+/** @DOC_START
+
+# class nvvk::SBTWrapper
+
+nvvk::SBTWrapper is a generic SBT builder from the ray tracing pipeline
+
+The builder will iterate through the pipeline create info `VkRayTracingPipelineCreateInfoKHR`
+to find the number of raygen, miss, hit and callable shader groups were created.
+The handles for those group will be retrieved from the pipeline and written in the right order in
+separated buffer.
+
+Convenient functions exist to retrieve all information to be used in TraceRayKHR.
+
+## Usage
+- Setup the builder (`setup()`)
+- After the pipeline creation, call `create()` with the same info used for the creation of the pipeline.
+- Use `getRegions()` to get all the vk::StridedDeviceAddressRegionKHR needed by TraceRayKHR()
+
+
+### Example
+```cpp
+m_sbtWrapper.setup(m_device, m_graphicsQueueIndex, &m_alloc, m_rtProperties);
+// ...
+m_sbtWrapper.create(m_rtPipeline, rayPipelineInfo);
+// ...
+auto& regions = m_stbWrapper.getRegions();
+vkCmdTraceRaysKHR(cmdBuf, &regions[0], &regions[1], &regions[2], &regions[3], size.width, size.height, 1);
+```
+
+
+## Extra
+
+If data are attached to a shader group (see shaderRecord), it need to be provided independently.
+In this case, the user must know the group index for the group type.
+
+Here the Hit group 1 and 2 has data, but not the group 0.
+Those functions must be called before create.
+
+```cpp
+m_sbtWrapper.addData(SBTWrapper::eHit, 1, m_hitShaderRecord[0]);
+m_sbtWrapper.addData(SBTWrapper::eHit, 2, m_hitShaderRecord[1]);
+```
+
+
+## Special case
+
+It is also possible to create a pipeline with only a few groups but having a SBT representing many more groups.
+
+The following example shows a more complex setup.
+There are: 1 x raygen, 2 x miss, 2 x hit.
+BUT the SBT will have 3 hit by duplicating the second hit in its table.
+So, the same hit shader defined in the pipeline, can be called with different data.
+
+In this case, the use must provide manually the information to the SBT.
+All extra group must be explicitly added.
+
+The following show how to get handle indices provided in the pipeline, and we are adding another hit group, re-using the
+4th pipeline entry. Note: we are not providing the pipelineCreateInfo, because we are manually defining it.
+
+```cpp
+// Manually defining group indices
+m_sbtWrapper.addIndices(rayPipelineInfo); // Add raygen(0), miss(1), miss(2), hit(3), hit(4) from the pipeline info
+m_sbtWrapper.addIndex(SBTWrapper::eHit, 4);  // Adding a 3rd hit, duplicate from the hit:1, which make hit:2 available.
+m_sbtWrapper.addHitData(SBTWrapper::eHit, 2, m_hitShaderRecord[1]); // Adding data to this hit shader
+m_sbtWrapper.create(m_rtPipeline);
+```
+
+@DOC_END */
+
+class SBTWrapper
+{
+  public:
+    enum GroupType
+    {
+        eRaygen,
+        eMiss,
+        eHit,
+        eCallable
+    };
+
+    void setup(VkDevice device, uint32_t familyIndex, Allocator *allocator,
+               const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties);
+    void destroy();
+
+    // To call after the ray tracer pipeline creation
+    // The rayPipelineInfo parameter is the structure used to define the pipeline,
+    // while librariesInfo describe the potential input pipeline libraries
+    void create(VkPipeline rtPipeline, VkRayTracingPipelineCreateInfoKHR rayPipelineInfo = {},
+                const std::vector<VkRayTracingPipelineCreateInfoKHR> &librariesInfo = {});
+
+    // Optional, to be used in combination with addIndex. Leave create() `rayPipelineInfo`
+    // and 'librariesInfo' empty.  The rayPipelineInfo parameter is the structure used to
+    // define the pipeline, while librariesInfo describe the potential input pipeline libraries
+    void addIndices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
+                    const std::vector<VkRayTracingPipelineCreateInfoKHR> &libraries = {});
+
+    // Pushing back a GroupType and the handle pipeline index to use
+    // i.e addIndex(eHit, 3) is pushing a Hit shader group using the 3rd entry in the pipeline
+    void addIndex(GroupType t, uint32_t index) { m_index[t].push_back(index); }
+
+    // Adding 'Shader Record' data to the group index.
+    // i.e. addData(eHit, 0, myValue) is adding 'myValue' to the HIT group 0.
+    template <typename T>
+    void addData(GroupType t, uint32_t groupIndex, T &data)
+    {
+        addData(t, groupIndex, (uint8_t *)&data, sizeof(T));
+    }
+
+    void addData(GroupType t, uint32_t groupIndex, uint8_t *data, size_t dataSize)
+    {
+        std::vector<uint8_t> dst(data, data + dataSize);
+        m_data[t][groupIndex] = dst;
+    }
+
+    // Getters
+    uint32_t indexCount(GroupType t) const { return static_cast<uint32_t>(m_index[t].size()); }
+    uint32_t getStride(GroupType t) const { return m_stride[t]; }
+    VkDeviceAddress getAddress(GroupType t) const;
+
+    // returns the entire size of a group. Raygen Stride and Size must be equal, even if the buffer contains many of
+    // them.
+    uint32_t getSize(GroupType t) const { return t == eRaygen ? getStride(eRaygen) : getStride(t) * indexCount(t); }
+
+    // Return the address region of a group. indexOffset allow to offset the starting shader of the group.
+    const VkStridedDeviceAddressRegionKHR getRegion(GroupType t, uint32_t indexOffset = 0) const;
+
+    // Return the address regions of all groups. The offset allows to select which RayGen to use.
+    const std::array<VkStridedDeviceAddressRegionKHR, 4> getRegions(uint32_t rayGenIndexOffset = 0) const;
+
+  private:
+    using entry = std::unordered_map<uint32_t, std::vector<uint8_t>>;
+
+    std::array<std::vector<uint32_t>, 4> m_index; // Offset index in pipeline
+    std::array<Buffer, 4> m_buffer;               // Buffer of handles + data
+    std::array<uint32_t, 4> m_stride{0, 0, 0, 0}; // Stride of each group
+    std::array<entry, 4> m_data;                  // Local data to groups (Shader Record)
+
+    uint32_t m_handleSize{0};
+    uint32_t m_handleAlignment{0};
+    uint32_t m_shaderGroupBaseAlignment{0};
+
+    VkDevice m_device{VK_NULL_HANDLE};
+    Allocator *m_pAlloc{nullptr}; // Allocator for buffer, images, acceleration structures
+    DebugUtil m_debug;            // Utility to name objects
+    uint32_t m_queueIndex{0};
 };
 
 //-----------------------------------------------------------------------------
