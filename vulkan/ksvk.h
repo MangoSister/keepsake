@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <forward_list>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -87,46 +88,46 @@ class DebugUtil
     DebugUtil(VkDevice device) { setup(device); }
 
     void setup(VkDevice device);
-    void setObjectName(const uint64_t object, const std::string &name, VkObjectType t) const;
-    static bool isEnabled() { return s_enabled; }
+    void set_object_name(const uint64_t object, const std::string &name, VkObjectType t) const;
+    static bool is_enabled() { return s_enabled; }
 
     // clang-format off
-    void setObjectName(VkBuffer object, const std::string& name) const               { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_BUFFER); }
-    void setObjectName(VkBufferView object, const std::string& name) const           { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_BUFFER_VIEW); }
-    void setObjectName(VkCommandBuffer object, const std::string& name) const        { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_COMMAND_BUFFER ); }
-    void setObjectName(VkCommandPool object, const std::string& name) const          { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_COMMAND_POOL ); }
-    void setObjectName(VkDescriptorPool object, const std::string& name) const       { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_POOL); }
-    void setObjectName(VkDescriptorSet object, const std::string& name) const        { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_SET); }
-    void setObjectName(VkDescriptorSetLayout object, const std::string& name) const  { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT); }
-    void setObjectName(VkDevice object, const std::string& name) const               { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_DEVICE); }
-    void setObjectName(VkDeviceMemory object, const std::string& name) const         { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_DEVICE_MEMORY); }
-    void setObjectName(VkFramebuffer object, const std::string& name) const          { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_FRAMEBUFFER); }
-    void setObjectName(VkImage object, const std::string& name) const                { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_IMAGE); }
-    void setObjectName(VkImageView object, const std::string& name) const            { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_IMAGE_VIEW); }
-    void setObjectName(VkPipeline object, const std::string& name) const             { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_PIPELINE); }
-    void setObjectName(VkPipelineLayout object, const std::string& name) const       { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_PIPELINE_LAYOUT); }
-    void setObjectName(VkQueryPool object, const std::string& name) const            { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_QUERY_POOL); }
-    void setObjectName(VkQueue object, const std::string& name) const                { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_QUEUE); }
-    void setObjectName(VkRenderPass object, const std::string& name) const           { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_RENDER_PASS); }
-    void setObjectName(VkSampler object, const std::string& name) const              { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_SAMPLER); }
-    void setObjectName(VkSemaphore object, const std::string& name) const            { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_SEMAPHORE); }
-    void setObjectName(VkShaderModule object, const std::string& name) const         { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_SHADER_MODULE); }
-    void setObjectName(VkSwapchainKHR object, const std::string& name) const         { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_SWAPCHAIN_KHR); }
+    void set_object_name(VkBuffer object, const std::string& name) const               { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_BUFFER); }
+    void set_object_name(VkBufferView object, const std::string& name) const           { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_BUFFER_VIEW); }
+    void set_object_name(VkCommandBuffer object, const std::string& name) const        { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_COMMAND_BUFFER ); }
+    void set_object_name(VkCommandPool object, const std::string& name) const          { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_COMMAND_POOL ); }
+    void set_object_name(VkDescriptorPool object, const std::string& name) const       { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_POOL); }
+    void set_object_name(VkDescriptorSet object, const std::string& name) const        { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_SET); }
+    void set_object_name(VkDescriptorSetLayout object, const std::string& name) const  { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT); }
+    void set_object_name(VkDevice object, const std::string& name) const               { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_DEVICE); }
+    void set_object_name(VkDeviceMemory object, const std::string& name) const         { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_DEVICE_MEMORY); }
+    void set_object_name(VkFramebuffer object, const std::string& name) const          { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_FRAMEBUFFER); }
+    void set_object_name(VkImage object, const std::string& name) const                { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_IMAGE); }
+    void set_object_name(VkImageView object, const std::string& name) const            { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_IMAGE_VIEW); }
+    void set_object_name(VkPipeline object, const std::string& name) const             { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_PIPELINE); }
+    void set_object_name(VkPipelineLayout object, const std::string& name) const       { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_PIPELINE_LAYOUT); }
+    void set_object_name(VkQueryPool object, const std::string& name) const            { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_QUERY_POOL); }
+    void set_object_name(VkQueue object, const std::string& name) const                { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_QUEUE); }
+    void set_object_name(VkRenderPass object, const std::string& name) const           { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_RENDER_PASS); }
+    void set_object_name(VkSampler object, const std::string& name) const              { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_SAMPLER); }
+    void set_object_name(VkSemaphore object, const std::string& name) const            { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_SEMAPHORE); }
+    void set_object_name(VkShaderModule object, const std::string& name) const         { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_SHADER_MODULE); }
+    void set_object_name(VkSwapchainKHR object, const std::string& name) const         { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_SWAPCHAIN_KHR); }
 
     #if VK_NV_ray_tracing
-    void setObjectName(VkAccelerationStructureNV object, const std::string& name) const  { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV); }
+    void set_object_name(VkAccelerationStructureNV object, const std::string& name) const  { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV); }
     #endif
     #if VK_KHR_acceleration_structure
-    void setObjectName(VkAccelerationStructureKHR object, const std::string& name) const { setObjectName((uint64_t)object, name, VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR); }
+    void set_object_name(VkAccelerationStructureKHR object, const std::string& name) const { set_object_name((uint64_t)object, name, VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR); }
     #endif
     // clang-format on
 
     //
     //---------------------------------------------------------------------------
     //
-    void beginLabel(VkCommandBuffer cmdBuf, const std::string &label);
-    void endLabel(VkCommandBuffer cmdBuf);
-    void insertLabel(VkCommandBuffer cmdBuf, const std::string &label);
+    void begin_label(VkCommandBuffer cmdBuf, const std::string &label);
+    void end_label(VkCommandBuffer cmdBuf);
+    void insert_label(VkCommandBuffer cmdBuf, const std::string &label);
     //
     // Begin and End Command Label MUST be balanced, this helps as it will always close the opened label
     //
@@ -146,7 +147,7 @@ class DebugUtil
                 DebugUtil::s_vkCmdEndDebugUtilsLabelEXT(m_cmdBuf);
             }
         }
-        void setLabel(const std::string &label) const
+        void set_label(const std::string &label) const
         {
             if (DebugUtil::s_enabled) {
                 VkDebugUtilsLabelEXT s{
@@ -196,15 +197,15 @@ class DebugUtil
 #define S_(x) S__(x)
 #define S__LINE__ S_(__LINE__)
 
-inline const char* fileNameSplitter(const char* n) { return std::max<const char*>(n, std::max(strrchr(n, '\\') + 1, strrchr(n, '/') + 1)); }
-inline const char* upToLastSpace(const char* n) { return std::max<const char*>(n, strrchr(n, ' ') + 1); }
-#define CLASS_NAME upToLastSpace(typeid(*this).name())
-#define NAME_FILE_LOCATION  std::string(" in ") + std::string(fileNameSplitter(__FILE__)) + std::string(":" S__LINE__ ")")
+inline const char* file_name_splitter(const char* n) { return std::max<const char*>(n, std::max(strrchr(n, '\\') + 1, strrchr(n, '/') + 1)); }
+inline const char* up_to_last_space(const char* n) { return std::max<const char*>(n, strrchr(n, ' ') + 1); }
+#define CLASS_NAME up_to_last_space(typeid(*this).name())
+#define NAME_FILE_LOCATION  std::string(" in ") + std::string(file_name_splitter(__FILE__)) + std::string(":" S__LINE__ ")")
 
 // Individual naming
-#define NAME_VK(_x) m_debug.setObjectName(_x, (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (") + NAME_FILE_LOCATION).c_str())
-#define NAME2_VK(_x, _s) m_debug.setObjectName(_x, (std::string(_s) + std::string(" (" #_x) + NAME_FILE_LOCATION).c_str())
-#define NAME_IDX_VK(_x, _i) m_debug.setObjectName(_x, \
+#define NAME_VK(_x) m_debug.set_object_name(_x, (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (") + NAME_FILE_LOCATION).c_str())
+#define NAME2_VK(_x, _s) m_debug.set_object_name(_x, (std::string(_s) + std::string(" (" #_x) + NAME_FILE_LOCATION).c_str())
+#define NAME_IDX_VK(_x, _i) m_debug.set_object_name(_x, \
                             (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (" #_i "=") + std::to_string(_i) + std::string(", ") + NAME_FILE_LOCATION).c_str())
 
 // Name in creation
@@ -218,19 +219,19 @@ inline const char* upToLastSpace(const char* n) { return std::max<const char*>(n
 // Running scope
 #define LABEL_SCOPE_VK(_cmd)                                                                                                                \
   auto _scopeLabel =  m_debug.scopeLabel(_cmd, std::string(CLASS_NAME) + std::string("::") + std::string(__func__) + std::string(", in ")   \
-                                   + std::string(fileNameSplitter(__FILE__)) + std::string(":" S__LINE__ ")"))
+                                   + std::string(file_name_splitter(__FILE__)) + std::string(":" S__LINE__ ")"))
 
 
 // Non-defined named variable of the above macros (Ex: m_myDbg->DBG_NAME(vulan_obj); )
 #define DBG_NAME(_x)                                                                                                   \
-  setObjectName(_x, (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (") + NAME_FILE_LOCATION).c_str())
+  set_object_name(_x, (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (") + NAME_FILE_LOCATION).c_str())
 #define DBG_NAME_IDX(_x, _i)                                                                                           \
-  setObjectName(_x, (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (" #_i "=") + std::to_string(_i)  \
+  set_object_name(_x, (std::string(CLASS_NAME) + std::string("::") + std::string(#_x " (" #_i "=") + std::to_string(_i)  \
                      + std::string(", ") + NAME_FILE_LOCATION)                                                         \
                         .c_str())
 #define DBG_SCOPE(_cmd)                                                                                                \
   scopeLabel(_cmd, std::string(CLASS_NAME) + std::string("::") + std::string(__func__) + std::string(", in ")          \
-                       + std::string(fileNameSplitter(__FILE__)) + std::string(":" S__LINE__ ")"))
+                       + std::string(file_name_splitter(__FILE__)) + std::string(":" S__LINE__ ")"))
 
 // clang-format on
 
@@ -275,8 +276,11 @@ struct PerFrameBuffer
 struct FrequentUniformBuffer
 {
     bool require_staging() const { return staging.buffer != VK_NULL_HANDLE; }
+    void upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask) const;
+
     Buffer dest;
     Buffer staging;
+    VkDeviceSize size;
 };
 
 struct Image
@@ -726,16 +730,17 @@ class CommandPool
 
     NO_COPY_AND_SWAP_AS_MOVE(CommandPool)
 
-    VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, bool begin = true,
-                                        VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-                                        const VkCommandBufferInheritanceInfo *pInheritanceInfo = nullptr);
+    VkCommandBuffer create_command_buffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                          bool begin = true,
+                                          VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                                          const VkCommandBufferInheritanceInfo *pInheritanceInfo = nullptr);
 
     // free cmdbuffers from this pool
     void destroy(size_t count, const VkCommandBuffer *cmds);
     void destroy(const std::vector<VkCommandBuffer> &cmds) { destroy(cmds.size(), cmds.data()); }
     void destroy(VkCommandBuffer cmd) { destroy(1, &cmd); }
 
-    VkCommandPool getCommandPool() const { return m_commandPool; }
+    VkCommandPool get() const { return m_commandPool; }
 
     // Ends command buffer recording and submits to queue, if 'fence' is not
     // VK_NULL_HANDLE, it will be used to signal the completion of the command
@@ -751,17 +756,20 @@ class CommandPool
     // Consider batching submissions up via FencedCommandPools and
     // BatchedSubmission classes down below. Ends command buffer recording and
     // submits to queue, waits for queue idle and destroys cmds.
-    void submitAndWait(size_t count, const VkCommandBuffer *cmds, VkQueue queue);
-    void submitAndWait(const std::vector<VkCommandBuffer> &cmds, VkQueue queue)
+    void submit_and_wait(size_t count, const VkCommandBuffer *cmds, VkQueue queue);
+    void submit_and_wait(const std::vector<VkCommandBuffer> &cmds, VkQueue queue)
     {
-        submitAndWait(cmds.size(), cmds.data(), queue);
+        submit_and_wait(cmds.size(), cmds.data(), queue);
     }
-    void submitAndWait(VkCommandBuffer cmd, VkQueue queue) { submitAndWait(1, &cmd, queue); }
+    void submit_and_wait(VkCommandBuffer cmd, VkQueue queue) { submit_and_wait(1, &cmd, queue); }
 
     // ends and submits to default queue, waits for queue idle and destroys cmds
-    void submitAndWait(size_t count, const VkCommandBuffer *cmds) { submitAndWait(count, cmds, m_queue); }
-    void submitAndWait(const std::vector<VkCommandBuffer> &cmds) { submitAndWait(cmds.size(), cmds.data(), m_queue); }
-    void submitAndWait(VkCommandBuffer cmd) { submitAndWait(1, &cmd, m_queue); }
+    void submit_and_wait(size_t count, const VkCommandBuffer *cmds) { submit_and_wait(count, cmds, m_queue); }
+    void submit_and_wait(const std::vector<VkCommandBuffer> &cmds)
+    {
+        submit_and_wait(cmds.size(), cmds.data(), m_queue);
+    }
+    void submit_and_wait(VkCommandBuffer cmd) { submit_and_wait(1, &cmd, m_queue); }
 
   protected:
     VkDevice m_device = VK_NULL_HANDLE;
@@ -961,28 +969,29 @@ struct ParameterWriteArray
     }
 
     std::vector<VkWriteDescriptorSet> writes;
-    std::vector<std::span<const VkDescriptorBufferInfo>> buffer_infos;
-    std::vector<std::span<const VkDescriptorImageInfo>> image_infos;
-    std::vector<std::span<const VkBufferView>> texel_buffer_views;
-    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> accels;
+    // TODO: make this less stupid...
+    std::forward_list<std::vector<VkDescriptorBufferInfo>> buffer_infos;
+    std::forward_list<std::vector<VkDescriptorImageInfo>> image_infos;
+    std::forward_list<std::vector<VkBufferView>> texel_buffer_views;
+    std::forward_list<VkWriteDescriptorSetAccelerationStructureKHR> accels;
 };
 
 struct ParameterBlock
 {
-    void write_buffers(const std::string &binding_name, std::span<const VkDescriptorBufferInfo> buffer_infos,
+    void write_buffers(const std::string &binding_name, std::vector<VkDescriptorBufferInfo> &&buffer_infos,
                        uint32_t start, ParameterWriteArray &write_array) const;
 
     void write_buffer(const std::string &binding_name, const VkDescriptorBufferInfo &buffer_info,
                       ParameterWriteArray &write_array) const;
 
-    void write_images(const std::string &binding_name, std::span<const VkDescriptorImageInfo> image_infos,
-                      uint32_t start, ParameterWriteArray &write_array) const;
+    void write_images(const std::string &binding_name, std::vector<VkDescriptorImageInfo> &&image_infos, uint32_t start,
+                      ParameterWriteArray &write_array) const;
 
     void write_image(const std::string &binding_name, const VkDescriptorImageInfo &image_infos,
                      ParameterWriteArray &write_array) const;
 
-    void write_texel_buffers(const std::string &binding_name, std::span<const VkBufferView> buffer_views,
-                             uint32_t start, ParameterWriteArray &write_array) const;
+    void write_texel_buffers(const std::string &binding_name, std::vector<VkBufferView> &&buffer_views, uint32_t start,
+                             ParameterWriteArray &write_array) const;
 
     void write_texel_buffer(const std::string &binding_name, const VkBufferView &buffer_view,
                             ParameterWriteArray &write_array) const;
@@ -1046,7 +1055,9 @@ struct ParameterBlockMeta
 // [Other convenience wrappers]
 //-----------------------------------------------------------------------------
 
-inline VkShaderModule createShaderModule(VkDevice device, const std::span<const std::byte> binarycode)
+inline bool has_vk_flag(VkFlags item, VkFlags flag) { return (item & flag) == flag; }
+
+inline VkShaderModule create_shader_module(VkDevice device, const std::span<const std::byte> binarycode)
 {
     VkShaderModuleCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1058,11 +1069,11 @@ inline VkShaderModule createShaderModule(VkDevice device, const std::span<const 
     return shaderModule;
 }
 
-inline VkShaderModule createShaderModule(VkDevice device, const fs::path &file_path)
+inline VkShaderModule create_shader_module(VkDevice device, const fs::path &file_path)
 {
     std::vector<std::byte> bytes = read_file_as_bytes(file_path);
 
-    return createShaderModule(device, bytes);
+    return create_shader_module(device, bytes);
 }
 
 template <uint32_t DIM_X, uint32_t DIM_Y, uint32_t DIM_Z>
@@ -1113,19 +1124,8 @@ inline void full_pipeline_barrier(VkCommandBuffer cb)
 // [Ray tracing facilities]
 //-----------------------------------------------------------------------------
 
-// Helper function to insert a memory barrier for acceleration structures
-inline void accelerationStructureBarrier(VkCommandBuffer cmd, VkAccessFlags src, VkAccessFlags dst)
-{
-    VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
-    barrier.srcAccessMask = src;
-    barrier.dstAccessMask = dst;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-                         VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, 1, &barrier, 0, nullptr, 0,
-                         nullptr);
-}
-
 // Convert a Mat4x4 to the matrix required by acceleration structures
-inline VkTransformMatrixKHR toTransformMatrixKHR(ks::mat4 matrix)
+inline VkTransformMatrixKHR to_transform_matrix_KHR(ks::mat4 matrix)
 {
     // VkTransformMatrixKHR uses a row-major memory layout, while Eigen
     // uses a column-major memory layout. We transpose the matrix so we can
@@ -1136,9 +1136,9 @@ inline VkTransformMatrixKHR toTransformMatrixKHR(ks::mat4 matrix)
     return out_matrix;
 }
 
-inline VkTransformMatrixKHR toTransformMatrixKHR(const Transform &transform)
+inline VkTransformMatrixKHR to_transform_matrix_KHR(const Transform &transform)
 {
-    return toTransformMatrixKHR(transform.m);
+    return to_transform_matrix_KHR(transform.m);
 }
 
 // Single Geometry information, multiple can be used in a single BLAS
@@ -1154,7 +1154,7 @@ struct AccelerationStructureBuildData
     VkAccelerationStructureTypeKHR asType = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR; // Mandatory to set
 
     // Collection of geometries for the acceleration structure.
-    std::vector<VkAccelerationStructureGeometryKHR> asGeometry;
+    std::vector<VkAccelerationStructureGeometryKHR> geometry;
     // Build range information corresponding to each geometry.
     std::vector<VkAccelerationStructureBuildRangeInfoKHR> asBuildRangeInfo;
     // Build information required for acceleration structure.
@@ -1164,33 +1164,33 @@ struct AccelerationStructureBuildData
     VkAccelerationStructureBuildSizesInfoKHR sizeInfo{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
 
     // Adds a geometry with its build range information to the acceleration structure.
-    void addGeometry(const VkAccelerationStructureGeometryKHR &asGeom,
-                     const VkAccelerationStructureBuildRangeInfoKHR &offset);
-    void addGeometry(const AccelerationStructureGeometryInfo &asGeom);
+    void add_geometry(const VkAccelerationStructureGeometryKHR &asGeom,
+                      const VkAccelerationStructureBuildRangeInfoKHR &offset);
+    void add_geometry(const AccelerationStructureGeometryInfo &asGeom);
 
-    AccelerationStructureGeometryInfo makeInstanceGeometry(size_t numInstances, VkDeviceAddress instanceBufferAddr);
+    AccelerationStructureGeometryInfo make_instanceGeometry(size_t numInstances, VkDeviceAddress instanceBufferAddr);
 
     // Configures the build information and calculates the necessary size information.
-    VkAccelerationStructureBuildSizesInfoKHR finalizeGeometry(VkDevice device,
-                                                              VkBuildAccelerationStructureFlagsKHR flags);
+    VkAccelerationStructureBuildSizesInfoKHR finalize_geometry(VkDevice device,
+                                                               VkBuildAccelerationStructureFlagsKHR flags);
 
     // Creates an acceleration structure based on the current build and size info.
-    VkAccelerationStructureCreateInfoKHR makeCreateInfo() const;
+    VkAccelerationStructureCreateInfoKHR make_create_info() const;
 
     // Commands to build the acceleration structure in a Vulkan command buffer.
-    void cmdBuildAccelerationStructure(VkCommandBuffer cmd, VkAccelerationStructureKHR accelerationStructure,
-                                       VkDeviceAddress scratchAddress);
+    void cmd_build_acceleration_structure(VkCommandBuffer cmd, VkAccelerationStructureKHR accelerationStructure,
+                                          VkDeviceAddress scratchAddress);
 
     // Commands to update the acceleration structure in a Vulkan command buffer.
-    void cmdUpdateAccelerationStructure(VkCommandBuffer cmd, VkAccelerationStructureKHR accelerationStructure,
-                                        VkDeviceAddress scratchAddress);
+    void cmd_update_acceleration_structure(VkCommandBuffer cmd, VkAccelerationStructureKHR accelerationStructure,
+                                           VkDeviceAddress scratchAddress);
 
     // Checks if the compact flag is set for the build.
-    bool hasCompactFlag() const { return buildInfo.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR; }
+    bool has_compact_flag() const { return buildInfo.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR; }
 };
 
 // Get the maximum scratch buffer size required for the acceleration structure build
-VkDeviceSize getMaxScratchSize(const std::vector<AccelerationStructureBuildData> &asBuildData);
+VkDeviceSize get_max_scratch_size(const std::vector<AccelerationStructureBuildData> &asBuildData);
 
 /**
  * @brief Manages the construction and optimization of Bottom-Level Acceleration Structures (BLAS) for Vulkan Ray
@@ -1231,37 +1231,37 @@ class BlasBuilder
         VkDeviceSize totalOriginalSize = 0;
         VkDeviceSize totalCompactSize = 0;
 
-        std::string toString() const;
+        std::string to_string() const;
     };
 
     // Create the BLAS from the vector of BlasBuildData
     // Each BLAS will be created in sequence and share the same scratch buffer
     // Return true if ALL the BLAS were created within the budget
     // if not, this function needs to be called again until it returns true
-    bool cmdCreateBlas(VkCommandBuffer cmd,
-                       std::vector<AccelerationStructureBuildData> &blasBuildData, // List of the BLAS to build */
-                       std::vector<AccelKHR> &blasAccel,                           // List of the acceleration structure
-                       VkDeviceAddress scratchAddress,                             //  Address of the scratch buffer
-                       VkDeviceSize hintMaxBudget = 512'000'000);
+    bool cmd_create_blas(VkCommandBuffer cmd,
+                         std::vector<AccelerationStructureBuildData> &blasBuildData, // List of the BLAS to build */
+                         std::vector<AccelKHR> &blasAccel, // List of the acceleration structure
+                         VkDeviceAddress scratchAddress,   //  Address of the scratch buffer
+                         VkDeviceSize hintMaxBudget = 512'000'000);
 
     // Create the BLAS from the vector of BlasBuildData in parallel
     // The advantage of this function is that it will try to build as many BLAS as possible in parallel
     // but it requires a scratch buffer per BLAS, or less but then each of them must large enough to hold the largest
     // BLAS This function needs to be called until it returns true
-    bool cmdCreateParallelBlas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
-                               std::vector<AccelKHR> &blasAccel, const std::vector<VkDeviceAddress> &scratchAddress,
-                               VkDeviceSize hintMaxBudget = 512'000'000);
+    bool cmd_create_parallel_blas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
+                                  std::vector<AccelKHR> &blasAccel, const std::vector<VkDeviceAddress> &scratchAddress,
+                                  VkDeviceSize hintMaxBudget = 512'000'000);
 
     // Compact the BLAS that have been built
     // Synchronization must be done by the application between the build and the compact
-    void cmdCompactBlas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
-                        std::vector<AccelKHR> &blasAccel);
+    void cmd_compact_blas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
+                          std::vector<AccelKHR> &blasAccel);
 
     // Destroy the original BLAS that was compacted
-    void destroyNonCompactedBlas();
+    void destroy_non_compacted_blas();
 
     // Return the statistics about the compacted BLAS
-    Stats getStatistics() const { return m_stats; };
+    Stats get_statistics() const { return m_stats; };
 
     // Scratch size strategy:
     // Find the maximum size of the scratch buffer needed for the BLAS build
@@ -1280,22 +1280,22 @@ class BlasBuilder
     //
     // Note: 128 is the default alignment for the scratch buffer
     //       (VkPhysicalDeviceAccelerationStructurePropertiesKHR::minAccelerationStructureScratchOffsetAlignment)
-    VkDeviceSize getScratchSize(VkDeviceSize hintMaxBudget,
-                                const std::vector<AccelerationStructureBuildData> &buildData,
-                                uint32_t minAlignment = 128) const;
+    VkDeviceSize get_scratch_size(VkDeviceSize hintMaxBudget,
+                                  const std::vector<AccelerationStructureBuildData> &buildData,
+                                  uint32_t minAlignment = 128) const;
 
-    void getScratchAddresses(VkDeviceSize hintMaxBudget, const std::vector<AccelerationStructureBuildData> &buildData,
-                             VkDeviceAddress scratchBufferAddress, std::vector<VkDeviceAddress> &scratchAddresses,
-                             uint32_t minAlignment = 128);
+    void get_scratch_addresses(VkDeviceSize hintMaxBudget, const std::vector<AccelerationStructureBuildData> &buildData,
+                               VkDeviceAddress scratchBufferAddress, std::vector<VkDeviceAddress> &scratchAddresses,
+                               uint32_t minAlignment = 128);
 
   private:
-    void destroyQueryPool();
-    void createQueryPool(uint32_t maxBlasCount);
-    void initializeQueryPoolIfNeeded(const std::vector<AccelerationStructureBuildData> &blasBuildData);
+    void destroy_query_pool();
+    void create_query_pool(uint32_t maxBlasCount);
+    void initialize_query_pool_if_needed(const std::vector<AccelerationStructureBuildData> &blasBuildData);
     VkDeviceSize
-    buildAccelerationStructures(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
-                                std::vector<AccelKHR> &blasAccel, const std::vector<VkDeviceAddress> &scratchAddress,
-                                VkDeviceSize hintMaxBudget, VkDeviceSize currentBudget, uint32_t &currentQueryIdx);
+    build_acceleration_structures(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
+                                  std::vector<AccelKHR> &blasAccel, const std::vector<VkDeviceAddress> &scratchAddress,
+                                  VkDeviceSize hintMaxBudget, VkDeviceSize currentBudget, uint32_t &currentQueryIdx);
 
     VkDevice m_device;
     Allocator *m_alloc = nullptr;
@@ -1317,7 +1317,7 @@ struct RaytracingBuilderKHR
     ~RaytracingBuilderKHR();
 
     void init(const VkDevice &device, Allocator &allocator, uint32_t queueIndex);
-    bool is_init() const;
+    bool is_init() const { return m_device != VK_NULL_HANDLE; }
     void deinit();
 
     // Inputs used to build Bottom-level acceleration structure.
@@ -1326,36 +1326,36 @@ struct RaytracingBuilderKHR
     struct BlasInput
     {
         // Data used to build acceleration structure geometry
-        std::vector<VkAccelerationStructureGeometryKHR> asGeometry;
-        std::vector<VkAccelerationStructureBuildRangeInfoKHR> asBuildOffsetInfo;
+        std::vector<VkAccelerationStructureGeometryKHR> geometry;
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR> range_info;
         VkBuildAccelerationStructureFlagsKHR flags{0};
     };
 
     // Returning the constructed top-level acceleration structure
-    VkAccelerationStructureKHR getAccelerationStructure() const;
+    VkAccelerationStructureKHR get_tlas() const;
 
     // Return the Acceleration Structure Device Address of a BLAS Id
-    VkDeviceAddress getBlasDeviceAddress(uint32_t blasId);
+    VkDeviceAddress get_blas_device_address(uint32_t blasId);
 
     // Create all the BLAS from the vector of BlasInput
     void
-    buildBlas(const std::vector<BlasInput> &input,
-              VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
+    build_blas(const std::vector<BlasInput> &input,
+               VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
 
     // Refit BLAS number blasIdx from updated buffer contents.
-    void updateBlas(uint32_t blasIdx, BlasInput &blas, VkBuildAccelerationStructureFlagsKHR flags);
+    void update_blas(uint32_t blasIdx, BlasInput &blas, VkBuildAccelerationStructureFlagsKHR flags);
 
     // Build TLAS for static acceleration structures
     void
-    buildTlas(const std::vector<VkAccelerationStructureInstanceKHR> &instances,
-              VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
-              bool update = false);
+    build_tlas(const std::vector<VkAccelerationStructureInstanceKHR> &instances,
+               VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+               bool update = false);
 
 #ifdef VK_NV_ray_tracing_motion_blur
     // Build TLAS for mix of motion and static acceleration structures
-    void buildTlas(const std::vector<VkAccelerationStructureMotionInstanceNV> &instances,
-                   VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV,
-                   bool update = false);
+    void build_tlas(const std::vector<VkAccelerationStructureMotionInstanceNV> &instances,
+                    VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV,
+                    bool update = false);
 #endif
 
     // Build TLAS from an array of VkAccelerationStructureInstanceKHR
@@ -1364,9 +1364,9 @@ struct RaytracingBuilderKHR
     // - update is to rebuild the Tlas with updated matrices, flag must have the 'allow_update'
     template <class T>
     void
-    buildTlas(const std::vector<T> &instances,
-              VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
-              bool update = false, bool motion = false)
+    build_tlas(const std::vector<T> &instances,
+               VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+               bool update = false, bool motion = false)
     {
         // Cannot call buildTlas twice except to update.
         ASSERT(m_tlas.accel == VK_NULL_HANDLE || update);
@@ -1388,7 +1388,7 @@ struct RaytracingBuilderKHR
 
         // Command buffer to create the TLAS
         CommandPool genCmdBuf(m_device, m_queueIndex);
-        VkCommandBuffer cmd = genCmdBuf.createCommandBuffer();
+        VkCommandBuffer cmd = genCmdBuf.create_command_buffer();
 
         VkBufferDeviceAddressInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr,
                                              instancesBuffer.buffer};
@@ -1404,25 +1404,25 @@ struct RaytracingBuilderKHR
 
         // Creating the TLAS
         Buffer scratchBuffer;
-        cmdCreateTlas(cmd, countInstance, instBufferAddr, scratchBuffer, flags, update, motion);
+        cmd_create_tlas(cmd, countInstance, instBufferAddr, scratchBuffer, flags, update, motion);
 
         // Finalizing and destroying temporary data
-        genCmdBuf.submitAndWait(cmd); // queueWaitIdle inside.
+        genCmdBuf.submit_and_wait(cmd); // queueWaitIdle inside.
         m_alloc->destroy(scratchBuffer);
         m_alloc->destroy(instancesBuffer);
     }
 
+  private:
     // Creating the TLAS, called by buildTlas
-    void cmdCreateTlas(VkCommandBuffer cmdBuf,                     // Command buffer
-                       uint32_t countInstance,                     // number of instances
-                       VkDeviceAddress instBufferAddr,             // Buffer address of instances
-                       Buffer &scratchBuffer,                      // Scratch buffer for construction
-                       VkBuildAccelerationStructureFlagsKHR flags, // Build creation flag
-                       bool update,                                // Update == animation
-                       bool motion                                 // Motion Blur
+    void cmd_create_tlas(VkCommandBuffer cmdBuf,                     // Command buffer
+                         uint32_t countInstance,                     // number of instances
+                         VkDeviceAddress instBufferAddr,             // Buffer address of instances
+                         Buffer &scratchBuffer,                      // Scratch buffer for construction
+                         VkBuildAccelerationStructureFlagsKHR flags, // Build creation flag
+                         bool update,                                // Update == animation
+                         bool motion                                 // Motion Blur
     );
 
-  private:
     std::vector<AccelKHR> m_blas; // Bottom-level acceleration structure
     AccelKHR m_tlas;              // Top-level acceleration structure
 
@@ -1431,8 +1431,6 @@ struct RaytracingBuilderKHR
     uint32_t m_queueIndex = 0;
     Allocator *m_alloc = nullptr;
     DebugUtil m_debug;
-
-    bool hasFlag(VkFlags item, VkFlags flag) { return (item & flag) == flag; }
 };
 
 /** @DOC_START
@@ -1509,15 +1507,24 @@ class SBTWrapper
   public:
     enum GroupType
     {
-        eRaygen,
-        eMiss,
-        eHit,
-        eCallable
+        Raygen,
+        Miss,
+        Hit,
+        Callable
     };
 
-    void setup(VkDevice device, uint32_t familyIndex, Allocator *allocator,
-               const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties);
-    void destroy();
+    SBTWrapper() = default;
+    SBTWrapper(VkDevice device, uint32_t familyIndex, Allocator *allocator,
+               const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties)
+    {
+        init(device, familyIndex, allocator, rtProperties);
+    }
+    ~SBTWrapper() { deinit(); }
+
+    void init(VkDevice device, uint32_t familyIndex, Allocator *allocator,
+              const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties);
+    bool is_init() const { return m_device != VK_NULL_HANDLE; }
+    void deinit();
 
     // To call after the ray tracer pipeline creation
     // The rayPipelineInfo parameter is the structure used to define the pipeline,
@@ -1528,41 +1535,41 @@ class SBTWrapper
     // Optional, to be used in combination with addIndex. Leave create() `rayPipelineInfo`
     // and 'librariesInfo' empty.  The rayPipelineInfo parameter is the structure used to
     // define the pipeline, while librariesInfo describe the potential input pipeline libraries
-    void addIndices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
-                    const std::vector<VkRayTracingPipelineCreateInfoKHR> &libraries = {});
+    void add_indices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
+                     const std::vector<VkRayTracingPipelineCreateInfoKHR> &libraries = {});
 
     // Pushing back a GroupType and the handle pipeline index to use
     // i.e addIndex(eHit, 3) is pushing a Hit shader group using the 3rd entry in the pipeline
-    void addIndex(GroupType t, uint32_t index) { m_index[t].push_back(index); }
+    void add_index(GroupType t, uint32_t index) { m_index[t].push_back(index); }
 
     // Adding 'Shader Record' data to the group index.
     // i.e. addData(eHit, 0, myValue) is adding 'myValue' to the HIT group 0.
     template <typename T>
-    void addData(GroupType t, uint32_t groupIndex, T &data)
+    void add_data(GroupType t, uint32_t groupIndex, T &data)
     {
-        addData(t, groupIndex, (uint8_t *)&data, sizeof(T));
+        add_data(t, groupIndex, (uint8_t *)&data, sizeof(T));
     }
 
-    void addData(GroupType t, uint32_t groupIndex, uint8_t *data, size_t dataSize)
+    void add_data(GroupType t, uint32_t groupIndex, uint8_t *data, size_t dataSize)
     {
         std::vector<uint8_t> dst(data, data + dataSize);
         m_data[t][groupIndex] = dst;
     }
 
     // Getters
-    uint32_t indexCount(GroupType t) const { return static_cast<uint32_t>(m_index[t].size()); }
-    uint32_t getStride(GroupType t) const { return m_stride[t]; }
-    VkDeviceAddress getAddress(GroupType t) const;
+    uint32_t index_count(GroupType t) const { return static_cast<uint32_t>(m_index[t].size()); }
+    uint32_t get_stride(GroupType t) const { return m_stride[t]; }
+    VkDeviceAddress get_address(GroupType t) const;
 
     // returns the entire size of a group. Raygen Stride and Size must be equal, even if the buffer contains many of
     // them.
-    uint32_t getSize(GroupType t) const { return t == eRaygen ? getStride(eRaygen) : getStride(t) * indexCount(t); }
+    uint32_t get_size(GroupType t) const { return t == Raygen ? get_stride(Raygen) : get_stride(t) * index_count(t); }
 
     // Return the address region of a group. indexOffset allow to offset the starting shader of the group.
-    const VkStridedDeviceAddressRegionKHR getRegion(GroupType t, uint32_t indexOffset = 0) const;
+    const VkStridedDeviceAddressRegionKHR get_region(GroupType t, uint32_t indexOffset = 0) const;
 
     // Return the address regions of all groups. The offset allows to select which RayGen to use.
-    const std::array<VkStridedDeviceAddressRegionKHR, 4> getRegions(uint32_t rayGenIndexOffset = 0) const;
+    const std::array<VkStridedDeviceAddressRegionKHR, 4> get_regions(uint32_t rayGenIndexOffset = 0) const;
 
   private:
     using entry = std::unordered_map<uint32_t, std::vector<uint8_t>>;

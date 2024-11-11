@@ -66,7 +66,7 @@ void DebugUtil::setup(VkDevice device)
     }
 }
 
-void DebugUtil::setObjectName(const uint64_t object, const std::string &name, VkObjectType t) const
+void DebugUtil::set_object_name(const uint64_t object, const std::string &name, VkObjectType t) const
 {
     if (s_enabled) {
         VkDebugUtilsObjectNameInfoEXT s{VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT, nullptr, t, object,
@@ -75,7 +75,7 @@ void DebugUtil::setObjectName(const uint64_t object, const std::string &name, Vk
     }
 }
 
-void DebugUtil::beginLabel(VkCommandBuffer cmdBuf, const std::string &label)
+void DebugUtil::begin_label(VkCommandBuffer cmdBuf, const std::string &label)
 {
     if (s_enabled) {
         VkDebugUtilsLabelEXT s{
@@ -84,14 +84,14 @@ void DebugUtil::beginLabel(VkCommandBuffer cmdBuf, const std::string &label)
     }
 }
 
-void DebugUtil::endLabel(VkCommandBuffer cmdBuf)
+void DebugUtil::end_label(VkCommandBuffer cmdBuf)
 {
     if (s_enabled) {
         s_vkCmdEndDebugUtilsLabelEXT(cmdBuf);
     }
 }
 
-void DebugUtil::insertLabel(VkCommandBuffer cmdBuf, const std::string &label)
+void DebugUtil::insert_label(VkCommandBuffer cmdBuf, const std::string &label)
 {
     if (s_enabled) {
         VkDebugUtilsLabelEXT s{
@@ -216,7 +216,7 @@ FrequentUniformBuffer Allocator::create_frequent_uniform_buffer(const VkBufferCr
 
     if (memPropFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
         // Allocation ended up in a mappable memory and is already mapped - write to it directly.
-        return FrequentUniformBuffer{dest, Buffer()};
+        return FrequentUniformBuffer{dest, Buffer(), info_.size};
     } else {
         // Allocation ended up in a non-mappable memory - a transfer using a staging buffer is required.
         Buffer staging = create_buffer(
@@ -225,7 +225,60 @@ FrequentUniformBuffer Allocator::create_frequent_uniform_buffer(const VkBufferCr
                                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT},
             VMA_MEMORY_USAGE_AUTO,
             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, nullptr);
-        return FrequentUniformBuffer{dest, staging};
+        return FrequentUniformBuffer{dest, staging, info_.size};
+    }
+}
+
+void FrequentUniformBuffer::upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask) const
+{
+    if (!require_staging()) {
+        VkBufferMemoryBarrier barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = dest.buffer;
+        barrier.offset = 0;
+        barrier.size = VK_WHOLE_SIZE;
+
+        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, {}, {&barrier, 1}, {});
+    } else {
+        VkBufferMemoryBarrier barrier_mapping = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier_mapping.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        barrier_mapping.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier_mapping.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier_mapping.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier_mapping.buffer = staging.buffer;
+        barrier_mapping.offset = 0;
+        barrier_mapping.size = VK_WHOLE_SIZE;
+
+        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, {},
+                             {&barrier_mapping, 1}, {});
+
+        VkBufferCopy copy = {
+            0,    // srcOffset
+            0,    // dstOffset,
+            size, // size
+        };
+
+        vkCmdCopyBuffer(cb, staging.buffer, dest.buffer, 1, &copy);
+
+        VkBufferMemoryBarrier barrier_copy = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier_copy.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier_copy.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT; // We created a uniform buffer
+        barrier_copy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier_copy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier_copy.buffer = dest.buffer;
+        barrier_copy.offset = 0;
+        barrier_copy.size = VK_WHOLE_SIZE;
+
+        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, {}, {&barrier_copy, 1}, {});
     }
 }
 
@@ -1142,9 +1195,9 @@ CommandPool::~CommandPool()
 }
 
 VkCommandBuffer
-CommandPool::createCommandBuffer(VkCommandBufferLevel level /*= VK_COMMAND_BUFFER_LEVEL_PRIMARY*/, bool begin,
-                                 VkCommandBufferUsageFlags flags /*= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT*/,
-                                 const VkCommandBufferInheritanceInfo *pInheritanceInfo /*= nullptr*/)
+CommandPool::create_command_buffer(VkCommandBufferLevel level /*= VK_COMMAND_BUFFER_LEVEL_PRIMARY*/, bool begin,
+                                   VkCommandBufferUsageFlags flags /*= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT*/,
+                                   const VkCommandBufferInheritanceInfo *pInheritanceInfo /*= nullptr*/)
 {
     VkCommandBufferAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     allocInfo.level = level;
@@ -1171,7 +1224,7 @@ void CommandPool::destroy(size_t count, const VkCommandBuffer *cmds)
     vkFreeCommandBuffers(m_device, m_commandPool, (uint32_t)count, cmds);
 }
 
-void CommandPool::submitAndWait(size_t count, const VkCommandBuffer *cmds, VkQueue queue)
+void CommandPool::submit_and_wait(size_t count, const VkCommandBuffer *cmds, VkQueue queue)
 {
     submit(count, cmds, queue);
     vk_check(vkQueueWaitIdle(queue));
@@ -1734,9 +1787,8 @@ void ParameterBlockMeta::allocate_blocks(uint32_t num, std::span<ParameterBlock>
     }
 }
 
-void ParameterBlock::write_buffers(const std::string &binding_name,
-                                   std::span<const VkDescriptorBufferInfo> buffer_infos, uint32_t start,
-                                   ParameterWriteArray &write_array) const
+void ParameterBlock::write_buffers(const std::string &binding_name, std::vector<VkDescriptorBufferInfo> &&buffer_infos,
+                                   uint32_t start, ParameterWriteArray &write_array) const
 {
     VkWriteDescriptorSet write;
     if (buffer_infos.size() == 1) {
@@ -1744,10 +1796,10 @@ void ParameterBlock::write_buffers(const std::string &binding_name,
     } else {
         write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start, (uint32_t)buffer_infos.size());
     }
-    write.pBufferInfo = buffer_infos.data();
 
+    write_array.buffer_infos.push_front(std::move(buffer_infos));
+    write.pBufferInfo = write_array.buffer_infos.front().data();
     write_array.writes.push_back(write);
-    write_array.buffer_infos.push_back(buffer_infos);
 }
 
 void ParameterBlock::write_buffer(const std::string &binding_name, const VkDescriptorBufferInfo &buffer_info,
@@ -1757,11 +1809,12 @@ void ParameterBlock::write_buffer(const std::string &binding_name, const VkDescr
     write = meta->desc_set_helper.make_write(desc_set, binding_name);
     write.pBufferInfo = &buffer_info;
 
+    write_array.buffer_infos.push_front({buffer_info});
+    write.pBufferInfo = write_array.buffer_infos.front().data();
     write_array.writes.push_back(write);
-    write_array.buffer_infos.push_back({&buffer_info, 1});
 }
 
-void ParameterBlock::write_images(const std::string &binding_name, std::span<const VkDescriptorImageInfo> image_infos,
+void ParameterBlock::write_images(const std::string &binding_name, std::vector<VkDescriptorImageInfo> &&image_infos,
                                   uint32_t start, ParameterWriteArray &write_array) const
 {
     VkWriteDescriptorSet write;
@@ -1770,10 +1823,10 @@ void ParameterBlock::write_images(const std::string &binding_name, std::span<con
     } else {
         write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start, (uint32_t)image_infos.size());
     }
-    write.pImageInfo = image_infos.data();
 
+    write_array.image_infos.push_front(std::move(image_infos));
+    write.pImageInfo = write_array.image_infos.front().data();
     write_array.writes.push_back(write);
-    write_array.image_infos.push_back(image_infos);
 }
 
 void ParameterBlock::write_image(const std::string &binding_name, const VkDescriptorImageInfo &image_info,
@@ -1781,13 +1834,13 @@ void ParameterBlock::write_image(const std::string &binding_name, const VkDescri
 {
     VkWriteDescriptorSet write;
     write = meta->desc_set_helper.make_write(desc_set, binding_name);
-    write.pImageInfo = &image_info;
 
+    write_array.image_infos.push_front({image_info});
+    write.pImageInfo = write_array.image_infos.front().data();
     write_array.writes.push_back(write);
-    write_array.image_infos.push_back({&image_info, 1});
 }
 
-void ParameterBlock::write_texel_buffers(const std::string &binding_name, std::span<const VkBufferView> buffer_views,
+void ParameterBlock::write_texel_buffers(const std::string &binding_name, std::vector<VkBufferView> &&buffer_views,
                                          uint32_t start, ParameterWriteArray &write_array) const
 {
     VkWriteDescriptorSet write;
@@ -1796,10 +1849,10 @@ void ParameterBlock::write_texel_buffers(const std::string &binding_name, std::s
     } else {
         write = meta->desc_set_helper.make_write_array(desc_set, binding_name, start, (uint32_t)buffer_views.size());
     }
-    write.pTexelBufferView = buffer_views.data();
 
+    write_array.texel_buffer_views.push_front(std::move(buffer_views));
+    write.pTexelBufferView = write_array.texel_buffer_views.front().data();
     write_array.writes.push_back(write);
-    write_array.texel_buffer_views.push_back(buffer_views);
 }
 
 void ParameterBlock::write_texel_buffer(const std::string &binding_name, const VkBufferView &buffer_view,
@@ -1807,10 +1860,10 @@ void ParameterBlock::write_texel_buffer(const std::string &binding_name, const V
 {
     VkWriteDescriptorSet write;
     write = meta->desc_set_helper.make_write(desc_set, binding_name);
-    write.pTexelBufferView = &buffer_view;
 
+    write_array.texel_buffer_views.push_front({buffer_view});
+    write.pTexelBufferView = write_array.texel_buffer_views.front().data();
     write_array.writes.push_back(write);
-    write_array.texel_buffer_views.push_back({&buffer_view, 1});
 }
 
 void ParameterBlock::write_accels(const std::string &binding_name,
@@ -1825,33 +1878,43 @@ void ParameterBlock::write_accels(const std::string &binding_name,
                                                        (uint32_t)accels.accelerationStructureCount);
     }
 
-    write.pNext = &accels;
-
+    write_array.accels.push_front(accels);
+    write.pNext = &write_array.accels.front();
     write_array.writes.push_back(write);
-    write_array.accels.push_back(accels);
 }
 
 //-----------------------------------------------------------------------------
 // [Ray tracing facilities (modified from nvvk)]
 //-----------------------------------------------------------------------------
 
-void AccelerationStructureBuildData::addGeometry(const VkAccelerationStructureGeometryKHR &asGeom,
-                                                 const VkAccelerationStructureBuildRangeInfoKHR &offset)
+// Helper function to insert a memory barrier for acceleration structures
+inline void accelerationStructureBarrier(VkCommandBuffer cmd, VkAccessFlags src, VkAccessFlags dst)
 {
-    asGeometry.push_back(asGeom);
+    VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    barrier.srcAccessMask = src;
+    barrier.dstAccessMask = dst;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                         VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, 1, &barrier, 0, nullptr, 0,
+                         nullptr);
+}
+
+void AccelerationStructureBuildData::add_geometry(const VkAccelerationStructureGeometryKHR &asGeom,
+                                                  const VkAccelerationStructureBuildRangeInfoKHR &offset)
+{
+    geometry.push_back(asGeom);
     asBuildRangeInfo.push_back(offset);
 }
 
-void AccelerationStructureBuildData::addGeometry(const AccelerationStructureGeometryInfo &asGeom)
+void AccelerationStructureBuildData::add_geometry(const AccelerationStructureGeometryInfo &asGeom)
 {
-    asGeometry.push_back(asGeom.geometry);
+    geometry.push_back(asGeom.geometry);
     asBuildRangeInfo.push_back(asGeom.rangeInfo);
 }
 
 VkAccelerationStructureBuildSizesInfoKHR
-AccelerationStructureBuildData::finalizeGeometry(VkDevice device, VkBuildAccelerationStructureFlagsKHR flags)
+AccelerationStructureBuildData::finalize_geometry(VkDevice device, VkBuildAccelerationStructureFlagsKHR flags)
 {
-    ASSERT(asGeometry.size() > 0 && "No geometry added to Build Structure");
+    ASSERT(geometry.size() > 0 && "No geometry added to Build Structure");
     ASSERT(asType != VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR && "Acceleration Structure Type not set");
 
     buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -1860,8 +1923,8 @@ AccelerationStructureBuildData::finalizeGeometry(VkDevice device, VkBuildAcceler
     buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
     buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
     buildInfo.dstAccelerationStructure = VK_NULL_HANDLE;
-    buildInfo.geometryCount = static_cast<uint32_t>(asGeometry.size());
-    buildInfo.pGeometries = asGeometry.data();
+    buildInfo.geometryCount = static_cast<uint32_t>(geometry.size());
+    buildInfo.pGeometries = geometry.data();
     buildInfo.ppGeometries = nullptr;
     buildInfo.scratchData.deviceAddress = 0;
 
@@ -1876,7 +1939,7 @@ AccelerationStructureBuildData::finalizeGeometry(VkDevice device, VkBuildAcceler
     return sizeInfo;
 }
 
-VkAccelerationStructureCreateInfoKHR AccelerationStructureBuildData::makeCreateInfo() const
+VkAccelerationStructureCreateInfoKHR AccelerationStructureBuildData::make_create_info() const
 {
     ASSERT(asType != VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR && "Acceleration Structure Type not set");
     ASSERT(sizeInfo.accelerationStructureSize > 0 && "Acceleration Structure Size not set");
@@ -1889,7 +1952,7 @@ VkAccelerationStructureCreateInfoKHR AccelerationStructureBuildData::makeCreateI
 }
 
 AccelerationStructureGeometryInfo
-AccelerationStructureBuildData::makeInstanceGeometry(size_t numInstances, VkDeviceAddress instanceBufferAddr)
+AccelerationStructureBuildData::make_instanceGeometry(size_t numInstances, VkDeviceAddress instanceBufferAddr)
 {
     ASSERT(asType == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR && "Instance geometry can only be used with TLAS");
 
@@ -1915,11 +1978,11 @@ AccelerationStructureBuildData::makeInstanceGeometry(size_t numInstances, VkDevi
     return result;
 }
 
-void AccelerationStructureBuildData::cmdBuildAccelerationStructure(VkCommandBuffer cmd,
-                                                                   VkAccelerationStructureKHR accelerationStructure,
-                                                                   VkDeviceAddress scratchAddress)
+void AccelerationStructureBuildData::cmd_build_acceleration_structure(VkCommandBuffer cmd,
+                                                                      VkAccelerationStructureKHR accelerationStructure,
+                                                                      VkDeviceAddress scratchAddress)
 {
-    ASSERT(asGeometry.size() == asBuildRangeInfo.size() && "asGeometry.size() != asBuildRangeInfo.size()");
+    ASSERT(geometry.size() == asBuildRangeInfo.size() && "asGeometry.size() != asBuildRangeInfo.size()");
     ASSERT(accelerationStructure != VK_NULL_HANDLE &&
            "Acceleration Structure not created, first call createAccelerationStructure");
 
@@ -1930,7 +1993,7 @@ void AccelerationStructureBuildData::cmdBuildAccelerationStructure(VkCommandBuff
     buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
     buildInfo.dstAccelerationStructure = accelerationStructure;
     buildInfo.scratchData.deviceAddress = scratchAddress;
-    buildInfo.pGeometries = asGeometry.data(); // In case the structure was copied, we need to update the pointer
+    buildInfo.pGeometries = geometry.data(); // In case the structure was copied, we need to update the pointer
 
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, &rangeInfo);
 
@@ -1940,11 +2003,11 @@ void AccelerationStructureBuildData::cmdBuildAccelerationStructure(VkCommandBuff
                                  VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
 }
 
-void AccelerationStructureBuildData::cmdUpdateAccelerationStructure(VkCommandBuffer cmd,
-                                                                    VkAccelerationStructureKHR accelerationStructure,
-                                                                    VkDeviceAddress scratchAddress)
+void AccelerationStructureBuildData::cmd_update_acceleration_structure(VkCommandBuffer cmd,
+                                                                       VkAccelerationStructureKHR accelerationStructure,
+                                                                       VkDeviceAddress scratchAddress)
 {
-    ASSERT(asGeometry.size() == asBuildRangeInfo.size() && "asGeometry.size() != asBuildRangeInfo.size()");
+    ASSERT(geometry.size() == asBuildRangeInfo.size() && "asGeometry.size() != asBuildRangeInfo.size()");
     ASSERT(accelerationStructure != VK_NULL_HANDLE &&
            "Acceleration Structure not created, first call createAccelerationStructure");
 
@@ -1955,7 +2018,7 @@ void AccelerationStructureBuildData::cmdUpdateAccelerationStructure(VkCommandBuf
     buildInfo.srcAccelerationStructure = accelerationStructure;
     buildInfo.dstAccelerationStructure = accelerationStructure;
     buildInfo.scratchData.deviceAddress = scratchAddress;
-    buildInfo.pGeometries = asGeometry.data();
+    buildInfo.pGeometries = geometry.data();
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, &rangeInfo);
 
     // Since the scratch buffer is reused across builds, we need a barrier to ensure one build
@@ -1976,11 +2039,11 @@ BlasBuilder::BlasBuilder(Allocator &allocator, VkDevice device) : m_device(devic
 
 BlasBuilder::~BlasBuilder()
 {
-    destroyQueryPool();
-    destroyNonCompactedBlas();
+    destroy_query_pool();
+    destroy_non_compacted_blas();
 }
 
-void BlasBuilder::createQueryPool(uint32_t maxBlasCount)
+void BlasBuilder::create_query_pool(uint32_t maxBlasCount)
 {
     VkQueryPoolCreateInfo qpci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
     qpci.queryType = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
@@ -1990,12 +2053,12 @@ void BlasBuilder::createQueryPool(uint32_t maxBlasCount)
 
 // This will build multiple BLAS serially, one after the other, ensuring that the process
 // stays within the specified memory budget.
-bool BlasBuilder::cmdCreateBlas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
-                                std::vector<AccelKHR> &blasAccel, VkDeviceAddress scratchAddress,
-                                VkDeviceSize hintMaxBudget)
+bool BlasBuilder::cmd_create_blas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
+                                  std::vector<AccelKHR> &blasAccel, VkDeviceAddress scratchAddress,
+                                  VkDeviceSize hintMaxBudget)
 {
     // It won't run in parallel, but will process all BLAS within the budget before returning
-    return cmdCreateParallelBlas(cmd, blasBuildData, blasAccel, {scratchAddress}, hintMaxBudget);
+    return cmd_create_parallel_blas(cmd, blasBuildData, blasAccel, {scratchAddress}, hintMaxBudget);
 }
 
 // This function is responsible for building multiple Bottom-Level Acceleration Structures (BLAS) in parallel,
@@ -2004,12 +2067,14 @@ bool BlasBuilder::cmdCreateBlas(VkCommandBuffer cmd, std::vector<AccelerationStr
 // Returns:
 //   A boolean indicating whether all BLAS in the `blasBuildData` have been built by this function call.
 //   Returns `true` if all BLAS were built, `false` otherwise.
-bool BlasBuilder::cmdCreateParallelBlas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
-                                        std::vector<AccelKHR> &blasAccel,
-                                        const std::vector<VkDeviceAddress> &scratchAddress, VkDeviceSize hintMaxBudget)
+bool BlasBuilder::cmd_create_parallel_blas(VkCommandBuffer cmd,
+                                           std::vector<AccelerationStructureBuildData> &blasBuildData,
+                                           std::vector<AccelKHR> &blasAccel,
+                                           const std::vector<VkDeviceAddress> &scratchAddress,
+                                           VkDeviceSize hintMaxBudget)
 {
     // Initialize the query pool if necessary to handle queries for properties of built acceleration structures.
-    initializeQueryPoolIfNeeded(blasBuildData);
+    initialize_query_pool_if_needed(blasBuildData);
 
     VkDeviceSize processBudget = 0;               // Tracks the total memory used in the construction process.
     uint32_t currentQueryIdx = m_currentQueryIdx; // Local copy of the current query index.
@@ -2017,8 +2082,8 @@ bool BlasBuilder::cmdCreateParallelBlas(VkCommandBuffer cmd, std::vector<Acceler
     // Process each BLAS in the data vector while staying under the memory budget.
     while (m_currentBlasIdx < blasBuildData.size() && processBudget < hintMaxBudget) {
         // Build acceleration structures and accumulate the total memory used.
-        processBudget += buildAccelerationStructures(cmd, blasBuildData, blasAccel, scratchAddress, hintMaxBudget,
-                                                     processBudget, currentQueryIdx);
+        processBudget += build_acceleration_structures(cmd, blasBuildData, blasAccel, scratchAddress, hintMaxBudget,
+                                                       processBudget, currentQueryIdx);
     }
 
     // Check if all BLAS have been built.
@@ -2027,13 +2092,13 @@ bool BlasBuilder::cmdCreateParallelBlas(VkCommandBuffer cmd, std::vector<Acceler
 
 // Initializes a query pool for recording acceleration structure properties if necessary.
 // This function ensures a query pool is available if any BLAS in the build data is flagged for compaction.
-void BlasBuilder::initializeQueryPoolIfNeeded(const std::vector<AccelerationStructureBuildData> &blasBuildData)
+void BlasBuilder::initialize_query_pool_if_needed(const std::vector<AccelerationStructureBuildData> &blasBuildData)
 {
     if (!m_queryPool) {
         // Iterate through each BLAS build data element to check if the compaction flag is set.
         for (const auto &blas : blasBuildData) {
-            if (blas.hasCompactFlag()) {
-                createQueryPool(static_cast<uint32_t>(blasBuildData.size()));
+            if (blas.has_compact_flag()) {
+                create_query_pool(static_cast<uint32_t>(blasBuildData.size()));
                 break;
             }
         }
@@ -2059,12 +2124,12 @@ void BlasBuilder::initializeQueryPoolIfNeeded(const std::vector<AccelerationStru
 //
 // Returns:
 //   The total device size used for building the acceleration structures during this function call.
-VkDeviceSize BlasBuilder::buildAccelerationStructures(VkCommandBuffer cmd,
-                                                      std::vector<AccelerationStructureBuildData> &blasBuildData,
-                                                      std::vector<AccelKHR> &blasAccel,
-                                                      const std::vector<VkDeviceAddress> &scratchAddress,
-                                                      VkDeviceSize hintMaxBudget, VkDeviceSize currentBudget,
-                                                      uint32_t &currentQueryIdx)
+VkDeviceSize BlasBuilder::build_acceleration_structures(VkCommandBuffer cmd,
+                                                        std::vector<AccelerationStructureBuildData> &blasBuildData,
+                                                        std::vector<AccelKHR> &blasAccel,
+                                                        const std::vector<VkDeviceAddress> &scratchAddress,
+                                                        VkDeviceSize hintMaxBudget, VkDeviceSize currentBudget,
+                                                        uint32_t &currentQueryIdx)
 {
     // Temporary vectors for storing build-related data
     std::vector<VkAccelerationStructureBuildGeometryInfoKHR> collectedBuildInfo;
@@ -2083,7 +2148,7 @@ VkDeviceSize BlasBuilder::buildAccelerationStructures(VkCommandBuffer cmd,
     while (collectedBuildInfo.size() < scratchAddress.size() && currentBudget + budgetUsed < hintMaxBudget &&
            m_currentBlasIdx < blasBuildData.size()) {
         auto &data = blasBuildData[m_currentBlasIdx];
-        VkAccelerationStructureCreateInfoKHR createInfo = data.makeCreateInfo();
+        VkAccelerationStructureCreateInfoKHR createInfo = data.make_create_info();
 
         // Create and store acceleration structure
         blasAccel[m_currentBlasIdx] = m_alloc->create_accel(createInfo);
@@ -2094,7 +2159,7 @@ VkDeviceSize BlasBuilder::buildAccelerationStructures(VkCommandBuffer cmd,
         data.buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
         data.buildInfo.dstAccelerationStructure = blasAccel[m_currentBlasIdx].accel;
         data.buildInfo.scratchData.deviceAddress = scratchAddress[m_currentBlasIdx % scratchAddress.size()];
-        data.buildInfo.pGeometries = data.asGeometry.data();
+        data.buildInfo.pGeometries = data.geometry.data();
         collectedBuildInfo.push_back(data.buildInfo);
         collectedRangeInfo.push_back(data.asBuildRangeInfo.data());
 
@@ -2131,8 +2196,8 @@ VkDeviceSize BlasBuilder::buildAccelerationStructures(VkCommandBuffer cmd,
 //   It assumes that a query has been performed earlier to determine the possible compacted sizes of the acceleration
 //   structures.
 //
-void BlasBuilder::cmdCompactBlas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
-                                 std::vector<AccelKHR> &blasAccel)
+void BlasBuilder::cmd_compact_blas(VkCommandBuffer cmd, std::vector<AccelerationStructureBuildData> &blasBuildData,
+                                   std::vector<AccelKHR> &blasAccel)
 {
     // Compute the number of queries that have been conducted between the current BLAS index and the query index.
     uint32_t queryCtn = m_currentBlasIdx - m_currentQueryIdx;
@@ -2180,7 +2245,7 @@ void BlasBuilder::cmdCompactBlas(VkCommandBuffer cmd, std::vector<AccelerationSt
     m_currentQueryIdx = m_currentBlasIdx;
 }
 
-void BlasBuilder::destroyNonCompactedBlas()
+void BlasBuilder::destroy_non_compacted_blas()
 {
     for (auto &blas : m_cleanupBlasAccel) {
         m_alloc->destroy(blas);
@@ -2188,7 +2253,7 @@ void BlasBuilder::destroyNonCompactedBlas()
     m_cleanupBlasAccel.clear();
 }
 
-void BlasBuilder::destroyQueryPool()
+void BlasBuilder::destroy_query_pool()
 {
     if (m_queryPool) {
         vkDestroyQueryPool(m_device, m_queryPool, nullptr);
@@ -2220,9 +2285,9 @@ ScratchSizeInfo calculateScratchAlignedSizes(const std::vector<AccelerationStruc
 
 // Find if the total scratch size is within the budget, otherwise return n-time the max scratch size that fits in the
 // budget
-VkDeviceSize BlasBuilder::getScratchSize(VkDeviceSize hintMaxBudget,
-                                         const std::vector<AccelerationStructureBuildData> &buildData,
-                                         uint32_t minAlignment /*= 128*/) const
+VkDeviceSize BlasBuilder::get_scratch_size(VkDeviceSize hintMaxBudget,
+                                           const std::vector<AccelerationStructureBuildData> &buildData,
+                                           uint32_t minAlignment /*= 128*/) const
 {
     ScratchSizeInfo sizeInfo = calculateScratchAlignedSizes(buildData, minAlignment);
     VkDeviceSize maxScratch = sizeInfo.maxScratch;
@@ -2238,10 +2303,10 @@ VkDeviceSize BlasBuilder::getScratchSize(VkDeviceSize hintMaxBudget,
 }
 
 // Return the scratch addresses fitting the scrath strategy (see above)
-void BlasBuilder::getScratchAddresses(VkDeviceSize hintMaxBudget,
-                                      const std::vector<AccelerationStructureBuildData> &buildData,
-                                      VkDeviceAddress scratchBufferAddress,
-                                      std::vector<VkDeviceAddress> &scratchAddresses, uint32_t minAlignment /*=128*/)
+void BlasBuilder::get_scratch_addresses(VkDeviceSize hintMaxBudget,
+                                        const std::vector<AccelerationStructureBuildData> &buildData,
+                                        VkDeviceAddress scratchBufferAddress,
+                                        std::vector<VkDeviceAddress> &scratchAddresses, uint32_t minAlignment /*=128*/)
 {
     ScratchSizeInfo sizeInfo = calculateScratchAlignedSizes(buildData, minAlignment);
     VkDeviceSize maxScratch = sizeInfo.maxScratch;
@@ -2277,7 +2342,7 @@ void BlasBuilder::getScratchAddresses(VkDeviceSize hintMaxBudget,
 //
 // Returns:
 //   A string containing the formatted summary of the BLAS compaction statistics.
-std::string BlasBuilder::Stats::toString() const
+std::string BlasBuilder::Stats::to_string() const
 {
     // Sizes in MB
     float originalSizeMB = totalOriginalSize / (1024.0f * 1024.0f);
@@ -2300,7 +2365,7 @@ std::string BlasBuilder::Stats::toString() const
 //
 // Returns:
 //   The maximum scratch size needed as a VkDeviceSize.
-VkDeviceSize getMaxScratchSize(const std::vector<AccelerationStructureBuildData> &asBuildData)
+VkDeviceSize get_max_scratch_size(const std::vector<AccelerationStructureBuildData> &asBuildData)
 {
     VkDeviceSize maxScratchSize = 0;
     for (const auto &blas : asBuildData) {
@@ -2329,8 +2394,6 @@ void RaytracingBuilderKHR::init(const VkDevice &device, Allocator &allocator, ui
     m_debug.setup(device);
     m_alloc = &allocator;
 }
-
-bool RaytracingBuilderKHR::is_init() const { return m_device != VK_NULL_HANDLE; }
 
 //--------------------------------------------------------------------------------------------------
 // Destroying all allocations
@@ -2362,12 +2425,12 @@ RaytracingBuilderKHR::~RaytracingBuilderKHR() { deinit(); }
 //--------------------------------------------------------------------------------------------------
 // Returning the constructed top-level acceleration structure
 //
-VkAccelerationStructureKHR RaytracingBuilderKHR::getAccelerationStructure() const { return m_tlas.accel; }
+VkAccelerationStructureKHR RaytracingBuilderKHR::get_tlas() const { return m_tlas.accel; }
 
 //--------------------------------------------------------------------------------------------------
 // Return the device address of a Blas previously created.
 //
-VkDeviceAddress RaytracingBuilderKHR::getBlasDeviceAddress(uint32_t blasId)
+VkDeviceAddress RaytracingBuilderKHR::get_blas_device_address(uint32_t blasId)
 {
     ASSERT(size_t(blasId) < m_blas.size());
     VkAccelerationStructureDeviceAddressInfoKHR addressInfo{
@@ -2384,7 +2447,7 @@ VkDeviceAddress RaytracingBuilderKHR::getBlasDeviceAddress(uint32_t blasId)
 //   and can be referenced by index.
 // - if flag has the 'Compact' flag, the BLAS will be compacted
 //
-void RaytracingBuilderKHR::buildBlas(const std::vector<BlasInput> &input, VkBuildAccelerationStructureFlagsKHR flags)
+void RaytracingBuilderKHR::build_blas(const std::vector<BlasInput> &input, VkBuildAccelerationStructureFlagsKHR flags)
 {
     auto numBlas = static_cast<uint32_t>(input.size());
     VkDeviceSize asTotalSize{0};    // Memory size of all allocated BLAS
@@ -2394,10 +2457,10 @@ void RaytracingBuilderKHR::buildBlas(const std::vector<BlasInput> &input, VkBuil
     m_blas.resize(numBlas); // Resize to hold all the BLAS
     for (uint32_t idx = 0; idx < numBlas; idx++) {
         blasBuildData[idx].asType = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-        blasBuildData[idx].asGeometry = input[idx].asGeometry;
-        blasBuildData[idx].asBuildRangeInfo = input[idx].asBuildOffsetInfo;
+        blasBuildData[idx].geometry = input[idx].geometry;
+        blasBuildData[idx].asBuildRangeInfo = input[idx].range_info;
 
-        auto sizeInfo = blasBuildData[idx].finalizeGeometry(m_device, input[idx].flags | flags);
+        auto sizeInfo = blasBuildData[idx].finalize_geometry(m_device, input[idx].flags | flags);
         maxScratchSize = std::max(maxScratchSize, sizeInfo.buildScratchSize);
     }
 
@@ -2406,13 +2469,13 @@ void RaytracingBuilderKHR::buildBlas(const std::vector<BlasInput> &input, VkBuil
     // Allocate the scratch buffers holding the temporary data of the acceleration structure builder
     Buffer blasScratchBuffer;
 
-    bool hasCompaction = hasFlag(flags, VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
+    bool hasCompaction = has_vk_flag(flags, VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR);
 
     BlasBuilder blasBuilder(*m_alloc, m_device);
 
     uint32_t minAlignment = 128; /*m_rtASProperties.minAccelerationStructureScratchOffsetAlignment*/
     // 1) finding the largest scratch size
-    VkDeviceSize scratchSize = blasBuilder.getScratchSize(hintMaxBudget, blasBuildData, minAlignment);
+    VkDeviceSize scratchSize = blasBuilder.get_scratch_size(hintMaxBudget, blasBuildData, minAlignment);
     // 2) allocating the scratch buffer
     blasScratchBuffer = m_alloc->create_buffer(
         VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -2420,27 +2483,30 @@ void RaytracingBuilderKHR::buildBlas(const std::vector<BlasInput> &input, VkBuil
                            .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT});
     // 3) getting the device address for the scratch buffer
     std::vector<VkDeviceAddress> scratchAddresses;
-    blasBuilder.getScratchAddresses(hintMaxBudget, blasBuildData, blasScratchBuffer.address, scratchAddresses,
-                                    minAlignment);
+    blasBuilder.get_scratch_addresses(hintMaxBudget, blasBuildData, blasScratchBuffer.address, scratchAddresses,
+                                      minAlignment);
 
     CommandPool m_cmdPool(m_device, m_queueIndex);
 
     bool finished = false;
     do {
         {
-            VkCommandBuffer cmd = m_cmdPool.createCommandBuffer();
-            finished = blasBuilder.cmdCreateParallelBlas(cmd, blasBuildData, m_blas, scratchAddresses, hintMaxBudget);
-            m_cmdPool.submitAndWait(cmd);
+            VkCommandBuffer cmd = m_cmdPool.create_command_buffer();
+            finished =
+                blasBuilder.cmd_create_parallel_blas(cmd, blasBuildData, m_blas, scratchAddresses, hintMaxBudget);
+            m_cmdPool.submit_and_wait(cmd);
         }
         if (hasCompaction) {
-            VkCommandBuffer cmd = m_cmdPool.createCommandBuffer();
-            blasBuilder.cmdCompactBlas(cmd, blasBuildData, m_blas);
-            m_cmdPool.submitAndWait(cmd); // Submit command buffer and call vkQueueWaitIdle
-            blasBuilder.destroyNonCompactedBlas();
+            VkCommandBuffer cmd = m_cmdPool.create_command_buffer();
+            blasBuilder.cmd_compact_blas(cmd, blasBuildData, m_blas);
+            m_cmdPool.submit_and_wait(cmd); // Submit command buffer and call vkQueueWaitIdle
+            blasBuilder.destroy_non_compacted_blas();
         }
     } while (!finished);
 
-    get_default_logger().info("{}", blasBuilder.getStatistics().toString().c_str());
+    if (hasCompaction) {
+        get_default_logger().info("{}", blasBuilder.get_statistics().to_string().c_str());
+    }
 
     // Clean up
     // TODO: check this
@@ -2448,38 +2514,38 @@ void RaytracingBuilderKHR::buildBlas(const std::vector<BlasInput> &input, VkBuil
     m_alloc->destroy(blasScratchBuffer);
 }
 
-void RaytracingBuilderKHR::buildTlas(
+void RaytracingBuilderKHR::build_tlas(
     const std::vector<VkAccelerationStructureInstanceKHR> &instances,
     VkBuildAccelerationStructureFlagsKHR flags /*= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR*/,
     bool update /*= false*/)
 {
-    buildTlas(instances, flags, update, false);
+    build_tlas(instances, flags, update, false);
 }
 
 #ifdef VK_NV_ray_tracing_motion_blur
-void RaytracingBuilderKHR::buildTlas(
+void RaytracingBuilderKHR::build_tlas(
     const std::vector<VkAccelerationStructureMotionInstanceNV> &instances,
     VkBuildAccelerationStructureFlagsKHR flags /*= VK_BUILD_ACCELERATION_STRUCTURE_MOTION_BIT_NV*/,
     bool update /*= false*/)
 {
-    buildTlas(instances, flags, update, true);
+    build_tlas(instances, flags, update, true);
 }
 #endif
 
 //--------------------------------------------------------------------------------------------------
 // Low level of Tlas creation - see buildTlas
 //
-void RaytracingBuilderKHR::cmdCreateTlas(VkCommandBuffer cmdBuf, uint32_t countInstance, VkDeviceAddress instBufferAddr,
-                                         Buffer &scratchBuffer, VkBuildAccelerationStructureFlagsKHR flags, bool update,
-                                         bool motion)
+void RaytracingBuilderKHR::cmd_create_tlas(VkCommandBuffer cmdBuf, uint32_t countInstance,
+                                           VkDeviceAddress instBufferAddr, Buffer &scratchBuffer,
+                                           VkBuildAccelerationStructureFlagsKHR flags, bool update, bool motion)
 {
     AccelerationStructureBuildData tlasBuildData;
     tlasBuildData.asType = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
-    AccelerationStructureGeometryInfo geo = tlasBuildData.makeInstanceGeometry(countInstance, instBufferAddr);
-    tlasBuildData.addGeometry(geo);
+    AccelerationStructureGeometryInfo geo = tlasBuildData.make_instanceGeometry(countInstance, instBufferAddr);
+    tlasBuildData.add_geometry(geo);
 
-    auto sizeInfo = tlasBuildData.finalizeGeometry(m_device, flags);
+    auto sizeInfo = tlasBuildData.finalize_geometry(m_device, flags);
 
     // Allocate the scratch memory
     VkDeviceSize scratchSize = update ? sizeInfo.updateScratchSize : sizeInfo.buildScratchSize;
@@ -2492,10 +2558,10 @@ void RaytracingBuilderKHR::cmdCreateTlas(VkCommandBuffer cmdBuf, uint32_t countI
     NAME_VK(scratchBuffer.buffer);
 
     if (update) { // Update the acceleration structure
-        tlasBuildData.asGeometry[0].geometry.instances.data.deviceAddress = instBufferAddr;
-        tlasBuildData.cmdUpdateAccelerationStructure(cmdBuf, m_tlas.accel, scratchAddress);
+        tlasBuildData.geometry[0].geometry.instances.data.deviceAddress = instBufferAddr;
+        tlasBuildData.cmd_update_acceleration_structure(cmdBuf, m_tlas.accel, scratchAddress);
     } else { // Create and build the acceleration structure
-        VkAccelerationStructureCreateInfoKHR createInfo = tlasBuildData.makeCreateInfo();
+        VkAccelerationStructureCreateInfoKHR createInfo = tlasBuildData.make_create_info();
 
 #ifdef VK_NV_ray_tracing_motion_blur
         VkAccelerationStructureMotionInfoNV motionInfo{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MOTION_INFO_NV};
@@ -2509,21 +2575,21 @@ void RaytracingBuilderKHR::cmdCreateTlas(VkCommandBuffer cmdBuf, uint32_t countI
         m_tlas = m_alloc->create_accel(createInfo);
         NAME_VK(m_tlas.accel);
         NAME_VK(m_tlas.buffer);
-        tlasBuildData.cmdBuildAccelerationStructure(cmdBuf, m_tlas.accel, scratchAddress);
+        tlasBuildData.cmd_build_acceleration_structure(cmdBuf, m_tlas.accel, scratchAddress);
     }
 }
 
 //--------------------------------------------------------------------------------------------------
 // Refit BLAS number blasIdx from updated buffer contents.
 //
-void RaytracingBuilderKHR::updateBlas(uint32_t blasIdx, BlasInput &blas, VkBuildAccelerationStructureFlagsKHR flags)
+void RaytracingBuilderKHR::update_blas(uint32_t blasIdx, BlasInput &blas, VkBuildAccelerationStructureFlagsKHR flags)
 {
     ASSERT(size_t(blasIdx) < m_blas.size());
 
     AccelerationStructureBuildData buildData{VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR};
-    buildData.asGeometry = blas.asGeometry;
-    buildData.asBuildRangeInfo = blas.asBuildOffsetInfo;
-    VkAccelerationStructureBuildSizesInfoKHR sizeInfo = buildData.finalizeGeometry(m_device, flags);
+    buildData.geometry = blas.geometry;
+    buildData.asBuildRangeInfo = blas.range_info;
+    VkAccelerationStructureBuildSizesInfoKHR sizeInfo = buildData.finalize_geometry(m_device, flags);
 
     // Allocate the scratch buffer and setting the scratch info
     Buffer scratchBuffer = m_alloc->create_buffer(
@@ -2533,9 +2599,9 @@ void RaytracingBuilderKHR::updateBlas(uint32_t blasIdx, BlasInput &blas, VkBuild
 
     // Update the instance buffer on the device side and build the TLAS
     CommandPool genCmdBuf(m_device, m_queueIndex);
-    VkCommandBuffer cmdBuf = genCmdBuf.createCommandBuffer();
-    buildData.cmdUpdateAccelerationStructure(cmdBuf, m_blas[blasIdx].accel, scratchBuffer.address);
-    genCmdBuf.submitAndWait(cmdBuf);
+    VkCommandBuffer cmdBuf = genCmdBuf.create_command_buffer();
+    buildData.cmd_update_acceleration_structure(cmdBuf, m_blas[blasIdx].accel, scratchBuffer.address);
+    genCmdBuf.submit_and_wait(cmdBuf);
 
     m_alloc->destroy(scratchBuffer);
 }
@@ -2543,9 +2609,12 @@ void RaytracingBuilderKHR::updateBlas(uint32_t blasIdx, BlasInput &blas, VkBuild
 //--------------------------------------------------------------------------------------------------
 // Default setup
 //
-void SBTWrapper::setup(VkDevice device, uint32_t familyIndex, Allocator *allocator,
-                       const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties)
+void SBTWrapper::init(VkDevice device, uint32_t familyIndex, Allocator *allocator,
+                      const VkPhysicalDeviceRayTracingPipelinePropertiesKHR &rtProperties)
 {
+    if (is_init()) {
+        return;
+    }
     m_device = device;
     m_queueIndex = familyIndex;
     m_pAlloc = allocator;
@@ -2559,8 +2628,11 @@ void SBTWrapper::setup(VkDevice device, uint32_t familyIndex, Allocator *allocat
 //--------------------------------------------------------------------------------------------------
 // Destroying the allocated buffers and clearing all vectors
 //
-void SBTWrapper::destroy()
+void SBTWrapper::deinit()
 {
+    if (!is_init()) {
+        return;
+    }
     if (m_pAlloc) {
         for (auto &b : m_buffer)
             m_pAlloc->destroy(b);
@@ -2575,8 +2647,8 @@ void SBTWrapper::destroy()
 // If the pipeline was created like: raygen, miss, hit, miss, hit, hit
 // The result will be: raygen[0], miss[1, 3], hit[2, 4, 5], callable[]
 //
-void SBTWrapper::addIndices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
-                            const std::vector<VkRayTracingPipelineCreateInfoKHR> &libraries)
+void SBTWrapper::add_indices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
+                             const std::vector<VkRayTracingPipelineCreateInfoKHR> &libraries)
 {
     for (auto &i : m_index)
         i = {};
@@ -2597,14 +2669,14 @@ void SBTWrapper::addIndices(VkRayTracingPipelineCreateInfoKHR rayPipelineInfo,
                 uint32_t genShader = info.pGroups[g].generalShader;
                 assert(genShader < info.stageCount);
                 if (info.pStages[genShader].stage == VK_SHADER_STAGE_RAYGEN_BIT_KHR) {
-                    m_index[eRaygen].push_back(g + groupOffset);
+                    m_index[Raygen].push_back(g + groupOffset);
                 } else if (info.pStages[genShader].stage == VK_SHADER_STAGE_MISS_BIT_KHR) {
-                    m_index[eMiss].push_back(g + groupOffset);
+                    m_index[Miss].push_back(g + groupOffset);
                 } else if (info.pStages[genShader].stage == VK_SHADER_STAGE_CALLABLE_BIT_KHR) {
-                    m_index[eCallable].push_back(g + groupOffset);
+                    m_index[Callable].push_back(g + groupOffset);
                 }
             } else {
-                m_index[eHit].push_back(g + groupOffset);
+                m_index[Hit].push_back(g + groupOffset);
             }
         }
 
@@ -2628,7 +2700,7 @@ void SBTWrapper::create(VkPipeline rtPipeline, VkRayTracingPipelineCreateInfoKHR
     // A pipeline is defined by at least its main VkRayTracingPipelineCreateInfoKHR, plus a number of external libraries
     groupCountPerInput.reserve(1 + librariesInfo.size());
     if (rayPipelineInfo.sType == VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR) {
-        addIndices(rayPipelineInfo, librariesInfo);
+        add_indices(rayPipelineInfo, librariesInfo);
         groupCountPerInput.push_back(rayPipelineInfo.groupCount);
         totalGroupCount += rayPipelineInfo.groupCount;
         for (const auto &lib : librariesInfo) {
@@ -2662,20 +2734,20 @@ void SBTWrapper::create(VkPipeline rtPipeline, VkRayTracingPipelineCreateInfoKHR
             stride = std::max(stride, dataHandleSize);
         }
     };
-    findStride(m_data[eRaygen], m_stride[eRaygen]);
-    findStride(m_data[eMiss], m_stride[eMiss]);
-    findStride(m_data[eHit], m_stride[eHit]);
-    findStride(m_data[eCallable], m_stride[eCallable]);
+    findStride(m_data[Raygen], m_stride[Raygen]);
+    findStride(m_data[Miss], m_stride[Miss]);
+    findStride(m_data[Hit], m_stride[Hit]);
+    findStride(m_data[Callable], m_stride[Callable]);
 
     // Special case, all Raygen must start aligned on GroupBase
-    m_stride[eRaygen] = align_up(m_stride[eRaygen], m_shaderGroupBaseAlignment);
+    m_stride[Raygen] = align_up(m_stride[Raygen], m_shaderGroupBaseAlignment);
 
     // Buffer holding the staging information
     std::array<std::vector<uint8_t>, 4> stage;
-    stage[eRaygen] = std::vector<uint8_t>(m_stride[eRaygen] * indexCount(eRaygen));
-    stage[eMiss] = std::vector<uint8_t>(m_stride[eMiss] * indexCount(eMiss));
-    stage[eHit] = std::vector<uint8_t>(m_stride[eHit] * indexCount(eHit));
-    stage[eCallable] = std::vector<uint8_t>(m_stride[eCallable] * indexCount(eCallable));
+    stage[Raygen] = std::vector<uint8_t>(m_stride[Raygen] * index_count(Raygen));
+    stage[Miss] = std::vector<uint8_t>(m_stride[Miss] * index_count(Miss));
+    stage[Hit] = std::vector<uint8_t>(m_stride[Hit] * index_count(Hit));
+    stage[Callable] = std::vector<uint8_t>(m_stride[Callable] * index_count(Callable));
 
     // Write the handles in the SBT buffer + data info (if any)
     auto copyHandles = [&](std::vector<uint8_t> &buffer, std::vector<uint32_t> &indices, uint32_t stride, auto &data) {
@@ -2695,10 +2767,10 @@ void SBTWrapper::create(VkPipeline rtPipeline, VkRayTracingPipelineCreateInfoKHR
     };
 
     // Copy the handles/data to each staging buffer
-    copyHandles(stage[eRaygen], m_index[eRaygen], m_stride[eRaygen], m_data[eRaygen]);
-    copyHandles(stage[eMiss], m_index[eMiss], m_stride[eMiss], m_data[eMiss]);
-    copyHandles(stage[eHit], m_index[eHit], m_stride[eHit], m_data[eHit]);
-    copyHandles(stage[eCallable], m_index[eCallable], m_stride[eCallable], m_data[eCallable]);
+    copyHandles(stage[Raygen], m_index[Raygen], m_stride[Raygen], m_data[Raygen]);
+    copyHandles(stage[Miss], m_index[Miss], m_stride[Miss], m_data[Miss]);
+    copyHandles(stage[Hit], m_index[Hit], m_stride[Hit], m_data[Hit]);
+    copyHandles(stage[Callable], m_index[Callable], m_stride[Callable], m_data[Callable]);
 
     // Creating device local buffers where handles will be stored
     VkBufferUsageFlags usage_flags =
@@ -2726,7 +2798,7 @@ void SBTWrapper::create(VkPipeline rtPipeline, VkRayTracingPipelineCreateInfoKHR
     // m_pAlloc->finalizeAndReleaseStaging();
 }
 
-VkDeviceAddress SBTWrapper::getAddress(GroupType t) const
+VkDeviceAddress SBTWrapper::get_address(GroupType t) const
 {
     if (m_buffer[t].buffer == VK_NULL_HANDLE)
         return 0;
@@ -2735,15 +2807,15 @@ VkDeviceAddress SBTWrapper::getAddress(GroupType t) const
         m_device, &i); // Aligned on VkMemoryRequirements::alignment which includes shaderGroupBaseAlignment
 }
 
-const VkStridedDeviceAddressRegionKHR SBTWrapper::getRegion(GroupType t, uint32_t indexOffset) const
+const VkStridedDeviceAddressRegionKHR SBTWrapper::get_region(GroupType t, uint32_t indexOffset) const
 {
-    return VkStridedDeviceAddressRegionKHR{getAddress(t) + indexOffset * getStride(t), getStride(t), getSize(t)};
+    return VkStridedDeviceAddressRegionKHR{get_address(t) + indexOffset * get_stride(t), get_stride(t), get_size(t)};
 }
 
-const std::array<VkStridedDeviceAddressRegionKHR, 4> SBTWrapper::getRegions(uint32_t rayGenIndexOffset) const
+const std::array<VkStridedDeviceAddressRegionKHR, 4> SBTWrapper::get_regions(uint32_t rayGenIndexOffset) const
 {
-    std::array<VkStridedDeviceAddressRegionKHR, 4> regions{getRegion(eRaygen, rayGenIndexOffset), getRegion(eMiss),
-                                                           getRegion(eHit), getRegion(eCallable)};
+    std::array<VkStridedDeviceAddressRegionKHR, 4> regions{get_region(Raygen, rayGenIndexOffset), get_region(Miss),
+                                                           get_region(Hit), get_region(Callable)};
     return regions;
 }
 
