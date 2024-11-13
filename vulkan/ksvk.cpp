@@ -381,36 +381,6 @@ VkDeviceSize Allocator::image_size(const VkImageCreateInfo &info) const
 
 #include <vulkan/utility/vk_format_utils.h>
 
-static VkImageViewCreateInfo viewInfoFromImageInfo(const VkImageCreateInfo &image_info, bool cubeMap)
-{
-    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    viewInfo.pNext = nullptr;
-    viewInfo.format = image_info.format;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-    if (image_info.imageType == VK_IMAGE_TYPE_2D) {
-        if (image_info.arrayLayers == 6 && cubeMap) {
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-        } else if (image_info.arrayLayers > 1) {
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-        } else {
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        }
-    } else if (image_info.imageType == VK_IMAGE_TYPE_1D) {
-        if (image_info.arrayLayers > 1) {
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D_ARRAY;
-        } else {
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
-        }
-    } else {
-        ASSERT_FATAL("TODO");
-    }
-    return viewInfo;
-}
-
 Image Allocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
 {
     VmaAllocationCreateInfo allocCI{};
@@ -422,99 +392,10 @@ Image Allocator::create_image(const VkImageCreateInfo &info, VmaMemoryUsage usag
     return image;
 }
 
-ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                                VmaMemoryUsage usage, VmaAllocationCreateFlags flags)
+Image Allocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                          VmaAllocationCreateFlags flags, VkImageLayout layout)
 {
-    VmaAllocationCreateInfo allocCI{};
-    allocCI.usage = usage;
-    allocCI.flags = flags;
-    ImageWithView image;
-    vk_check(vmaCreateImage(vma, &info, &allocCI, &image.image, &image.allocation, nullptr));
-    view_info.image = image.image;
-    vk_check(vkCreateImageView(device, &view_info, nullptr, &image.view));
-
-    return image;
-}
-
-ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                VmaAllocationCreateFlags flags, bool cubeMap)
-{
-    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cubeMap);
-    return create_image_with_view(info, viewInfo, usage, flags);
-}
-
-ImageWithView Allocator::create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
-                                             bool storage)
-{
-    VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent = {width, height, 1};
-    imageInfo.format = format;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if (sample) {
-        imageInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-    }
-    if (storage) {
-        imageInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-    }
-
-    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    viewInfo.format = format;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.components = VkComponentMapping{};
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
-
-    return create_image_with_view(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY, VmaAllocationCreateFlags(0));
-}
-
-ImageWithView Allocator::create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage)
-{
-    VkImageCreateInfo depthInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    depthInfo.imageType = VK_IMAGE_TYPE_2D;
-    depthInfo.extent = {width, height, 1};
-    depthInfo.format = VK_FORMAT_D32_SFLOAT;
-    depthInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depthInfo.mipLevels = 1;
-    depthInfo.arrayLayers = 1;
-    depthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    depthInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    depthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    depthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    if (sample) {
-        depthInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-    }
-    if (storage) {
-        depthInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-    }
-
-    VkImageViewCreateInfo depthViewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    depthViewInfo.format = VK_FORMAT_D32_SFLOAT;
-    depthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    depthViewInfo.components = VkComponentMapping{};
-    depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depthViewInfo.subresourceRange.baseMipLevel = 0;
-    depthViewInfo.subresourceRange.levelCount = 1;
-    depthViewInfo.subresourceRange.baseArrayLayer = 0;
-    depthViewInfo.subresourceRange.layerCount = 1;
-
-    return create_image_with_view(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY, VmaAllocationCreateFlags(0));
-}
-
-ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                                  VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
-                                                  VkImageLayout layout)
-{
-    ImageWithView image = create_image_with_view(info, view_info, usage, flags);
+    Image image = create_image(info, usage, flags);
 
     ASSERT(upload_cb);
 
@@ -538,27 +419,10 @@ ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info,
     return image;
 }
 
-ImageWithView Allocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                  VmaAllocationCreateFlags flags, VkImageLayout layout, bool cube_map)
-{
-    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
-    return create_and_transit_image(info, viewInfo, usage, flags, layout);
-}
-
-ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                                 VmaAllocationCreateFlags flags, const std::byte *data,
-                                                 size_t byte_size, VkImageLayout layout, MipmapOption mipmap_option,
-                                                 bool cube_map)
-{
-    return create_and_upload_image(
-        info, usage, flags, [&](std::byte *dest) { memcpy(dest, (const void *)data, byte_size); }, layout,
-        mipmap_option, cube_map);
-}
-
-ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info_, VmaMemoryUsage usage,
-                                                 VmaAllocationCreateFlags flags,
-                                                 const std::function<void(std::byte *)> &copy_fn, VkImageLayout layout,
-                                                 MipmapOption mipmap_option, bool cube_map)
+Image Allocator::create_and_upload_image(const VkImageCreateInfo &info_, VmaMemoryUsage usage,
+                                         VmaAllocationCreateFlags flags,
+                                         const std::function<void(std::byte *)> &copy_fn, VkImageLayout layout,
+                                         MipmapOption mipmap_option, bool cube_map)
 {
 
     ASSERT(upload_cb);
@@ -569,8 +433,7 @@ ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info_,
         info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
-    VkImageViewCreateInfo viewInfo = viewInfoFromImageInfo(info, cube_map);
-    ImageWithView image = create_image_with_view(info, viewInfo, usage, flags);
+    Image image = create_image(info, usage, flags);
 
     Buffer staging = create_staging_buffer(image_size(info), copy_fn);
 
@@ -755,6 +618,97 @@ ImageWithView Allocator::create_and_upload_image(const VkImageCreateInfo &info_,
 
     return image;
 }
+
+ImageWithView Allocator::create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                                VmaAllocationCreateFlags flags, VkImageViewCreateInfo view_info)
+{
+    VmaAllocationCreateInfo allocCI{};
+    allocCI.usage = usage;
+    allocCI.flags = flags;
+    ImageWithView iv;
+    vk_check(vmaCreateImage(vma, &info, &allocCI, &iv.image, &iv.allocation, nullptr));
+    view_info.image = iv.image;
+    vk_check(vkCreateImageView(device, &view_info, nullptr, &iv.view));
+
+    return iv;
+}
+
+ImageWithView Allocator::create_image_with_view(const Image &image, const VkImageViewCreateInfo &view_info)
+{
+    ImageWithView iv;
+    iv.image = image.image;
+    iv.allocation = image.allocation;
+    ASSERT(view_info.image == image.image);
+    vk_check(vkCreateImageView(device, &view_info, nullptr, &iv.view));
+    return iv;
+}
+
+// ImageWithView Allocator::create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample,
+//                                              bool storage)
+//{
+//     VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+//     imageInfo.imageType = VK_IMAGE_TYPE_2D;
+//     imageInfo.extent = {width, height, 1};
+//     imageInfo.format = format;
+//     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+//     imageInfo.mipLevels = 1;
+//     imageInfo.arrayLayers = 1;
+//     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+//     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+//     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+//     imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+//     if (sample) {
+//         imageInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+//     }
+//     if (storage) {
+//         imageInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+//     }
+//
+//     VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+//     viewInfo.format = format;
+//     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+//     viewInfo.components = VkComponentMapping{};
+//     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+//     viewInfo.subresourceRange.baseMipLevel = 0;
+//     viewInfo.subresourceRange.levelCount = 1;
+//     viewInfo.subresourceRange.baseArrayLayer = 0;
+//     viewInfo.subresourceRange.layerCount = 1;
+//
+//     return create_image_with_view(imageInfo, viewInfo, VMA_MEMORY_USAGE_GPU_ONLY, VmaAllocationCreateFlags(0));
+// }
+//
+// ImageWithView Allocator::create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage)
+//{
+//     VkImageCreateInfo depthInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+//     depthInfo.imageType = VK_IMAGE_TYPE_2D;
+//     depthInfo.extent = {width, height, 1};
+//     depthInfo.format = VK_FORMAT_D32_SFLOAT;
+//     depthInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+//     depthInfo.mipLevels = 1;
+//     depthInfo.arrayLayers = 1;
+//     depthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+//     depthInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+//     depthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+//     depthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+//     if (sample) {
+//         depthInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+//     }
+//     if (storage) {
+//         depthInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+//     }
+//
+//     VkImageViewCreateInfo depthViewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+//     depthViewInfo.format = VK_FORMAT_D32_SFLOAT;
+//     depthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+//     depthViewInfo.components = VkComponentMapping{};
+//     depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+//     depthViewInfo.subresourceRange.baseMipLevel = 0;
+//     depthViewInfo.subresourceRange.levelCount = 1;
+//     depthViewInfo.subresourceRange.baseArrayLayer = 0;
+//     depthViewInfo.subresourceRange.layerCount = 1;
+//
+//     return create_image_with_view(depthInfo, depthViewInfo, VMA_MEMORY_USAGE_GPU_ONLY, VmaAllocationCreateFlags(0));
+// }
 
 Buffer Allocator::create_staging_buffer(VkDeviceSize buffer_size, const std::byte *data, VkDeviceSize data_size)
 {

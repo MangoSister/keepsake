@@ -409,24 +409,26 @@ struct Allocator
     VkDeviceSize image_size(const VkImageCreateInfo &info) const;
 
     Image create_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags);
-    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                         VmaMemoryUsage usage, VmaAllocationCreateFlags flags);
-    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                         VmaAllocationCreateFlags flags, bool cube_map);
-    ImageWithView create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample, bool storage);
-    ImageWithView create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage);
-    ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VkImageViewCreateInfo &view_info,
-                                           VmaMemoryUsage usage, VmaAllocationCreateFlags flags, VkImageLayout layout);
-    ImageWithView create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                           VmaAllocationCreateFlags flags, VkImageLayout layout, bool cube_map);
+    Image create_and_transit_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+                                   VkImageLayout layout);
     // Regular 2D texture or 2D texture array only (TODO: cube map, 3D texture, etc).
-    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                          VmaAllocationCreateFlags flags, const std::byte *data, size_t byte_size,
-                                          VkImageLayout layout, MipmapOption mipmap_option, bool cube_map);
-    ImageWithView create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage,
-                                          VmaAllocationCreateFlags flags,
-                                          const std::function<void(std::byte *)> &copy_fn, VkImageLayout layout,
-                                          MipmapOption mipmap_option, bool cube_map);
+    Image create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+                                  const std::function<void(std::byte *)> &copy_fn, VkImageLayout layout,
+                                  MipmapOption mipmap_option, bool cube_map);
+    Image create_and_upload_image(const VkImageCreateInfo &info, VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+                                  const std::byte *data, size_t byte_size, VkImageLayout layout,
+                                  MipmapOption mipmap_option, bool cube_map)
+    {
+        return create_and_upload_image(
+            info, usage, flags, [&](std::byte *dest) { memcpy(dest, (const void *)data, byte_size); }, layout,
+            mipmap_option, cube_map);
+    }
+
+    ImageWithView create_image_with_view(const VkImageCreateInfo &info, VmaMemoryUsage usage,
+                                         VmaAllocationCreateFlags flags, VkImageViewCreateInfo view_info);
+    ImageWithView create_image_with_view(const Image &image, const VkImageViewCreateInfo &view_info);
+    // ImageWithView create_color_buffer(uint32_t width, uint32_t height, VkFormat format, bool sample, bool storage);
+    // ImageWithView create_depth_buffer(uint32_t width, uint32_t height, bool sample, bool storage);
 
     AccelKHR create_accel(const VkAccelerationStructureCreateInfoKHR &accel_info);
 
@@ -484,6 +486,38 @@ struct Allocator
     VkDeviceSize min_storage_buffer_offset_alignment = 0;
     VkDeviceSize min_texel_buffer_offset_alignment = 0;
 };
+
+inline VkImageViewCreateInfo simple_view_info_from_image_info(const VkImageCreateInfo &image_info, const Image &image,
+                                                              bool cubeMap)
+{
+    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    viewInfo.pNext = nullptr;
+    viewInfo.image = image.image;
+    viewInfo.format = image_info.format;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+    if (image_info.imageType == VK_IMAGE_TYPE_2D) {
+        if (image_info.arrayLayers == 6 && cubeMap) {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+        } else if (image_info.arrayLayers > 1) {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        } else {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        }
+    } else if (image_info.imageType == VK_IMAGE_TYPE_1D) {
+        if (image_info.arrayLayers > 1) {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+        } else {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
+        }
+    } else {
+        ASSERT_FATAL("TODO");
+    }
+    return viewInfo;
+}
 
 inline VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
 {
