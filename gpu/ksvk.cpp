@@ -176,6 +176,50 @@ Buffer Allocator::create_buffer(const VkBufferCreateInfo &info_, VmaMemoryUsage 
     return buf;
 }
 
+Buffer Allocator::create_buffer_with_alignment(const VkBufferCreateInfo &info_, VkDeviceSize min_alignment,
+                                               VmaMemoryUsage usage, VmaAllocationCreateFlags flags,
+                                               const std::byte *data)
+{
+    Buffer buf;
+    VmaAllocationCreateInfo allocCI{};
+    allocCI.usage = usage;
+    allocCI.flags = flags;
+
+    VkBufferCreateInfo info = info_;
+    if (data) {
+        info.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+
+    vk_check(vmaCreateBufferWithAlignment(vma, &info, &allocCI, min_alignment, &buf.buffer, &buf.allocation, nullptr));
+
+    // Get the device address if requested
+    if (info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+        VkBufferDeviceAddressInfo info = {.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+        info.buffer = buf.buffer;
+        if (vkGetBufferDeviceAddress) {
+            buf.address = vkGetBufferDeviceAddress(device, &info);
+        } else if (vkGetBufferDeviceAddressKHR) {
+            buf.address = vkGetBufferDeviceAddressKHR(device, &info);
+        } else {
+            ASSERT(false);
+        }
+    }
+
+    if (data) {
+        ASSERT(upload_cb);
+
+        Buffer staging = create_staging_buffer(info.size, data, info.size);
+        VkBufferCopy region;
+        region.srcOffset = 0;
+
+        region.dstOffset = 0;
+        region.size = info.size;
+        vkCmdCopyBuffer(upload_cb, staging.buffer, buf.buffer, 1, &region);
+    }
+
+    return buf;
+}
+
 TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBufferViewCreateInfo &buffer_view_info,
                                            VmaMemoryUsage usage, VmaAllocationCreateFlags flags, const std::byte *data)
 {
@@ -2431,10 +2475,11 @@ void RaytracingBuilderKHR::build_blas(const std::vector<BlasInput> &input, VkBui
     // 1) finding the largest scratch size
     VkDeviceSize scratchSize = blasBuilder.get_scratch_size(hintMaxBudget, blasBuildData, minAlignment);
     // 2) allocating the scratch buffer
-    blasScratchBuffer = m_alloc->create_buffer(
+    blasScratchBuffer = m_alloc->create_buffer_with_alignment(
         VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                            .size = scratchSize,
-                           .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT});
+                           .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT},
+        minAlignment);
     // 3) getting the device address for the scratch buffer
     std::vector<VkDeviceAddress> scratchAddresses;
     blasBuilder.get_scratch_addresses(hintMaxBudget, blasBuildData, blasScratchBuffer.address, scratchAddresses,

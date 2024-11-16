@@ -347,6 +347,10 @@ struct Allocator
         return create_buffer(info, usage, flags, reinterpret_cast<const std::byte *>(vec.data()));
     }
 
+    Buffer create_buffer_with_alignment(const VkBufferCreateInfo &info, VkDeviceSize min_alignment,
+                                        VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO,
+                                        VmaAllocationCreateFlags flags = 0, const std::byte *data = nullptr);
+
     TexelBuffer create_texel_buffer(const VkBufferCreateInfo &info, VkBufferViewCreateInfo &buffer_view_info,
                                     VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO, VmaAllocationCreateFlags flags = 0,
                                     const std::byte *data = nullptr);
