@@ -184,6 +184,23 @@ inline uint64_t murmur_hash_64A(const unsigned char *key, size_t len, uint64_t s
     return h;
 }
 
+// See latest boost for more information about hash mixing/combining
+// https://www.boost.org/doc/libs/1_86_0/boost/intrusive/detail/hash_mix.hpp
+inline uint32_t mix_bits_u32(uint32_t x)
+{
+    constexpr uint32_t m1 = 0x21f0aaad;
+    constexpr uint32_t m2 = 0x735a2d97;
+
+    x ^= x >> 16;
+    x *= m1;
+    x ^= x >> 15;
+    x *= m2;
+    x ^= x >> 15;
+
+    return x;
+}
+
+// (lastest boost now uses a different variant)
 // Hashing Inline Functions
 // http://zimbry.blogspot.ch/2011/09/better-bit-mixing-improving-on.html
 inline uint64_t mix_bits(uint64_t v)
@@ -195,6 +212,10 @@ inline uint64_t mix_bits(uint64_t v)
     v ^= (v >> 33);
     return v;
 }
+
+inline void hash_combine(uint64_t &seed, uint64_t value) { seed = mix_bits(seed + 0x9e3779b9 + value); }
+
+inline void hash_combine_u32(uint32_t &seed, uint32_t value) { seed = mix_bits_u32(seed + 0x9e3779b9 + value); }
 
 template <typename T>
 inline uint64_t hash_buffer(const T *ptr, size_t size, uint64_t seed = 0)
