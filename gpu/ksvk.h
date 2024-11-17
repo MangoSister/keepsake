@@ -2,6 +2,7 @@
 #include "../assertion.h"
 #include "../file_util.h"
 #include "../hash.h"
+#include "../log_util.h"
 
 #include <array>
 #include <cstddef>
@@ -20,6 +21,9 @@
 #include <GLFW/glfw3.h>
 #include <vk_mem_alloc.h>
 #include <volk.h>
+
+#include <slang-com-ptr.h>
+#include <slang.h>
 
 namespace ks
 {
@@ -1762,4 +1766,141 @@ struct GUI
 };
 
 } // namespace vk
+
+// TODO: maybe a separate header for slang?
+inline void slang_check(SlangResult res, slang::IBlob *diagnostics_blob = nullptr,
+                        const std::source_location location = std::source_location::current())
+{
+    if (SLANG_SUCCEEDED(res))
+        return;
+    get_default_logger().critical(
+        "[File: {} ({}:{}), in `{}`] Slang Error: SlangResult = {}, fac = {}, code = {}, diagnostics: {}",
+        location.file_name(), location.line(), location.column(), location.function_name(), res,
+        SLANG_GET_RESULT_FACILITY(res), SLANG_GET_RESULT_CODE(res),
+        diagnostics_blob ? (const char *)diagnostics_blob->getBufferPointer() : "null");
+    std::abort();
+}
+
+inline void slang_check(slang::IBlob *diagnostics_blob = nullptr,
+                        const std::source_location location = std::source_location::current())
+{
+    if (!diagnostics_blob)
+        return;
+    get_default_logger().warn("[File: {} ({}:{}), in `{}`] Slang Diagnostics: {}", location.file_name(),
+                              location.line(), location.column(), location.function_name(),
+                              (const char *)diagnostics_blob->getBufferPointer());
+}
+
+struct CompiledSlangShader
+{
+    CompiledSlangShader(slang::ISession &session, const VkDevice &device, const std::string &module_name,
+                        std::span<const std::string> entry_point_names)
+        : device(device)
+    {
+        // Once the session has been obtained, we can start loading code into it.
+        //
+        // The simplest way to load code is by calling `loadModule` with the name of a Slang
+        // module. A call to `loadModule("hello-world")` will behave more or less as if you
+        // wrote:
+        //
+        //      import hello_world;
+        //
+        // In a Slang shader file. The compiler will use its search paths to try to locate
+        // `hello-world.slang`, then compile and load that file. If a matching module had
+        // already been loaded previously, that would be used directly.
+        slang::IModule *slangModule = nullptr;
+        {
+            Slang::ComPtr<slang::IBlob> diagnosticBlob;
+            slangModule = session.loadModule(module_name.c_str(), diagnosticBlob.writeRef());
+            slang_check(diagnosticBlob);
+            if (!slangModule) {
+                get_default_logger().critical("Failed to load slang module [{}]!", module_name.c_str());
+                std::abort();
+            }
+        }
+
+        for (uint32_t i = 0; i < entry_point_names.size(); ++i) {
+            // Loading the `hello-world` module will compile and check all the shader code in it,
+            // including the shader entry points we want to use. Now that the module is loaded
+            // we can look up those entry points by name.
+            //
+            // Note: If you are using this `loadModule` approach to load your shader code it is
+            // important to tag your entry point functions with t he `[shader("...")]` attribute
+            // (e.g., `[shader("compute")] void computeMain(...)`). Without that information there
+            // is no umambiguous way for the compiler to know which functions represent entry
+            // points when it parses your code via `loadModule()`.
+            //
+            Slang::ComPtr<slang::IEntryPoint> entryPoint;
+            slang_check(slangModule->findEntryPointByName(entry_point_names[i].c_str(), entryPoint.writeRef()));
+
+            // At this point we have a few different Slang API objects that represent
+            // pieces of our code: `module`, `vertexEntryPoint`, and `fragmentEntryPoint`.
+            //
+            // A single Slang module could contain many different entry points (e.g.,
+            // four vertex entry points, three fragment entry points, and two compute
+            // shaders), and before we try to generate output code for our target API
+            // we need to identify which entry points we plan to use together.
+            //
+            // Modules and entry points are both examples of *component types* in the
+            // Slang API. The API also provides a way to build a *composite* out of
+            // other pieces, and that is what we are going to do with our module
+            // and entry points.
+            //
+            std::vector<slang::IComponentType *> componentTypes;
+            componentTypes.push_back(slangModule);
+            componentTypes.push_back(entryPoint);
+
+            // Actually creating the composite component type is a single operation
+            // on the Slang session, but the operation could potentially fail if
+            // something about the composite was invalid (e.g., you are trying to
+            // combine multiple copies of the same module), so we need to deal
+            // with the possibility of diagnostic output.
+            //
+            Slang::ComPtr<slang::IComponentType> composedProgram;
+            {
+                Slang::ComPtr<slang::IBlob> diagnosticsBlob;
+                SlangResult result =
+                    session.createCompositeComponentType(componentTypes.data(), componentTypes.size(),
+                                                         composedProgram.writeRef(), diagnosticsBlob.writeRef());
+                slang_check(result, diagnosticsBlob);
+            }
+            slang::ShaderReflection *slangReflection = composedProgram->getLayout();
+
+            // Now we can call `composedProgram->getEntryPointCode()` to retrieve the
+            // compiled SPIRV code that we will use to create a vulkan compute pipeline.
+            // This will trigger the final Slang compilation and spirv code generation.
+            Slang::ComPtr<slang::IBlob> spirvCode;
+            {
+                Slang::ComPtr<slang::IBlob> diagnosticsBlob;
+                SlangResult result =
+                    composedProgram->getEntryPointCode(0, 0, spirvCode.writeRef(), diagnosticsBlob.writeRef());
+                slang_check(result, diagnosticsBlob);
+            }
+
+            // Next we create a shader module from the compiled SPIRV code.
+            VkShaderModuleCreateInfo shaderCreateInfo = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+            shaderCreateInfo.codeSize = spirvCode->getBufferSize();
+            shaderCreateInfo.pCode = static_cast<const uint32_t *>(spirvCode->getBufferPointer());
+            VkShaderModule shader_module;
+            vk::vk_check(vkCreateShaderModule(device, &shaderCreateInfo, nullptr, &shader_module));
+
+            composedPrograms.push_back(composedProgram);
+            shader_modules.push_back(shader_module);
+        }
+    }
+
+    ~CompiledSlangShader()
+    {
+        // We can destroy shader module now since it will no longer be used.
+        for (VkShaderModule s : shader_modules) {
+            vkDestroyShaderModule(device, s, nullptr);
+        }
+    }
+
+    slang::IModule *slangModule = nullptr;
+    std::vector<Slang::ComPtr<slang::IComponentType>> composedPrograms;
+    std::vector<VkShaderModule> shader_modules;
+    VkDevice device;
+};
+
 } // namespace ks
