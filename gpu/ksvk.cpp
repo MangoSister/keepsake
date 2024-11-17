@@ -1016,7 +1016,7 @@ static void check_required_instance_extensions(const std::vector<const char *> &
             }
         }
         if (!found) {
-            fprintf(stderr, "Vulkan instance extension not available: [%s].", rext);
+            get_default_logger().critical("Vulkan instance extension not available: [{}].", rext);
             std::abort();
         }
     }
@@ -1038,7 +1038,7 @@ static void check_required_instance_layers(const std::vector<const char *> &rlay
             }
         }
         if (!found) {
-            fprintf(stderr, "Vulkan instance layer not available: [%s].", rlayer);
+            get_default_logger().critical("Vulkan instance layer not available: [{}].", rlayer);
             std::abort();
         }
     }
@@ -1048,6 +1048,16 @@ void ContextArgs::enable_validation()
 {
     instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     instance_layers.push_back("VK_LAYER_KHRONOS_validation");
+
+#ifdef VK_NV_RAY_TRACING_VALIDATION_EXTENSION_NAME
+    add_device_feature<VkPhysicalDeviceRayTracingValidationFeaturesNV>() =
+        VkPhysicalDeviceRayTracingValidationFeaturesNV{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_VALIDATION_FEATURES_NV,
+            .rayTracingValidation = VK_TRUE};
+
+    get_default_logger().info("Also enabled NV ray tracing validation.");
+#endif
+
     validation = true;
 }
 
@@ -1206,13 +1216,13 @@ std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextArg
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
-        fprintf(stderr, "Cannot find any vulkan physical device.\n");
+        get_default_logger().critical("Cannot find any vulkan physical device.");
         std::abort();
     }
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    printf("Compatible devices:\n");
+    get_default_logger().info("Compatible devices:");
     std::vector<CompatibleDevice> compatibles;
     for (uint32_t i = 0; i < (uint32_t)devices.size(); ++i) {
         if (!has_required_device_extensions(devices[i], rexts)) {
@@ -1228,7 +1238,7 @@ std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextArg
 
         VkPhysicalDeviceProperties prop;
         vkGetPhysicalDeviceProperties(devices[i], &prop);
-        printf("GPU [%u]: %s.\n", i, prop.deviceName);
+        get_default_logger().info("GPU [{}]: {}.", i, prop.deviceName);
         compatibles.push_back({devices[i], i, queueFamilyIndex});
     }
 
@@ -1237,16 +1247,7 @@ std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextArg
 
 void Context::create_device(const ContextArgs &info, CompatibleDevice compatible)
 {
-    printf("Selected GPU index: [%u].\n", compatible.physical_device_index);
-
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    if (deviceCount == 0) {
-        fprintf(stderr, "Cannot find any vulkan physical device.\n");
-        std::abort();
-    }
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+    get_default_logger().info("Selected GPU index: [{}].", compatible.physical_device_index);
 
     physical_device = compatible.physical_device;
     vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
