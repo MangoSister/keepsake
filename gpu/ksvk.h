@@ -581,8 +581,6 @@ struct AutoRelease
 
 struct ContextArgs
 {
-    ~ContextArgs();
-
     void enable_validation();
     void enable_swapchain();
 
@@ -593,7 +591,12 @@ struct ContextArgs
     std::vector<std::string> instance_layers;
 
     VkPhysicalDeviceFeatures2 device_features = VkPhysicalDeviceFeatures2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    std::vector<void *> device_features_data;
+
+    struct DeleteByFree
+    {
+        void operator()(void *ptr) const { free(ptr); }
+    };
+    std::vector<std::unique_ptr<void, DeleteByFree>> device_features_data;
 
     std::vector<std::string> device_extensions;
 
@@ -604,7 +607,7 @@ struct ContextArgs
     {
         T *feature = (T *)malloc(sizeof(T));
         memset(feature, 0, sizeof(T));
-        device_features_data.push_back(feature);
+        device_features_data.emplace_back(feature);
 
         auto get_next = [](const void *ptr) { return (void *)((std::byte *)ptr + offsetof(T, pNext)); };
 
@@ -619,68 +622,6 @@ struct ContextArgs
         return *feature;
     }
 };
-
-// Convenient function to create argument with support for usual features used by ks and applications such as ray
-// tracing, bindless, etc.
-// Validation can have performance overhead, but usually we want it for testing both in debug and release build until we
-// are very confident...
-inline ContextArgs get_default_context_args(bool validation)
-{
-    vk::ContextArgs ctx_args{};
-    ctx_args.api_version_major = 1;
-    ctx_args.api_version_minor = 3;
-    if (validation) {
-        ctx_args.enable_validation();
-    }
-    //
-    ctx_args.device_features.features.samplerAnisotropy = VK_TRUE;
-    ctx_args.device_features.features.shaderInt64 = VK_TRUE;
-
-    ctx_args.add_device_feature<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .variablePointersStorageBuffer = VK_TRUE,
-        .variablePointers = VK_TRUE,
-    };
-
-    ctx_args.add_device_feature<VkPhysicalDeviceVulkan12Features>() = VkPhysicalDeviceVulkan12Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .shaderInputAttachmentArrayDynamicIndexing = VK_TRUE,
-        .shaderUniformTexelBufferArrayDynamicIndexing = VK_TRUE,
-        .shaderStorageTexelBufferArrayDynamicIndexing = VK_TRUE,
-        .shaderUniformBufferArrayNonUniformIndexing = VK_TRUE,
-        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
-        .shaderStorageBufferArrayNonUniformIndexing = VK_TRUE,
-        .shaderStorageImageArrayNonUniformIndexing = VK_TRUE,
-        .shaderInputAttachmentArrayNonUniformIndexing = VK_TRUE,
-        .shaderUniformTexelBufferArrayNonUniformIndexing = VK_TRUE,
-        .shaderStorageTexelBufferArrayNonUniformIndexing = VK_TRUE,
-        .descriptorBindingPartiallyBound = VK_TRUE,
-        .descriptorBindingVariableDescriptorCount = VK_TRUE,
-        .runtimeDescriptorArray = VK_TRUE,
-        .scalarBlockLayout = VK_TRUE,
-        .bufferDeviceAddress = VK_TRUE,
-    };
-    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-
-    ctx_args.add_device_feature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>() =
-        VkPhysicalDeviceAccelerationStructureFeaturesKHR{
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-            .accelerationStructure = VK_TRUE,
-        };
-    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-
-    ctx_args.add_device_feature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>() =
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR{
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-            .rayTracingPipeline = VK_TRUE,
-            .rayTracingPipelineTraceRaysIndirect = VK_TRUE,
-        };
-    ctx_args.device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-
-    ctx_args.device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-
-    return ctx_args;
-}
 
 struct CompatibleDevice
 {
@@ -1855,7 +1796,7 @@ inline void slang_check(slang::IBlob *diagnostics_blob = nullptr,
 
 struct CompiledSlangShader
 {
-    CompiledSlangShader(slang::ISession &session, const VkDevice &device, const std::string &module_name,
+    CompiledSlangShader(slang::ISession &slang_session, const VkDevice &device, const std::string &module_name,
                         std::span<const std::string> entry_point_names)
         : device(device)
     {
@@ -1873,7 +1814,7 @@ struct CompiledSlangShader
         slang::IModule *slangModule = nullptr;
         {
             Slang::ComPtr<slang::IBlob> diagnosticBlob;
-            slangModule = session.loadModule(module_name.c_str(), diagnosticBlob.writeRef());
+            slangModule = slang_session.loadModule(module_name.c_str(), diagnosticBlob.writeRef());
             slang_check(diagnosticBlob);
             if (!slangModule) {
                 get_default_logger().critical("Failed to load slang module [{}]!", module_name.c_str());
@@ -1922,8 +1863,8 @@ struct CompiledSlangShader
             {
                 Slang::ComPtr<slang::IBlob> diagnosticsBlob;
                 SlangResult result =
-                    session.createCompositeComponentType(componentTypes.data(), componentTypes.size(),
-                                                         composedProgram.writeRef(), diagnosticsBlob.writeRef());
+                    slang_session.createCompositeComponentType(componentTypes.data(), componentTypes.size(),
+                                                               composedProgram.writeRef(), diagnosticsBlob.writeRef());
                 slang_check(result, diagnosticsBlob);
             }
             slang::ShaderReflection *slangReflection = composedProgram->getLayout();
@@ -1964,5 +1905,16 @@ struct CompiledSlangShader
     std::vector<VkShaderModule> shader_modules;
     VkDevice device;
 };
+
+struct GPUContext
+{
+    vk::Context vkctx;
+    Slang::ComPtr<slang::IGlobalSession> slang_global_session;
+    Slang::ComPtr<slang::ISession> slang_session;
+};
+
+void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const vk::ContextArgs &vkctx_args);
+void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation);
+GPUContext &get_gpu_context();
 
 } // namespace ks

@@ -289,60 +289,15 @@ void GPUSmallPT::run(const GPUSmallPTInput &in)
 
 void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task_id)
 {
-    vk::ContextArgs ctx_args = vk::get_default_context_args(true);
-    vk::Context ctx;
-    ctx.create_instance(ctx_args);
-
-    auto compatibles = ctx.query_compatible_devices(ctx_args, VK_NULL_HANDLE);
-    if (compatibles.empty()) {
-        get_default_logger().critical("No compatible vulkan devices.");
-        std::abort();
-    }
-    ctx.create_device(ctx_args, compatibles[0]);
-
-    /////////////////////////////////////////////////////////////////////////////////////////
-
-    Slang::ComPtr<slang::IGlobalSession> slangGlobalSession;
-    Slang::ComPtr<slang::ISession> session;
-
-    // First we need to create slang global session with work with the Slang API.
-    slang_check(slang::createGlobalSession(slangGlobalSession.writeRef()));
-
-    // Next we create a compilation session to generate SPIRV code from Slang source.
-    slang::SessionDesc sessionDesc = {};
-    std::array<const char *, 1> search_paths = {KS_SHADER_DIR};
-    sessionDesc.searchPathCount = search_paths.size();
-    sessionDesc.searchPaths = search_paths.data();
-
-    slang::TargetDesc targetDesc = {};
-    targetDesc.format = SLANG_SPIRV;
-    targetDesc.profile = slangGlobalSession->findProfile("spirv_1_6");
-    targetDesc.flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
-    sessionDesc.targets = &targetDesc;
-    sessionDesc.targetCount = 1;
-
-    //
-    std::array<slang::CompilerOptionEntry, 1> compiler_option_entries;
-    compiler_option_entries[0].name = slang::CompilerOptionName::VulkanUseEntryPointName;
-    compiler_option_entries[0].value.kind = slang::CompilerOptionValueKind::Int;
-    compiler_option_entries[0].value.intValue0 = 1;
-    compiler_option_entries[0].value.intValue1 = 1;
-
-    sessionDesc.compilerOptionEntries = compiler_option_entries.data();
-    sessionDesc.compilerOptionEntryCount = (uint32_t)compiler_option_entries.size();
-
-    // Note: on CPU side Eigen uses column-major, but we will follow the default row-major matrix layout for Slang.
-    slang_check(slangGlobalSession->createSession(sessionDesc, session.writeRef()));
-
-    /////////////////////////////////////////////////////////////////////////////////////////
+    GPUContext &gpu = get_gpu_context();
 
     const CompoundMeshAsset *compound_mesh_asset =
         args.asset_table().get<CompoundMeshAsset>(args.load_string("compound_object"));
 
-    GPUScene gpu_scene(*compound_mesh_asset, ctx);
+    GPUScene gpu_scene(*compound_mesh_asset, gpu.vkctx);
     gpu_scene.prepare_for_ray_tracing();
 
-    GPUSmallPT gpu_small_pt(ctx, *session, gpu_scene);
+    GPUSmallPT gpu_small_pt(gpu.vkctx, *gpu.slang_session, gpu_scene);
     // gpu_small_pt.scene = &gpu_scene;
 
     GPUSmallPTInput gpu_small_pt_in;
@@ -360,7 +315,7 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
     gpu_small_pt_in.spp_prog_interval = args.load_integer("spp_prog_interval", 32);
 
     vk::AutoRelease<vk::ImageWithView> render_target;
-    ctx.allocator->stage_session([&](vk::Allocator &self) {
+    gpu.vkctx.allocator->stage_session([&](vk::Allocator &self) {
         VkImageCreateInfo render_target_img_ci{
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType = VK_IMAGE_TYPE_2D,
@@ -377,12 +332,12 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
         render_target = vk::AutoRelease<vk::ImageWithView>(
             self.create_image_with_view(render_target_img, vk::simple_view_info_from_image_info(
                                                                render_target_img_ci, render_target_img, false)),
-            ctx.allocator);
+            gpu.vkctx.allocator);
     });
     gpu_small_pt_in.render_target = *render_target;
 
     vk::AutoRelease<vk::Image> render_target_readback(
-        ctx.allocator->create_image(
+        gpu.vkctx.allocator->create_image(
             VkImageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .imageType = VK_IMAGE_TYPE_2D,
@@ -395,7 +350,7 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
                 .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
             },
             VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT),
-        ctx.allocator);
+        gpu.vkctx.allocator);
 
     const CameraAnimation *camera_anim = nullptr;
     std::unique_ptr<Camera> camera_static;
@@ -559,9 +514,10 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
             // Get layout of the image (including row pitch)
             VkImageSubresource subResource{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
             VkSubresourceLayout subResourceLayout;
-            vkGetImageSubresourceLayout(ctx.device, render_target_readback->image, &subResource, &subResourceLayout);
+            vkGetImageSubresourceLayout(gpu.vkctx.device, render_target_readback->image, &subResource,
+                                        &subResourceLayout);
 
-            ctx.allocator->map(render_target_readback->allocation, false, [&](std::byte *ptr) {
+            gpu.vkctx.allocator->map(render_target_readback->allocation, false, [&](std::byte *ptr) {
                 uint32_t w = gpu_small_pt_in.render_width;
                 uint32_t h = gpu_small_pt_in.render_height;
                 if (subResourceLayout.offset == 0 && subResourceLayout.rowPitch == sizeof(float[4]) * w) {

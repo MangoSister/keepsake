@@ -1,5 +1,6 @@
 #include "../camera.h"
 #include "../config.h"
+#include "../gpu/ksvk.h"
 #include "../log_util.h"
 #include "../material.h"
 #include "../mesh_asset.h"
@@ -31,7 +32,8 @@ int main(int argc, char *argv[])
     options.add_options()
         ("n,nthreads", "number of cpu threads", cxxopts::value<int>()->default_value("0"))
         ("d,device", "gpu device index", cxxopts::value<int>()->default_value("0"))
-        ("c,config", "config file", cxxopts::value<std::string>()->default_value(std::string(DATA_DIR) + "config.toml"))
+        ("v,validation", "vulkan validation", cxxopts::value<int>()->default_value("1"))
+        ("c,config", "config file", cxxopts::value<std::string>()->default_value(std::string(DATA_DIR) + "chess/small_pt_chess.toml"))
         ("r,asset_root_dir", "asset root dir", cxxopts::value<std::string>()->default_value(DATA_DIR));
     // clang-format on
     auto args = options.parse(argc, argv);
@@ -50,6 +52,11 @@ int main(int argc, char *argv[])
     // DEBUG
     // nthreads = 1;
     init_parallel(nthreads);
+
+    std::span<const char *> shader_search_paths = {};
+    int vk_device = args["device"].as<int>();
+    bool vk_validation = (args["validation"].as<int>() != 0);
+    init_gpu(shader_search_paths, vk_device, vk_validation);
 
     // These need to be ordered.
     // Shader fields are defined in-place most of the time...but need to retrieve the parser.

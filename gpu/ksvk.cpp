@@ -33,6 +33,139 @@ namespace fs = std::filesystem;
 
 namespace ks
 {
+
+GPUContext g_gpu_context{};
+std::mutex mutex_init_gpu;
+bool gpu_initialized = false;
+
+void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const vk::ContextArgs &vkctx_args)
+{
+    // Make sure no stupid things happen...
+    std::scoped_lock lock(mutex_init_gpu);
+
+    if (gpu_initialized) {
+        return;
+    }
+    gpu_initialized = true;
+
+    g_gpu_context.vkctx.create_instance(vkctx_args);
+
+    auto compatibles = g_gpu_context.vkctx.query_compatible_devices(vkctx_args, VK_NULL_HANDLE);
+    if (compatibles.empty()) {
+        get_default_logger().critical("No compatible vulkan devices.");
+        std::abort();
+    }
+
+    ASSERT(vk_device >= 0 && vk_device < compatibles.size());
+    g_gpu_context.vkctx.create_device(vkctx_args, compatibles[vk_device]);
+
+    // First we need to create slang global session with work with the Slang API.
+    slang_check(slang::createGlobalSession(g_gpu_context.slang_global_session.writeRef()));
+
+    // Next we create a compilation session to generate SPIRV code from Slang source.
+    std::vector<const char *> search_paths;
+    search_paths.insert(search_paths.end(), shader_search_paths.begin(), shader_search_paths.end());
+    search_paths.push_back(KS_SHADER_DIR);
+
+    slang::SessionDesc sessionDesc = {};
+    sessionDesc.searchPathCount = search_paths.size();
+    sessionDesc.searchPaths = search_paths.data();
+
+    slang::TargetDesc targetDesc = {};
+    targetDesc.format = SLANG_SPIRV;
+    targetDesc.profile = g_gpu_context.slang_global_session->findProfile("spirv_1_6");
+    targetDesc.flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
+    sessionDesc.targets = &targetDesc;
+    sessionDesc.targetCount = 1;
+
+    //
+    std::array<slang::CompilerOptionEntry, 1> compiler_option_entries;
+    compiler_option_entries[0].name = slang::CompilerOptionName::VulkanUseEntryPointName;
+    compiler_option_entries[0].value.kind = slang::CompilerOptionValueKind::Int;
+    compiler_option_entries[0].value.intValue0 = 1;
+    compiler_option_entries[0].value.intValue1 = 1;
+
+    sessionDesc.compilerOptionEntries = compiler_option_entries.data();
+    sessionDesc.compilerOptionEntryCount = (uint32_t)compiler_option_entries.size();
+
+    // Note: on CPU side Eigen uses column-major, but we will follow the default row-major matrix layout for Slang.
+    slang_check(g_gpu_context.slang_global_session->createSession(sessionDesc, g_gpu_context.slang_session.writeRef()));
+}
+
+// Convenient function to create argument with support for usual features used by ks and applications such as ray
+// tracing, bindless, etc.
+// Validation can have performance overhead, but usually we want it for testing both in debug and release build until we
+// are very confident...
+static vk::ContextArgs get_default_context_args(bool validation)
+{
+    vk::ContextArgs ctx_args{};
+    ctx_args.api_version_major = 1;
+    ctx_args.api_version_minor = 3;
+    if (validation) {
+        ctx_args.enable_validation();
+    }
+    //
+    ctx_args.device_features.features.samplerAnisotropy = VK_TRUE;
+    ctx_args.device_features.features.shaderInt64 = VK_TRUE;
+
+    ctx_args.add_device_feature<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .variablePointersStorageBuffer = VK_TRUE,
+        .variablePointers = VK_TRUE,
+    };
+
+    ctx_args.add_device_feature<VkPhysicalDeviceVulkan12Features>() = VkPhysicalDeviceVulkan12Features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .shaderInputAttachmentArrayDynamicIndexing = VK_TRUE,
+        .shaderUniformTexelBufferArrayDynamicIndexing = VK_TRUE,
+        .shaderStorageTexelBufferArrayDynamicIndexing = VK_TRUE,
+        .shaderUniformBufferArrayNonUniformIndexing = VK_TRUE,
+        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+        .shaderStorageBufferArrayNonUniformIndexing = VK_TRUE,
+        .shaderStorageImageArrayNonUniformIndexing = VK_TRUE,
+        .shaderInputAttachmentArrayNonUniformIndexing = VK_TRUE,
+        .shaderUniformTexelBufferArrayNonUniformIndexing = VK_TRUE,
+        .shaderStorageTexelBufferArrayNonUniformIndexing = VK_TRUE,
+        .descriptorBindingPartiallyBound = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount = VK_TRUE,
+        .runtimeDescriptorArray = VK_TRUE,
+        .scalarBlockLayout = VK_TRUE,
+        .bufferDeviceAddress = VK_TRUE,
+    };
+    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+    ctx_args.add_device_feature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>() =
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+            .accelerationStructure = VK_TRUE,
+        };
+    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+    ctx_args.add_device_feature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>() =
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+            .rayTracingPipeline = VK_TRUE,
+            .rayTracingPipelineTraceRaysIndirect = VK_TRUE,
+        };
+    ctx_args.device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+
+    ctx_args.device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+
+    return ctx_args;
+}
+
+void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation)
+{
+    vk::ContextArgs vkctx_args = get_default_context_args(vk_validation);
+    init_gpu(shader_search_paths, vk_device, vkctx_args);
+}
+
+GPUContext &get_gpu_context()
+{
+    ASSERT(gpu_initialized);
+    return g_gpu_context;
+}
+
 namespace vk
 {
 
@@ -908,13 +1041,6 @@ static void check_required_instance_layers(const std::vector<const char *> &rlay
             fprintf(stderr, "Vulkan instance layer not available: [%s].", rlayer);
             std::abort();
         }
-    }
-}
-
-ContextArgs::~ContextArgs()
-{
-    for (void *data : device_features_data) {
-        free(data);
     }
 }
 
