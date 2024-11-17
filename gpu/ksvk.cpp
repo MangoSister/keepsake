@@ -1050,10 +1050,13 @@ void ContextArgs::enable_validation()
     instance_layers.push_back("VK_LAYER_KHRONOS_validation");
 
 #ifdef VK_NV_RAY_TRACING_VALIDATION_EXTENSION_NAME
+    // Don't forget to set environment variable NV_ALLOW_RAYTRACING_VALIDATION=1
     add_device_feature<VkPhysicalDeviceRayTracingValidationFeaturesNV>() =
         VkPhysicalDeviceRayTracingValidationFeaturesNV{
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_VALIDATION_FEATURES_NV,
             .rayTracingValidation = VK_TRUE};
+
+    device_extensions.push_back(VK_NV_RAY_TRACING_VALIDATION_EXTENSION_NAME);
 
     get_default_logger().info("Also enabled NV ray tracing validation.");
 #endif
@@ -1089,7 +1092,7 @@ void Context::create_instance(const ContextArgs &info)
     uint32_t major = VK_VERSION_MAJOR(instVersion);
     uint32_t minor = VK_VERSION_MINOR(instVersion);
     uint32_t patch = VK_VERSION_PATCH(instVersion);
-    printf("Vulkan instance version: %u.%u.%u.\n", major, minor, patch);
+    get_default_logger().info("Vulkan instance version: {}.{}.{}.", major, minor, patch);
 
     std::vector<const char *> rexts;
     for (const auto &ext : info.instance_extensions) {
