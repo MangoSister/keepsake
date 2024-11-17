@@ -289,59 +289,7 @@ void GPUSmallPT::run(const GPUSmallPTInput &in)
 
 void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task_id)
 {
-    vk::ContextCreateInfo ctx_args{};
-    ctx_args.api_version_major = 1;
-    ctx_args.api_version_minor = 3;
-    // #ifndef NDEBUG
-    ctx_args.enable_validation();
-    // #endif
-    //
-    ctx_args.device_features.features.samplerAnisotropy = true;
-    ctx_args.device_features.features.shaderInt64 = true;
-
-    ctx_args.add_device_feature<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .variablePointersStorageBuffer = VK_TRUE,
-        .variablePointers = VK_TRUE,
-    };
-
-    ctx_args.add_device_feature<VkPhysicalDeviceVulkan12Features>() = VkPhysicalDeviceVulkan12Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .shaderInputAttachmentArrayDynamicIndexing = VK_TRUE,
-        .shaderUniformTexelBufferArrayDynamicIndexing = VK_TRUE,
-        .shaderStorageTexelBufferArrayDynamicIndexing = VK_TRUE,
-        .shaderUniformBufferArrayNonUniformIndexing = VK_TRUE,
-        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
-        .shaderStorageBufferArrayNonUniformIndexing = VK_TRUE,
-        .shaderStorageImageArrayNonUniformIndexing = VK_TRUE,
-        .shaderInputAttachmentArrayNonUniformIndexing = VK_TRUE,
-        .shaderUniformTexelBufferArrayNonUniformIndexing = VK_TRUE,
-        .shaderStorageTexelBufferArrayNonUniformIndexing = VK_TRUE,
-        .descriptorBindingPartiallyBound = VK_TRUE,
-        .descriptorBindingVariableDescriptorCount = VK_TRUE,
-        .runtimeDescriptorArray = VK_TRUE,
-        .scalarBlockLayout = VK_TRUE,
-        .bufferDeviceAddress = VK_TRUE,
-    };
-    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-
-    ctx_args.add_device_feature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>() =
-        VkPhysicalDeviceAccelerationStructureFeaturesKHR{
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-            .accelerationStructure = VK_TRUE,
-        };
-    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-
-    ctx_args.add_device_feature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>() =
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR{
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-            .rayTracingPipeline = VK_TRUE,
-            .rayTracingPipelineTraceRaysIndirect = VK_TRUE,
-        };
-    ctx_args.device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-
-    ctx_args.device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-
+    vk::ContextArgs ctx_args = vk::get_default_context_args(true);
     vk::Context ctx;
     ctx.create_instance(ctx_args);
 

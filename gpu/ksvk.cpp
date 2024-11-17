@@ -911,21 +911,21 @@ static void check_required_instance_layers(const std::vector<const char *> &rlay
     }
 }
 
-ContextCreateInfo::~ContextCreateInfo()
+ContextArgs::~ContextArgs()
 {
     for (void *data : device_features_data) {
         free(data);
     }
 }
 
-void ContextCreateInfo::enable_validation()
+void ContextArgs::enable_validation()
 {
     instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     instance_layers.push_back("VK_LAYER_KHRONOS_validation");
     validation = true;
 }
 
-void ContextCreateInfo::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
+void ContextArgs::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
 
 Context::~Context()
 {
@@ -944,7 +944,7 @@ Context::~Context()
     vkDestroyInstance(instance, nullptr);
 }
 
-void Context::create_instance(const ContextCreateInfo &info)
+void Context::create_instance(const ContextArgs &info)
 {
     vk_check(volkInitialize());
 
@@ -1070,7 +1070,7 @@ static bool find_all_purpose_queue_family_index(VkPhysicalDevice physical_device
     return false;
 }
 
-std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextCreateInfo &info, VkSurfaceKHR surface)
+std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextArgs &info, VkSurfaceKHR surface)
 {
     std::vector<const char *> rexts;
     for (const std::string &rext : info.device_extensions) {
@@ -1109,7 +1109,7 @@ std::vector<CompatibleDevice> Context::query_compatible_devices(const ContextCre
     return compatibles;
 }
 
-void Context::create_device(const ContextCreateInfo &info, CompatibleDevice compatible)
+void Context::create_device(const ContextArgs &info, CompatibleDevice compatible)
 {
     printf("Selected GPU index: [%u].\n", compatible.physical_device_index);
 
@@ -2824,7 +2824,7 @@ const std::array<VkStridedDeviceAddressRegionKHR, 4> SBTWrapper::get_regions(uin
 
 GFX::GFX(const GFXArgs &args)
 {
-    ContextCreateInfo vkctx_args{};
+    ContextArgs vkctx_args{};
     vkctx_args.api_version_major = 1;
     vkctx_args.api_version_minor = 3;
 

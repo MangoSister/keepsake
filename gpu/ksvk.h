@@ -579,9 +579,9 @@ struct AutoRelease
 // [Basic vulkan object management]
 //-----------------------------------------------------------------------------
 
-struct ContextCreateInfo
+struct ContextArgs
 {
-    ~ContextCreateInfo();
+    ~ContextArgs();
 
     void enable_validation();
     void enable_swapchain();
@@ -620,6 +620,68 @@ struct ContextCreateInfo
     }
 };
 
+// Convenient function to create argument with support for usual features used by ks and applications such as ray
+// tracing, bindless, etc.
+// Validation can have performance overhead, but usually we want it for testing both in debug and release build until we
+// are very confident...
+inline ContextArgs get_default_context_args(bool validation)
+{
+    vk::ContextArgs ctx_args{};
+    ctx_args.api_version_major = 1;
+    ctx_args.api_version_minor = 3;
+    if (validation) {
+        ctx_args.enable_validation();
+    }
+    //
+    ctx_args.device_features.features.samplerAnisotropy = VK_TRUE;
+    ctx_args.device_features.features.shaderInt64 = VK_TRUE;
+
+    ctx_args.add_device_feature<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .variablePointersStorageBuffer = VK_TRUE,
+        .variablePointers = VK_TRUE,
+    };
+
+    ctx_args.add_device_feature<VkPhysicalDeviceVulkan12Features>() = VkPhysicalDeviceVulkan12Features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .shaderInputAttachmentArrayDynamicIndexing = VK_TRUE,
+        .shaderUniformTexelBufferArrayDynamicIndexing = VK_TRUE,
+        .shaderStorageTexelBufferArrayDynamicIndexing = VK_TRUE,
+        .shaderUniformBufferArrayNonUniformIndexing = VK_TRUE,
+        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+        .shaderStorageBufferArrayNonUniformIndexing = VK_TRUE,
+        .shaderStorageImageArrayNonUniformIndexing = VK_TRUE,
+        .shaderInputAttachmentArrayNonUniformIndexing = VK_TRUE,
+        .shaderUniformTexelBufferArrayNonUniformIndexing = VK_TRUE,
+        .shaderStorageTexelBufferArrayNonUniformIndexing = VK_TRUE,
+        .descriptorBindingPartiallyBound = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount = VK_TRUE,
+        .runtimeDescriptorArray = VK_TRUE,
+        .scalarBlockLayout = VK_TRUE,
+        .bufferDeviceAddress = VK_TRUE,
+    };
+    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+    ctx_args.add_device_feature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>() =
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+            .accelerationStructure = VK_TRUE,
+        };
+    ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+    ctx_args.add_device_feature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>() =
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+            .rayTracingPipeline = VK_TRUE,
+            .rayTracingPipelineTraceRaysIndirect = VK_TRUE,
+        };
+    ctx_args.device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+
+    ctx_args.device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+
+    return ctx_args;
+}
+
 struct CompatibleDevice
 {
     VkPhysicalDevice physical_device;
@@ -650,9 +712,9 @@ struct Context
 
     NO_COPY_AND_SWAP_AS_MOVE(Context)
 
-    void create_instance(const ContextCreateInfo &info);
-    std::vector<CompatibleDevice> query_compatible_devices(const ContextCreateInfo &info, VkSurfaceKHR surface);
-    void create_device(const ContextCreateInfo &info, CompatibleDevice compatible);
+    void create_instance(const ContextArgs &info);
+    std::vector<CompatibleDevice> query_compatible_devices(const ContextArgs &info, VkSurfaceKHR surface);
+    void create_device(const ContextArgs &info, CompatibleDevice compatible);
 
     template <typename TWork>
     void submit_once(const TWork &task);
