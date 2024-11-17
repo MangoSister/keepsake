@@ -20,6 +20,7 @@ using namespace ks;
 namespace ks
 {
 DECLARE_TASK(small_pt);
+DECLARE_TASK(gpu_small_pt);
 DECLARE_TASK(tonemap);
 } // namespace ks
 
@@ -69,6 +70,7 @@ int main(int argc, char *argv[])
 
     // These does not need to be ordered.
     cfg.register_task("small_pt", small_pt);
+    cfg.register_task("gpu_small_pt", gpu_small_pt);
     cfg.register_task("tonemap", tonemap);
     cfg.run_all_tasks();
 
