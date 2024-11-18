@@ -318,8 +318,10 @@ public bool isect_ray_aabb(float3 bmin, float3 bmax, float3 o, float3 d, float t
 
         t0 = tNear > t0 ? tNear : t0;
         t1 = tFar < t1 ? tFar : t1;
-        if (t0 > t1)
+        if (t0 > t1) {
+            hitt0 = hitt1 = 0.0;
             return false;
+        }
     }
 
     hitt0 = t0;
