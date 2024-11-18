@@ -1794,6 +1794,7 @@ inline void slang_check(slang::IBlob *diagnostics_blob = nullptr,
                               (const char *)diagnostics_blob->getBufferPointer());
 }
 
+// TODO: refactor to support multiple modules.
 struct CompiledSlangShader
 {
     CompiledSlangShader(slang::ISession &slang_session, const VkDevice &device, const std::string &module_name,
@@ -1811,6 +1812,17 @@ struct CompiledSlangShader
         // In a Slang shader file. The compiler will use its search paths to try to locate
         // `hello-world.slang`, then compile and load that file. If a matching module had
         // already been loaded previously, that would be used directly.
+        slang::IModule *ks_slangModule = nullptr;
+        {
+            Slang::ComPtr<slang::IBlob> diagnosticBlob;
+            ks_slangModule = slang_session.loadModule("ks", diagnosticBlob.writeRef());
+            slang_check(diagnosticBlob);
+            if (!ks_slangModule) {
+                get_default_logger().critical("Failed to load slang module [{}]!", module_name.c_str());
+                std::abort();
+            }
+        }
+
         slang::IModule *slangModule = nullptr;
         {
             Slang::ComPtr<slang::IBlob> diagnosticBlob;
@@ -1850,6 +1862,7 @@ struct CompiledSlangShader
             // and entry points.
             //
             std::vector<slang::IComponentType *> componentTypes;
+            componentTypes.push_back(ks_slangModule);
             componentTypes.push_back(slangModule);
             componentTypes.push_back(entryPoint);
 
