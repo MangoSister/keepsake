@@ -153,6 +153,7 @@ void miss_shader(inout RayPayload payload)
     // if (bounce == 0 && include_background)
     float3 Le = float3(0);
     payload.L += payload.beta * Le;
+    payload.hit = 0.0;
 }
 
 [shader("miss")]
@@ -187,11 +188,8 @@ void closest_hit_shader(inout RayPayload payload, in BuiltInTriangleIntersection
     float3 Ld = float3(0.0f, 0.0f, 0.0f);
     // TODO: NEE
     if (any(f > 0.0)) {
-        RayDesc ray;
-        ray.Origin = it.p;
-        ray.Direction = wi;
-        ray.TMin = 0.001;
-        ray.TMax = 10000.0;
+        RayDesc ray = spawn_ray(it.p, wi, it.frame.normal(), 0.0, light_distance);
+
         ShadowRayPayload shadowPayload = { 0.0 };
 
         uint shadow_ray_flags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
@@ -218,11 +216,8 @@ void closest_hit_shader(inout RayPayload payload, in BuiltInTriangleIntersection
     payload.pdf_wi_bsdf = bsdf_sample.pdf_wi;
     if (bsdf_sample.success()) {
         payload.beta *= bsdf_sample.beta;
-        // TODO: robust offset
-        payload.next_ray.Direction = it.sh_vector_to_world(bsdf_sample.wi);
-        payload.next_ray.Origin = it.p;
-        payload.next_ray.TMin = 0.001;
-        payload.next_ray.TMax = float.maxValue;
+        payload.next_ray =
+            spawn_ray(it.p, it.sh_vector_to_world(bsdf_sample.wi), it.frame.normal(), 0.0f, float.maxValue);
     }
 }
 

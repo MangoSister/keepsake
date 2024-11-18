@@ -59,7 +59,10 @@ struct Ray2
     vec2 operator()(float t) const { return origin + t * dir; }
 };
 
-// Normal points outward for rays exiting the surface, else is flipped.
+// Wächter, Carsten, and Nikolaus Binder. "A fast and robust method for avoiding self-intersection." Ray Tracing Gems:
+// High-Quality and Real-Time Rendering with DXR and Other APIs (2019): 77-85.
+//
+//  Normal points outward for rays exiting the surface, else is flipped.
 inline vec3 offset_ray(const vec3 &p, const vec3 &n)
 {
     constexpr float origin = 1.0f / 32.0f;
