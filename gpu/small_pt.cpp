@@ -7,7 +7,7 @@ namespace ks
 
 enum class GlobalBindings : uint32_t
 {
-    Camera = 0,  // Top-level acceleration structure
+    Camera = 0,
     OutImage = 1 // Ray tracer output image
 };
 
@@ -189,7 +189,6 @@ GPUSmallPT::GPUSmallPT(const vk::Context &ctx, slang::ISession &slang_session, c
     sbt_wrapper.init(ctx.device, ctx.main_queue_family_index, ctx.allocator.get(), rt_properties);
     sbt_wrapper.create(rt_pipeline, rt_pipeline_ci);
 
-    // TODO: encapsulate this for other usages?
     global_params_buf = vk::AutoRelease<vk::FrequentUniformBuffer>(
         ctx.allocator,
         VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(GPUSmallPTGlobalUniforms)});

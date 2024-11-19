@@ -27,8 +27,8 @@ struct GPUSmallPTInput
     float clamp_indirect = 10.0f;
 
     int spp_prog_interval = 32;
-    std::function<void(const vk::ImageWithView &rt, VkCommandBuffer, int)> prog_interval_callback_gpu;
-    std::function<void(int)> prog_interval_callback_cpu;
+    std::function<void(const vk::ImageWithView &rt, VkCommandBuffer cb, int spp_finished)> prog_interval_callback_gpu;
+    std::function<void(int spp_finished)> prog_interval_callback_cpu;
 };
 
 struct GPUSmallPT
