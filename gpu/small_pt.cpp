@@ -189,9 +189,10 @@ GPUSmallPT::GPUSmallPT(const vk::Context &ctx, slang::ISession &slang_session, c
     sbt_wrapper.init(ctx.device, ctx.main_queue_family_index, ctx.allocator.get(), rt_properties);
     sbt_wrapper.create(rt_pipeline, rt_pipeline_ci);
 
-    global_params_buf = vk::AutoRelease<vk::FrequentUniformBuffer>(
-        ctx.allocator,
-        VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(GPUSmallPTGlobalUniforms)});
+    global_params_buf = vk::AutoRelease<vk::FrequentUploadBuffer>(
+        ctx.allocator, VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                          .size = sizeof(GPUSmallPTGlobalUniforms),
+                                          .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT});
 
     cp = vk::CommandPool(device, ctx.main_queue_family_index);
 }

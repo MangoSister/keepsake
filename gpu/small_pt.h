@@ -48,7 +48,7 @@ struct GPUSmallPT
     VkPipeline rt_pipeline;
     vk::SBTWrapper sbt_wrapper;
 
-    vk::AutoRelease<vk::FrequentUniformBuffer> global_params_buf;
+    vk::AutoRelease<vk::FrequentUploadBuffer> global_params_buf;
 
     vk::CommandPool cp;
 

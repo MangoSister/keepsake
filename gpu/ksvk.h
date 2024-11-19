@@ -277,7 +277,7 @@ struct PerFrameBuffer
 
 // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
 // "Advanced data uploading"
-struct FrequentUniformBuffer
+struct FrequentUploadBuffer
 {
     bool require_staging() const { return staging.buffer != VK_NULL_HANDLE; }
     void upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask) const;
@@ -359,7 +359,7 @@ struct Allocator
                                     VmaMemoryUsage usage = VMA_MEMORY_USAGE_AUTO, VmaAllocationCreateFlags flags = 0,
                                     const std::byte *data = nullptr);
 
-    FrequentUniformBuffer create_frequent_uniform_buffer(const VkBufferCreateInfo &info_);
+    FrequentUploadBuffer create_frequent_upload_buffer(const VkBufferCreateInfo &info_);
 
     std::byte *map(VmaAllocation allocation);
     void unmap(VmaAllocation allocation);
@@ -377,7 +377,7 @@ struct Allocator
     }
 
     template <typename TWork>
-    void map(const FrequentUniformBuffer &uniform_buf, bool flush, const TWork &work)
+    void map(const FrequentUploadBuffer &uniform_buf, bool flush, const TWork &work)
     {
         if (!uniform_buf.require_staging()) {
             map(uniform_buf.dest.allocation, flush, work);
@@ -442,7 +442,7 @@ struct Allocator
 
     template <typename T, typename... Args>
         requires(std::same_as<T, Buffer> || std::same_as<T, TexelBuffer> || std::same_as<T, PerFrameBuffer> ||
-                 std::same_as<T, FrequentUniformBuffer> || std::same_as<T, Image> || std::same_as<T, ImageWithView> ||
+                 std::same_as<T, FrequentUploadBuffer> || std::same_as<T, Image> || std::same_as<T, ImageWithView> ||
                  std::same_as<T, AccelKHR>)
     T create(Args &&...args)
     {
@@ -452,8 +452,8 @@ struct Allocator
             return create_texel_buffer(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, PerFrameBuffer>) {
             return create_per_frame_buffer(std::forward<Args>(args)...);
-        } else if constexpr (std::is_same_v<T, FrequentUniformBuffer>) {
-            return create_frequent_uniform_buffer(std::forward<Args>(args)...);
+        } else if constexpr (std::is_same_v<T, FrequentUploadBuffer>) {
+            return create_frequent_upload_buffer(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, Image>) {
             return create_image(std::forward<Args>(args)...);
         } else if constexpr (std::is_same_v<T, ImageWithView>) {
@@ -468,7 +468,7 @@ struct Allocator
     void destroy(const Buffer &buffer);
     void destroy(const TexelBuffer &texel_buffer);
     void destroy(const PerFrameBuffer &per_frame_buffer);
-    void destroy(const FrequentUniformBuffer &uniform_buffer);
+    void destroy(const FrequentUploadBuffer &uniform_buffer);
     void destroy(const Image &image);
     void destroy(const ImageWithView &image_with_view);
     void destroy(const AccelKHR &accel);
