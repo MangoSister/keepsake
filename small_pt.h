@@ -33,6 +33,7 @@ struct SmallPTInput
     int spp = 1;
     int rng_seed = 0;
     bool scale_ray_diff = true;
+    float clamp_direct = 0.0f;
     float clamp_indirect = 10.0f;
 
     int spp_prog_interval = 32;

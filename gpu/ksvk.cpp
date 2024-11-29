@@ -380,10 +380,10 @@ TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBuf
     return tb;
 }
 
-FrequentUniformBuffer Allocator::create_frequent_uniform_buffer(const VkBufferCreateInfo &info_)
+FrequentUploadBuffer Allocator::create_frequent_upload_buffer(const VkBufferCreateInfo &info_)
 {
     VkBufferCreateInfo info = info_;
-    info.usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    info.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     VmaAllocationCreateFlags alloc_flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
                                            VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
                                            VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -393,7 +393,7 @@ FrequentUniformBuffer Allocator::create_frequent_uniform_buffer(const VkBufferCr
 
     if (memPropFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
         // Allocation ended up in a mappable memory and is already mapped - write to it directly.
-        return FrequentUniformBuffer{dest, Buffer(), info_.size};
+        return FrequentUploadBuffer{dest, Buffer(), info_.size};
     } else {
         // Allocation ended up in a non-mappable memory - a transfer using a staging buffer is required.
         Buffer staging = create_buffer(
@@ -402,11 +402,11 @@ FrequentUniformBuffer Allocator::create_frequent_uniform_buffer(const VkBufferCr
                                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT},
             VMA_MEMORY_USAGE_AUTO,
             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, nullptr);
-        return FrequentUniformBuffer{dest, staging, info_.size};
+        return FrequentUploadBuffer{dest, staging, info_.size};
     }
 }
 
-void FrequentUniformBuffer::upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask) const
+void FrequentUploadBuffer::upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask) const
 {
     if (!require_staging()) {
         VkBufferMemoryBarrier barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -967,7 +967,7 @@ void Allocator::destroy(const PerFrameBuffer &per_frame_buffer)
     vmaDestroyBuffer(vma, per_frame_buffer.buffer, per_frame_buffer.allocation);
 }
 
-void Allocator::destroy(const FrequentUniformBuffer &uniform_buffer)
+void Allocator::destroy(const FrequentUploadBuffer &uniform_buffer)
 {
     destroy(uniform_buffer.dest);
     destroy(uniform_buffer.staging);
