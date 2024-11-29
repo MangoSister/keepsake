@@ -23,6 +23,9 @@ public T sqr<T>(T x)
 public T length_sqr<T, let N : int>(vector<T, N> v)
     where T : __BuiltinFloatingPointType { return dot(v, v); }
 
+public bool is_zero<T, let N : int>(vector<T, N> v)
+    where T : __BuiltinFloatingPointType { return dot(v, v) == T(0); }
+
 public T safe_sqrt<T>(T x)
     where T : __BuiltinFloatingPointType { return sqrt(max(x, T(0))); }
 

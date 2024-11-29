@@ -20,6 +20,7 @@ public interface IBSDFClosure
     // return cosine-weighted bsdf: f*cos(theta_i)
     float3 eval(float3 wo, float3 wi);
     BSDFSample sample(float3 wo, float u_lobe, float2 u_wi);
+    float pdf(float3 wo, float3 wi);
 }
 
 public interface IMaterial
@@ -571,6 +572,34 @@ struct PrincipleBSDFClosure : IBSDFClosure
         // ASSERT(std::isfinite(pdf) && pdf >= 0.0f);
         s.beta = eval(wo, s.wi) / s.pdf_wi;
         return s;
+    }
+
+    float pdf(float3 wo, float3 wi)
+    {
+        if (wo.z == 0.0f || wi.z == 0.0f) {
+            return 0.0f;
+        }
+
+        float4 weights = lobe_sample_weights(wo);
+        // 0: diffuse
+        // 1: diffuse transmission
+        // 2: metallic specular
+        // 3: dielectric specular
+        if (is_zero(weights)) {
+            return 0.0f;
+        }
+
+        float4 pdf_lobe = float4(0.0);
+        if (wo.z > 0.0f && wi.z > 0.0f) {
+            pdf_lobe[0] = pdf_diffuse(wo, wi);
+            pdf_lobe[2] = pdf_metallic_specular(wo, wi);
+        }
+        if (wo.z > 0.0f && wi.z < 0.0f) {
+            pdf_lobe[1] = pdf_diffuse_transmission(wo, wi);
+        }
+        pdf_lobe[3] = pdf_dielectric_specular(wo, wi);
+
+        return dot(pdf_lobe, weights);
     }
 
     float3 basecolor;
