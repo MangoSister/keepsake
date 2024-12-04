@@ -17,18 +17,30 @@ public void swap<T>(inout T a, inout T b)
     b = tmp;
 }
 
-public T sqr<T>(T x)
-    where T : __BuiltinArithmeticType { return x * x; }
-
-public T length_sqr<T, let N : int>(vector<T, N> v)
-    where T : __BuiltinFloatingPointType { return dot(v, v); }
-
 public bool is_zero<T, let N : int>(vector<T, N> v)
     where T : __BuiltinFloatingPointType { return dot(v, v) == T(0); }
 
+// TODO: should probably report this...
+public T sqr<T>(T x)
+    where T : __BuiltinIntegerType { return x * x; }
+
+[Differentiable]
+public T sqr<T>(T x)
+    where T : __BuiltinFloatingPointType { return x * x; }
+
+[Differentiable]
+public T length_sqr<T, let N : int>(vector<T, N> v)
+    where T : __BuiltinFloatingPointType { return dot(v, v); }
+
+[Differentiable]
 public T safe_sqrt<T>(T x)
     where T : __BuiltinFloatingPointType { return sqrt(max(x, T(0))); }
 
+[Differentiable]
+public T safe_acos<T>(T x)
+    where T : __BuiltinFloatingPointType { return acos(clamp(x, T(-1), T(1))); }
+
+[Differentiable]
 public T safe_pow<T>(T a, T b)
     where T : __BuiltinFloatingPointType
 {
@@ -37,10 +49,26 @@ public T safe_pow<T>(T a, T b)
     return pow(a, b);
 }
 
+[Differentiable]
+public T sinx_over_x<T>(T x)
+    where T : __BuiltinFloatingPointType
+{
+    if (T(1) - x * x == T(1))
+        return T(1);
+    return sin(x) / x;
+}
+
+[Differentiable]
+public T sigmoid<T>(T x)
+    where T : __BuiltinFloatingPointType { return T(1) / (T(1) + exp(-x)); }
+
 // Duff, Tom, et al. "Building an orthonormal basis, revisited." Journal of Computer Graphics Techniques Vol 6.1 (2017).
+[Differentiable]
 public void orthonormal_basis(float3 N, out float3 X, out float3 Y)
 {
-    float sign = copysign(1.0f, N.z);
+    // float sign = copysign(1.0f, N.z); // the instrinsic copysign is not differentiable...
+    float sign = N.z >= 0.0f ? 1.0f : -1.0f;
+
     const float a = -1.0f / (sign + N.z);
     const float b = N.x * N.y * a;
     X = float3(1.0f + sign * N.x * N.x * a, sign * b, -sign * N.x);
@@ -368,7 +396,7 @@ public bool isect_ray_aabb(float3 b[2], float3 o, float3 d, float raytMax, float
 
 // Wächter, Carsten, and Nikolaus Binder. "A fast and robust method for avoiding self-intersection." Ray Tracing Gems:
 // High-Quality and Real-Time Rendering with DXR and Other APIs (2019): 77-85.
-// 
+//
 //  Normal points outward for rays exiting the surface, else is flipped.
 float3 offset_ray(float3 p, float3 n)
 {
