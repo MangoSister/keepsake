@@ -178,9 +178,8 @@ inline T clamp_negative(const T &v)
 template <typename T>
 inline T sinc(T x)
 {
-    if (x == T(0)) {
+    if (T(1) - x * x == T(1))
         return T(1);
-    }
     using std::sin;
     return sin(x) / x;
 }
@@ -1022,5 +1021,7 @@ inline float gaussian(float x, float mu = 0.0f, float sigma = 1.0f)
 {
     return 1.0f / std::sqrt(two_pi * sigma * sigma) * std::exp(-sqr(x - mu) / (2.0f * sigma * sigma));
 }
+
+inline float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 
 } // namespace ks
