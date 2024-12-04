@@ -1824,7 +1824,9 @@ struct CompiledSlangShader
         }
 
         slang::IModule *slangModule = nullptr;
-        {
+        if (module_name == "ks") {
+            slangModule = ks_slangModule;
+        } else {
             Slang::ComPtr<slang::IBlob> diagnosticBlob;
             slangModule = slang_session.loadModule(module_name.c_str(), diagnosticBlob.writeRef());
             slang_check(diagnosticBlob);
@@ -1863,7 +1865,9 @@ struct CompiledSlangShader
             //
             std::vector<slang::IComponentType *> componentTypes;
             componentTypes.push_back(ks_slangModule);
-            componentTypes.push_back(slangModule);
+            if (module_name != "ks") {
+                componentTypes.push_back(slangModule);
+            }
             componentTypes.push_back(entryPoint);
 
             // Actually creating the composite component type is a single operation

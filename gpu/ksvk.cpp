@@ -93,7 +93,7 @@ void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const 
 }
 
 // Convenient function to create argument with support for usual features used by ks and applications such as ray
-// tracing, bindless, etc.
+// tracing, bindless, atomics, etc.
 // Validation can have performance overhead, but usually we want it for testing both in debug and release build until we
 // are very confident...
 static vk::ContextArgs get_default_context_args(bool validation)
@@ -133,6 +133,18 @@ static vk::ContextArgs get_default_context_args(bool validation)
         .bufferDeviceAddress = VK_TRUE,
     };
     ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+    ctx_args.add_device_feature<VkPhysicalDeviceShaderAtomicFloatFeaturesEXT>() =
+        VkPhysicalDeviceShaderAtomicFloatFeaturesEXT{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,
+            .shaderBufferFloat32Atomics = VK_TRUE,
+            .shaderBufferFloat32AtomicAdd = VK_TRUE,
+            .shaderSharedFloat32Atomics = VK_TRUE,
+            .shaderSharedFloat32AtomicAdd = VK_TRUE,
+            .shaderImageFloat32Atomics = VK_TRUE,
+            .shaderImageFloat32AtomicAdd = VK_TRUE,
+        };
+    ctx_args.device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 
     ctx_args.add_device_feature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>() =
         VkPhysicalDeviceAccelerationStructureFeaturesKHR{
@@ -996,6 +1008,12 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(VkDebugUtilsMessageSever
                                                         const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
                                                         void *user_data)
 {
+    if (message_severity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+        // Only allow debug printf info. Otherwise too noisy...
+        if (std::strcmp(callback_data->pMessageIdName, "WARNING-DEBUG-PRINTF") != 0) {
+            return VK_FALSE;
+        }
+    }
     get_default_logger().error("vk_debug_callback: {}", callback_data->pMessage);
     return VK_FALSE;
 }
@@ -1048,6 +1066,8 @@ void ContextArgs::enable_validation()
 {
     instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     instance_layers.push_back("VK_LAYER_KHRONOS_validation");
+
+    device_extensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
 
 #ifdef VK_NV_RAY_TRACING_VALIDATION_EXTENSION_NAME
     // Don't forget to set environment variable NV_ALLOW_RAYTRACING_VALIDATION=1
@@ -1124,15 +1144,28 @@ void Context::create_instance(const ContextArgs &info)
     } else {
         VkDebugUtilsMessengerCreateInfoEXT debugMessagerCreateInfo{};
         debugMessagerCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        debugMessagerCreateInfo.messageSeverity =
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+        debugMessagerCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         debugMessagerCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
                                               VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                                               VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
         debugMessagerCreateInfo.pfnUserCallback = vk_debug_callback;
         debugMessagerCreateInfo.pUserData = nullptr;
 
-        instanceCI.pNext = &debugMessagerCreateInfo;
+        VkValidationFeatureEnableEXT enables[] = {VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
+        VkValidationFeaturesEXT features = {
+            .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+            .enabledValidationFeatureCount = 1,
+            .pEnabledValidationFeatures = enables,
+        };
+
+        VkLayerSettingsCreateInfoEXT layer_settings{
+            .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
+        };
+        features.pNext = &debugMessagerCreateInfo;
+        instanceCI.pNext = &features;
+
         vk_check(vkCreateInstance(&instanceCI, nullptr, &instance));
 
         auto vkCreateDebugUtilsMessengerEXT =
