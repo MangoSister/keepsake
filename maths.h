@@ -176,7 +176,7 @@ inline T clamp_negative(const T &v)
 
 // Is this stable?
 template <typename T>
-inline T sinc(T x)
+inline T sinx_over_x(T x)
 {
     if (T(1) - x * x == T(1))
         return T(1);
@@ -816,6 +816,17 @@ inline void orthonormal_basis(const vec3 &N, vec3 &X, vec3 &Y)
     const float b = N.x() * N.y() * a;
     X = vec3(1.0f + sign * N.x() * N.x() * a, sign * b, -sign * N.x());
     Y = vec3(b, sign + N.y() * N.y() * a, -N.y());
+}
+
+inline mat3 orthonormal_basis_to_local(const vec3 &N)
+{
+    vec3 X, Y;
+    orthonormal_basis(N, X, Y);
+    mat3 m;
+    m.row(0) = X;
+    m.row(1) = Y;
+    m.row(2) = N;
+    return m;
 }
 
 struct Frame

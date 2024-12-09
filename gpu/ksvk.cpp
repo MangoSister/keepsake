@@ -1013,6 +1013,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(VkDebugUtilsMessageSever
         if (std::strcmp(callback_data->pMessageIdName, "WARNING-DEBUG-PRINTF") != 0) {
             return VK_FALSE;
         }
+        get_default_logger().info("vk_debug_callback: {}", callback_data->pMessage);
+        return VK_FALSE;
     }
     get_default_logger().error("vk_debug_callback: {}", callback_data->pMessage);
     return VK_FALSE;

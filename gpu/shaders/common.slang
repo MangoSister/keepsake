@@ -62,6 +62,14 @@ public T sinx_over_x<T>(T x)
 public T sigmoid<T>(T x)
     where T : __BuiltinFloatingPointType { return T(1) / (T(1) + exp(-x)); }
 
+// No built-in inverse???
+[Differentiable]
+public float2x2 inverse(float2x2 A)
+{
+    float det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    return float2x2(A[1][1], -A[0][1], -A[1][0], A[0][0]) / det;
+}
+
 // Duff, Tom, et al. "Building an orthonormal basis, revisited." Journal of Computer Graphics Techniques Vol 6.1 (2017).
 [Differentiable]
 public void orthonormal_basis(float3 N, out float3 X, out float3 Y)
@@ -73,6 +81,14 @@ public void orthonormal_basis(float3 N, out float3 X, out float3 Y)
     const float b = N.x * N.y * a;
     X = float3(1.0f + sign * N.x * N.x * a, sign * b, -sign * N.x);
     Y = float3(b, sign + N.y * N.y * a, -N.y);
+}
+
+[Differentiable]
+public float3x3 orthonormal_basis_to_local(float3 N)
+{
+    float3 X, Y;
+    orthonormal_basis(N, X, Y);
+    return float3x3(X, Y, N);
 }
 
 public float luminance(float3 rgb)

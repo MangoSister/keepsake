@@ -77,7 +77,7 @@ struct VMF
         float k_out = kappa * std::exp(v.x());
         vec2 u = v.tail(2);
         float un = u.norm();
-        float sc = sinc(un);
+        float sc = sinx_over_x(un);
         vec3 u3(u.x() * sc, u.y() * sc, std::cos(un));
         vec3 X, Y;
         orthonormal_basis(mu, X, Y);
@@ -92,7 +92,7 @@ struct VMF
         orthonormal_basis(mu, X, Y);
         vec3 u3(X.dot(p.mu), Y.dot(p.mu), mu.dot(p.mu));
         float un = std::acos(std::clamp(u3.z(), -1.0f, 1.0f));
-        float sc = sinc(un);
+        float sc = sinx_over_x(un);
         vec2 u(u3.x() / sc, u3.y() / sc);
         return vec3(a, u.x(), u.y());
     }
