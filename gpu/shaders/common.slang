@@ -185,6 +185,28 @@ public int sample_small_distrib(IArray<float> data, float u, out float u_remap)
     return selected;
 }
 
+[Differentiable]
+public float2 to_spherical(float3 dir)
+{
+    float theta = safe_acos(dir.z);
+    float phi = atan2(dir.y, dir.x);
+    if (phi < 0.0f) {
+        phi += two_pi;
+    }
+    return float2(phi, theta);
+}
+
+[Differentiable]
+public float3 to_cartesian(float2 sph)
+{
+    float phi = sph.x, theta = sph.y;
+    float cos_theta = cos(theta);
+    float sin_theta = sin(theta);
+    float cos_phi = cos(phi);
+    float sin_phi = sin(phi);
+    return float3(cos_phi * sin_theta, sin_phi * sin_theta, cos_theta);
+}
+
 public float3 equal_area_square_to_sphere(float2 p)
 {
     // ASSERT(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
@@ -437,4 +459,15 @@ public RayDesc spawn_ray(float3 origin, float3 dir, float3 ng, float tnear, floa
     r.TMin = tnear;
     r.TMax = tfar;
     return r;
+}
+
+// https://shader-slang.com/slang/user-guide/a1-04-interop.html
+public float spv_atomic_add(__ref float value, float amount)
+{
+    return spirv_asm
+    {
+        OpExtension "SPV_EXT_shader_atomic_float_add";
+        OpCapability AtomicFloat32AddEXT;
+        result:$$float = OpAtomicFAddEXT &value Device None $amount
+    };
 }
