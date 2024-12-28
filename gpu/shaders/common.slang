@@ -70,6 +70,16 @@ public float2x2 inverse(float2x2 A)
     return float2x2(A[1][1], -A[0][1], -A[1][0], A[0][0]) / det;
 }
 
+public matrix<T, N, N> make_diagonal<T, let N : int>(vector<T, N> diag)
+    where T : IArithmetic
+{
+    matrix<T, N, N> m = matrix<T, N, N>(T(0));
+    for (int i = 0; i < N; ++i) {
+        m[i][i] = diag[i];
+    }
+    return m;
+}
+
 // Duff, Tom, et al. "Building an orthonormal basis, revisited." Journal of Computer Graphics Techniques Vol 6.1 (2017).
 [Differentiable]
 public void orthonormal_basis(float3 N, out float3 X, out float3 Y)
@@ -368,11 +378,21 @@ public void equal_area_bilerp(float2 uv, int N, out int2 idx[4], out float4 weig
         idx[3] = int2(x1, y1);
 }
 
+public float3 spherical_fibonacci(int i, int N)
+{
+    static const float golden_ratio = 1.61803398875f;
+    float phi = two_pi * ((float)i / golden_ratio - floor((float)i / golden_ratio));
+    float z = 1.0f - (float)(2 * i + 1) / (float)N;
+    return to_cartesian(float2(phi, acos(z)));
+}
+
 public float rounding_error_gamma(int n) { return (n * fp32_machine_epsilon) / (1 - n * fp32_machine_epsilon); }
 
-public bool isect_ray_aabb(float3 bmin, float3 bmax, float3 o, float3 d, float tmax, out float hitt0, out float hitt1)
+public bool isect_ray_aabb(float3 bmin, float3 bmax, float3 o, float3 d, float tmin, float tmax, out float hitt0,
+                           out float hitt1)
 {
-    float t0 = 0, t1 = tmax;
+    float t0 = tmin, t1 = tmax;
+    [[ForceUnroll]]
     for (int i = 0; i < 3; ++i) {
         // Update interval for _i_th bounding box slab
         float invRayDir = 1 / d[i];
@@ -470,4 +490,92 @@ public float spv_atomic_add(__ref float value, float amount)
         OpCapability AtomicFloat32AddEXT;
         result:$$float = OpAtomicFAddEXT &value Device None $amount
     };
+}
+
+// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+// Also pbrt hair doc
+// TODO: as of Haswell, the PEXT instruction could do all this in a
+// single instruction.
+
+// "Insert" a 0 bit after each of the 16 low bits of x
+public uint part_1_by_1(uint x)
+{
+    x &= 0x0000ffff;                 // x = ---- ---- ---- ---- fedc ba98 7654 3210
+    x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+    x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+    x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+    return x;
+}
+
+// "Insert" two 0 bits after each of the 10 low bits of x
+public uint part_1_by_2(uint x)
+{
+    x &= 0x000003ff;                  // x = ---- ---- ---- ---- ---- --98 7654 3210
+    x = (x ^ (x << 16)) & 0xff0000ff; // x = ---- --98 ---- ---- ---- ---- 7654 3210
+    x = (x ^ (x << 8)) & 0x0300f00f;  // x = ---- --98 ---- ---- 7654 ---- ---- 3210
+    x = (x ^ (x << 4)) & 0x030c30c3;  // x = ---- --98 ---- 76-- --54 ---- 32-- --10
+    x = (x ^ (x << 2)) & 0x09249249;  // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    return x;
+}
+
+// Inverse of part_1_by_1 - "delete" all odd-indexed bits
+public uint compact_1_by_1(uint x)
+{
+    x &= 0x55555555;                 // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+    x = (x ^ (x >> 1)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+    x = (x ^ (x >> 2)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    x = (x ^ (x >> 4)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+    x = (x ^ (x >> 8)) & 0x0000ffff; // x = ---- ---- ---- ---- fedc ba98 7654 3210
+    return x;
+}
+
+// Inverse of part_1_by_2 - "delete" all bits not at positions divisible by 3
+public uint compact_1_by_2(uint x)
+{
+    x &= 0x09249249;                  // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    x = (x ^ (x >> 2)) & 0x030c30c3;  // x = ---- --98 ---- 76-- --54 ---- 32-- --10
+    x = (x ^ (x >> 4)) & 0x0300f00f;  // x = ---- --98 ---- ---- 7654 ---- ---- 3210
+    x = (x ^ (x >> 8)) & 0xff0000ff;  // x = ---- --98 ---- ---- ---- ---- 7654 3210
+    x = (x ^ (x >> 16)) & 0x000003ff; // x = ---- ---- ---- ---- ---- --98 7654 3210
+    return x;
+}
+
+public uint encode_morton_2(uint2 v) { return (part_1_by_1(v.y) << 1) + part_1_by_1(v.x); }
+
+public uint encode_morton_3(uint3 v) { return (part_1_by_2(v.z) << 2) + (part_1_by_2(v.y) << 1) + part_1_by_2(v.x); }
+
+public uint2 decode_morton_2(uint32_t code)
+{
+    uint x = compact_1_by_1(code >> 0);
+    uint y = compact_1_by_1(code >> 1);
+    return uint2(x, y);
+}
+
+public uint3 decode_morton_3(uint32_t code)
+{
+    uint x = compact_1_by_2(code >> 0);
+    uint y = compact_1_by_2(code >> 1);
+    uint z = compact_1_by_2(code >> 2);
+    return uint3(x, y, z);
+}
+
+// https://rosettacode.org/wiki/Cholesky_decomposition
+public matrix<T, 3, 3> cholesky_decompose<T>(matrix<T, 3, 3> A)
+    where T : __BuiltinFloatingPointType
+{
+    // Assume A is SPD (symmetric positive definite)
+    T l11 = sqrt(A[0][0]);
+    T l21 = T(1) / l11 * A[1][0];
+    T l22 = sqrt(A[1][1] - sqr(l21));
+    T l31 = T(1) / l11 * A[2][0];
+    T l32 = T(1) / l22 * (A[2][1] - l31 * l21);
+    T l33 = sqrt(A[2][2] - (sqr(l31) + sqr(l32)));
+    matrix<T, 3, 3> L;
+    // clang-format off
+    L[0][0] = l11; L[0][1] = T(0);  L[0][2] = T(0);
+    L[1][0] = l21; L[1][1] = l22;   L[1][2] = T(0);
+    L[2][0] = l31; L[2][1] = l32;   L[2][2] = l33;
+    // clang-format on
+    return L;
 }
