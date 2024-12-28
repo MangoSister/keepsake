@@ -8,3 +8,4 @@ __include camera;
 __include pixel_filter;
 __include adam;
 __include alias_table;
+__include hash_table;
