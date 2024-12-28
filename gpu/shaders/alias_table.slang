@@ -12,7 +12,10 @@ public struct AliasTable
     public AliasTableSample sample(float u)
     {
         // Compute alias table _offset_ and remapped random sample _up_
-        int N = bins.getCount();
+        uint N, stride;
+        bins.GetDimensions(N, stride);
+        unused(stride);
+
         int offset = min((int)floor(u * N), N - 1);
         float up = min(u * N - offset, fp32_before_one);
 
