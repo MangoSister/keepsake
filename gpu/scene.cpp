@@ -674,16 +674,17 @@ void GPUScene::build_materials()
                                            .descriptorCount = 1,
                                            .stageFlags = ray_trace_shader_stages});
     // We only need to specify a maximum array length, but here the max is same as the actual allocated number anyway.
+    // Also cap to 1 to avoid 0 descriptorCount validation error.
+    uint32_t num_texture2d_combined_sampler = std::max((uint32_t)material_texture_2d_combined_sampler_map.size(), 1u);
     helper.add_binding("material_textures_2d",
                        {.binding = (uint32_t)ks::host_device::SceneBindings::MaterialTextures2D,
                         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .descriptorCount = (uint32_t)material_texture_2d_combined_sampler_map.size(),
+                        .descriptorCount = num_texture2d_combined_sampler,
                         .stageFlags = ray_trace_shader_stages},
                        true);
     material_param_block_meta.init(device, 1, std::move(helper));
 
-    material_param_block =
-        material_param_block_meta.allocate_block((uint32_t)material_texture_2d_combined_sampler_map.size());
+    material_param_block = material_param_block_meta.allocate_block(num_texture2d_combined_sampler);
 
     vk::ParameterWriteArray write_array;
 
@@ -716,17 +717,18 @@ void GPUScene::build_materials()
         write_array);
 
     // batch change layout?
-    std::vector<VkDescriptorImageInfo> image_infos(material_texture_2d_combined_sampler_map.size());
-    for (auto it = material_texture_2d_combined_sampler_map.begin();
-         it != material_texture_2d_combined_sampler_map.end(); ++it) {
-        auto [view_id, sampler_id] = it->first;
-        uint32_t combined_id = it->second;
-        image_infos[combined_id].imageView = material_textures_2d_view_cache.views[view_id];
-        image_infos[combined_id].sampler = sampler_cache.samplers[sampler_id];
-        image_infos[combined_id].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    if (!material_texture_2d_combined_sampler_map.empty()) {
+        std::vector<VkDescriptorImageInfo> image_infos(material_texture_2d_combined_sampler_map.size());
+        for (auto it = material_texture_2d_combined_sampler_map.begin();
+             it != material_texture_2d_combined_sampler_map.end(); ++it) {
+            auto [view_id, sampler_id] = it->first;
+            uint32_t combined_id = it->second;
+            image_infos[combined_id].imageView = material_textures_2d_view_cache.views[view_id];
+            image_infos[combined_id].sampler = sampler_cache.samplers[sampler_id];
+            image_infos[combined_id].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+        material_param_block.write_images("material_textures_2d", std::move(image_infos), 0, write_array);
     }
-    material_param_block.write_images("material_textures_2d", std::move(image_infos), 0, write_array);
-
     vkUpdateDescriptorSets(device, write_array.writes.size(), write_array.writes.data(), 0, nullptr);
 }
 
