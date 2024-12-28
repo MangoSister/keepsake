@@ -107,6 +107,7 @@ static vk::ContextArgs get_default_context_args(bool validation)
     //
     ctx_args.device_features.features.samplerAnisotropy = VK_TRUE;
     ctx_args.device_features.features.shaderInt64 = VK_TRUE;
+    ctx_args.device_features.features.shaderFloat64 = VK_TRUE;
 
     ctx_args.add_device_feature<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
@@ -130,6 +131,7 @@ static vk::ContextArgs get_default_context_args(bool validation)
         .descriptorBindingVariableDescriptorCount = VK_TRUE,
         .runtimeDescriptorArray = VK_TRUE,
         .scalarBlockLayout = VK_TRUE,
+        .timelineSemaphore = VK_TRUE, // used by debug printf
         .bufferDeviceAddress = VK_TRUE,
     };
     ctx_args.device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
