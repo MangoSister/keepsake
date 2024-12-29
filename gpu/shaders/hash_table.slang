@@ -20,7 +20,7 @@ public struct ReadonlyHashTable<Key, Value, Hash, KeyEqual>
 
         public Key key;
         public Value value;
-        public bool set;
+        public bool set; // NOTE: this is 4 byte.
     }
 
     public __subscript(Key key)->Optional<Value>
