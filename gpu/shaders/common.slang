@@ -162,6 +162,23 @@ public float3 sample_cosine_hemisphere(float2 u)
     // pdf = z / pi;
 }
 
+// Ray tracing gem
+// solid angle = 2pi * (1- cos_half_apex_angle)
+public float3 sample_cone(float2 u, float cos_half_apex_angle)
+{
+    float cos_theta = (1 - u[0]) + u[0] * cos_half_apex_angle;
+    float sin_theta = sqrt(1 - cos_theta * cos_theta);
+    float phi = u[1] * 2 * pi;
+    float x = cos(phi) * sin_theta;
+    float y = sin(phi) * sin_theta;
+    float z = cos_theta;
+    return float3(x, y, z);
+}
+
+public float solid_angle_to_cone(float solid_angle) { return 1.0 - solid_angle / (2.0 * pi); }
+
+public float cone_to_solid_angle(float cos_half_apex_angle) { return 2.0 * pi * (1 - cos_half_apex_angle); }
+
 public int sample_small_distrib(IArray<float> data, float u, out float u_remap)
 {
     int N = data.getCount();
