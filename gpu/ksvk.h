@@ -1953,16 +1953,12 @@ struct GfxApp
     virtual void encode_cmds() = 0;
 
   protected:
-    void create_swapchain_and_images(uint32_t width, uint32_t height);
-    void destroy_swapchain_and_images();
-    void create_imgui_render_pass();
-    void destroy_imgui_render_pass();
-    void create_imgui_framebuffers();
-    void destroy_imgui_framebuffers();
-
     static void glfw_error_callback(int error, const char *description);
     static void glfw_key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
     static void glfw_scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
+
+    void create_swapchain_and_images(uint32_t width, uint32_t height);
+    void destroy_swapchain_and_images();
 
     void process_frame();
     bool acquire_swapchain();
@@ -2004,8 +2000,9 @@ struct GfxApp
 
     // We will draw imgui into the swapchain images the last pass and present.
     VkDescriptorPool imgui_desc_pool = VK_NULL_HANDLE;
-    VkRenderPass imgui_render_pass = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> imgui_framebuffers;
+    // VkRenderPass imgui_render_pass = VK_NULL_HANDLE;
+    // std::vector<VkFramebuffer> imgui_framebuffers;
+    bool has_output_to_swapchain = true;
 
     using time_point = std::chrono::time_point<std::chrono::steady_clock>;
     time_point curr_time;

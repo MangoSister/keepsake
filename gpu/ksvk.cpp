@@ -128,6 +128,9 @@ static vk::ContextArgs get_default_context_args(bool validation, bool swapchain)
     ctx_args.device_features.features.shaderInt64 = VK_TRUE;
     ctx_args.device_features.features.shaderFloat64 = VK_TRUE;
 
+    ctx_args.add_device_feature<VkPhysicalDeviceDynamicRenderingFeatures>() = VkPhysicalDeviceDynamicRenderingFeatures{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, .dynamicRendering = VK_TRUE};
+
     ctx_args.add_device_feature<VkPhysicalDeviceVulkan11Features>() = VkPhysicalDeviceVulkan11Features{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .variablePointersStorageBuffer = VK_TRUE,
@@ -3353,9 +3356,6 @@ GfxApp::GfxApp(const GfxAppArgs &args)
         gpu->vk.instance);
     ImGui_ImplGlfw_InitForVulkan(window, true);
 
-    create_imgui_render_pass();
-    create_imgui_framebuffers();
-
     std::array<VkDescriptorPoolSize, 11> poolSizes = {{{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
                                                        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
                                                        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
@@ -3382,12 +3382,16 @@ GfxApp::GfxApp(const GfxAppArgs &args)
     initInfo.Device = gpu->vk.device;
     initInfo.QueueFamily = gpu->vk.main_queue_family_index;
     initInfo.Queue = gpu->vk.main_queue;
+    initInfo.PipelineCache = VK_NULL_HANDLE;
+    initInfo.DescriptorPool = imgui_desc_pool;
+    initInfo.Subpass = 0;
     initInfo.MinImageCount = initInfo.ImageCount = (uint32_t)swapchain_images.size();
     initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    initInfo.DescriptorPool = imgui_desc_pool;
+    initInfo.UseDynamicRendering = true;
+    initInfo.ColorAttachmentFormat = swapchain_format;
     initInfo.CheckVkResultFn = vk::imgui_vk_debug_callback;
 
-    ImGui_ImplVulkan_Init(&initInfo, imgui_render_pass);
+    ImGui_ImplVulkan_Init(&initInfo, VK_NULL_HANDLE);
 
     ImFontConfig font_config;
     font_config.RasterizerDensity = 2.0f;
@@ -3514,73 +3518,6 @@ void GfxApp::destroy_swapchain_and_images()
     vkDestroySwapchainKHR(device, swapchain, nullptr);
 }
 
-void GfxApp::create_imgui_render_pass()
-{
-    // TODO: Need to change this based on what is rendered before.
-    VkAttachmentDescription colorAtt{};
-    colorAtt.format = swapchain_format;
-    colorAtt.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAtt.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAtt.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-    VkAttachmentReference ref{};
-    ref.attachment = 0;
-    ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.pColorAttachments = &ref;
-    subpass.colorAttachmentCount = 1;
-
-    VkSubpassDependency dep{};
-    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dep.dstSubpass = 0;
-    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dep.srcAccessMask = 0;
-    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    VkRenderPassCreateInfo renderPassCI{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    renderPassCI.pAttachments = &colorAtt;
-    renderPassCI.attachmentCount = 1;
-    renderPassCI.pSubpasses = &subpass;
-    renderPassCI.subpassCount = 1;
-    renderPassCI.pDependencies = &dep;
-    renderPassCI.dependencyCount = 1;
-
-    vk::vk_check(vkCreateRenderPass(gpu->vk.device, &renderPassCI, nullptr, &imgui_render_pass));
-}
-
-void GfxApp::destroy_imgui_render_pass()
-{
-    //
-    vkDestroyRenderPass(gpu->vk.device, imgui_render_pass, nullptr);
-}
-
-void GfxApp::create_imgui_framebuffers()
-{
-    imgui_framebuffers.resize(swapchain_images.size());
-    for (uint32_t i = 0; i < (uint32_t)swapchain_images.size(); ++i) {
-        VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-        fbCI.attachmentCount = 1;
-        fbCI.pAttachments = &swapchain_image_views[i];
-        fbCI.layers = 1;
-        fbCI.renderPass = imgui_render_pass;
-        fbCI.width = swapchain_extent.width;
-        fbCI.height = swapchain_extent.height;
-        vk::vk_check(vkCreateFramebuffer(gpu->vk.device, &fbCI, nullptr, &imgui_framebuffers[i]));
-    }
-}
-
-void GfxApp::destroy_imgui_framebuffers()
-{
-    for (auto fb : imgui_framebuffers) {
-        vkDestroyFramebuffer(gpu->vk.device, fb, nullptr);
-    }
-}
-
 GfxApp::~GfxApp()
 {
     // 3. imgui
@@ -3588,8 +3525,8 @@ GfxApp::~GfxApp()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    destroy_imgui_framebuffers();
-    destroy_imgui_render_pass();
+    // destroy_imgui_framebuffers();
+    // destroy_imgui_render_pass();
 
     vkDestroyDescriptorPool(gpu->vk.device, imgui_desc_pool, nullptr);
 
@@ -3775,12 +3712,6 @@ void GfxApp::resize()
     ASSERT_FATAL(old_swapchain_image_count == swapchain_images.size(), "New swapchain has different number of images!");
 
     ImGui_ImplVulkan_SetMinImageCount((uint32_t)swapchain_images.size());
-    // recreate render pass
-    destroy_imgui_render_pass();
-    create_imgui_render_pass();
-    // recreate framebuffer
-    destroy_imgui_framebuffers();
-    create_imgui_framebuffers();
 }
 
 void GfxApp::update_imgui_base()
@@ -3803,22 +3734,63 @@ void GfxApp::encode_imgui(VkCommandBuffer cb)
         return;
     }
 
-    {
-        VkClearValue clear_value;
-        clear_value.color.float32[0] = 0.0f;
-        clear_value.color.float32[1] = 0.0f;
-        clear_value.color.float32[2] = 0.0f;
-        clear_value.color.float32[3] = 1.0f;
-        vk::RenderPassRecorder guiPass(cb,
-                                       VkRenderPassBeginInfo{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                                                             .renderPass = imgui_render_pass,
-                                                             .framebuffer = imgui_framebuffers[frame_index],
-                                                             .renderArea = {VkOffset2D(0, 0), swapchain_extent},
-                                                             .clearValueCount = 1,
-                                                             .pClearValues = &clear_value},
-                                       VK_SUBPASS_CONTENTS_INLINE);
-        ImGui_ImplVulkan_RenderDrawData(drawData, cb);
+    if (!has_output_to_swapchain) {
+        VkImageMemoryBarrier swapchain_to_color_att{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                                                    .srcAccessMask = VK_ACCESS_NONE,
+                                                    .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                                    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                                                    .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                                    .image = swapchain_images[frame_index],
+                                                    .subresourceRange =
+                                                        VkImageSubresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                                                                .baseMipLevel = 0,
+                                                                                .levelCount = VK_REMAINING_MIP_LEVELS,
+                                                                                .baseArrayLayer = 0,
+                                                                                .layerCount = 1}};
+        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                             (VkDependencyFlags)(0), {}, {}, {&swapchain_to_color_att, 1});
     }
+    VkRenderingAttachmentInfoKHR color_attachment_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+    };
+    color_attachment_info.imageView = swapchain_image_views[frame_index];
+    color_attachment_info.clearValue.color.float32[0] = 0.0f;
+    color_attachment_info.clearValue.color.float32[1] = 0.0f;
+    color_attachment_info.clearValue.color.float32[2] = 0.0f;
+    color_attachment_info.clearValue.color.float32[3] = 1.0f;
+    color_attachment_info.loadOp = has_output_to_swapchain ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    color_attachment_info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkRenderingInfo rendering_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = VkRect2D{VkOffset2D{}, swapchain_extent},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment_info,
+    };
+
+    vkCmdBeginRendering(cb, &rendering_info);
+    ImGui_ImplVulkan_RenderDrawData(drawData, cb);
+    vkCmdEndRendering(cb);
+
+    VkImageMemoryBarrier swapchain_to_present{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                                              .srcAccessMask = VK_ACCESS_NONE,
+                                              .dstAccessMask = VK_ACCESS_NONE,
+                                              .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                              .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                              .image = swapchain_images[frame_index],
+                                              .subresourceRange =
+                                                  VkImageSubresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                                                          .baseMipLevel = 0,
+                                                                          .levelCount = VK_REMAINING_MIP_LEVELS,
+                                                                          .baseArrayLayer = 0,
+                                                                          .layerCount = 1}};
+    vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, (VkDependencyFlags)(0), {}, {},
+                         {&swapchain_to_present, 1});
 }
 
 } // namespace ks
