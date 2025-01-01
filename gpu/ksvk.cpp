@@ -3398,47 +3398,48 @@ GfxApp::GfxApp(const GfxAppArgs &args)
     io.Fonts->AddFontFromFileTTF((fs::path(DATA_DIR) / "NotoSans-Regular.ttf").string().c_str(), 16.0f, &font_config);
 }
 
+// https://docs.vulkan.org/samples/latest/samples/performance/hpp_swapchain_images/README.html
 void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
 {
     VkPhysicalDevice physical_device = gpu->vk.physical_device;
     VkDevice device = gpu->vk.device;
 
-    VkSurfaceCapabilitiesKHR capabilities;
-    vk::vk_check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
+    std::vector<VkSurfaceFormatKHR> all_formats;
+    uint32_t format_count = 0;
+    vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr));
+    ASSERT_FATAL(format_count > 0);
+    all_formats.resize(format_count);
+    vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, all_formats.data()));
 
-    std::vector<VkSurfaceFormatKHR> allFormats;
-    uint32_t formatCount = 0;
-    vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, nullptr));
-    ASSERT_FATAL(formatCount > 0);
-    allFormats.resize(formatCount);
-    vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, allFormats.data()));
-
-    std::vector<VkPresentModeKHR> allPresentModes;
-    uint32_t presentModeCount = 0;
-    vk::vk_check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, nullptr));
-    ASSERT_FATAL(presentModeCount > 0);
-    allPresentModes.resize(presentModeCount);
-    vk::vk_check(
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, allPresentModes.data()));
-
-    VkSurfaceFormatKHR surfaceFormat;
-    surfaceFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
-    surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-    bool fmtSupported = false;
-    for (const auto &fmt : allFormats) {
-        if (fmt.format == surfaceFormat.format && fmt.colorSpace == surfaceFormat.colorSpace) {
-            fmtSupported = true;
+    VkSurfaceFormatKHR surface_format;
+    surface_format.format = VK_FORMAT_B8G8R8A8_UNORM;
+    surface_format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    bool format_supported = false;
+    for (const auto &fmt : all_formats) {
+        if (fmt.format == surface_format.format && fmt.colorSpace == surface_format.colorSpace) {
+            format_supported = true;
             break;
         }
     }
-    ASSERT_FATAL(fmtSupported, "Requested surface format not compatible!");
+    ASSERT_FATAL(format_supported, "Requested surface format not compatible!");
 
-    VkPresentModeKHR presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-    if (std::find(allPresentModes.begin(), allPresentModes.end(), presentMode) == allPresentModes.end()) {
-        presentMode = VK_PRESENT_MODE_FIFO_KHR;
-        ASSERT_FATAL(std::find(allPresentModes.begin(), allPresentModes.end(), presentMode) != allPresentModes.end());
+    std::vector<VkPresentModeKHR> all_present_modes;
+    uint32_t present_mode_count = 0;
+    vk::vk_check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, nullptr));
+    ASSERT_FATAL(present_mode_count > 0);
+    all_present_modes.resize(present_mode_count);
+    vk::vk_check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count,
+                                                           all_present_modes.data()));
+
+    VkPresentModeKHR present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+    if (std::find(all_present_modes.begin(), all_present_modes.end(), present_mode) == all_present_modes.end()) {
+        present_mode = VK_PRESENT_MODE_FIFO_KHR;
+        ASSERT_FATAL(std::find(all_present_modes.begin(), all_present_modes.end(), present_mode) !=
+                     all_present_modes.end());
     }
 
+    VkSurfaceCapabilitiesKHR capabilities;
+    vk::vk_check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
     swapchain_extent = capabilities.currentExtent;
     if (swapchain_extent.width == UINT32_MAX) {
         swapchain_extent = {width, height};
@@ -3451,59 +3452,53 @@ void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
     // Simply sticking to this minimum means that we may sometimes have to wait on the driver to complete internal
     // operations before we can acquire another image to render to. Therefore it is recommended to request at least one
     // more image than the minimum:
-    uint32_t imageCount = capabilities.minImageCount + 1;
-    if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
-        imageCount = capabilities.maxImageCount;
+    uint32_t swapchain_image_count = capabilities.minImageCount + 1;
+    if (capabilities.maxImageCount > 0 && swapchain_image_count > capabilities.maxImageCount) {
+        swapchain_image_count = capabilities.maxImageCount;
     }
 
-    VkSwapchainCreateInfoKHR swapchainCreateInfo{};
-    swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    swapchainCreateInfo.surface = surface;
+    VkSwapchainCreateInfoKHR swapchain_create_info{};
+    swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain_create_info.surface = surface;
+    swapchain_create_info.minImageCount = swapchain_image_count;
+    swapchain_create_info.imageFormat = surface_format.format;
+    swapchain_create_info.imageColorSpace = surface_format.colorSpace;
+    swapchain_create_info.imageExtent = swapchain_extent;
+    swapchain_create_info.imageArrayLayers = 1;
+    // We assume the last pass is imgui. If not we need to change this based on what is rendered before.
+    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    // We only use one queue now.
+    swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_create_info.preTransform = capabilities.currentTransform;
+    swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchain_create_info.presentMode = present_mode;
+    swapchain_create_info.clipped = VK_TRUE;
+    swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
+    vk::vk_check(vkCreateSwapchainKHR(device, &swapchain_create_info, nullptr, &swapchain));
 
-    swapchainCreateInfo.minImageCount = imageCount;
-    swapchainCreateInfo.imageFormat = surfaceFormat.format;
-    swapchainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
-    swapchainCreateInfo.imageExtent = swapchain_extent;
-    swapchainCreateInfo.imageArrayLayers = 1;
-
-    // TODO: Need to change this based on what is rendered before.
-    swapchainCreateInfo.imageUsage =
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-
-    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // We only use one queue now.
-
-    swapchainCreateInfo.preTransform = capabilities.currentTransform;
-    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainCreateInfo.presentMode = presentMode;
-    swapchainCreateInfo.clipped = VK_TRUE;
-
-    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
-
-    vk::vk_check(vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain));
-
-    swapchain_format = surfaceFormat.format;
-    vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr));
-    swapchain_images.resize(imageCount);
-    vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchain_images.data()));
-    ASSERT_FATAL(max_frames_ahead <= imageCount);
+    swapchain_format = surface_format.format;
+    vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, nullptr));
+    swapchain_images.resize(swapchain_image_count);
+    vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, swapchain_images.data()));
+    ASSERT_FATAL(max_frames_ahead <= swapchain_image_count);
 
     swapchain_image_views.resize(swapchain_images.size());
     for (uint32_t i = 0; i < (uint32_t)swapchain_images.size(); i++) {
-        VkImageViewCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.image = swapchain_images[i];
-        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        createInfo.format = swapchain_format;
-        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        createInfo.subresourceRange.baseMipLevel = 0;
-        createInfo.subresourceRange.levelCount = 1;
-        createInfo.subresourceRange.baseArrayLayer = 0;
-        createInfo.subresourceRange.layerCount = 1;
-        vk::vk_check(vkCreateImageView(device, &createInfo, nullptr, &swapchain_image_views[i]));
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = swapchain_images[i];
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = swapchain_format;
+        view_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        view_info.subresourceRange.baseMipLevel = 0;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 1;
+        vk::vk_check(vkCreateImageView(device, &view_info, nullptr, &swapchain_image_views[i]));
     }
 }
 
@@ -3734,6 +3729,9 @@ void GfxApp::encode_imgui(VkCommandBuffer cb)
         return;
     }
 
+    // Dynamic rendering requires us to handle transitions ourselves.
+    // If the app has already output to swapchain previously then it should handle the layout transition somewhere else.
+    // Otherwise we transition it from undefined to color attachemnt and clear it.
     if (!has_output_to_swapchain) {
         VkImageMemoryBarrier swapchain_to_color_att{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                                                     .srcAccessMask = VK_ACCESS_NONE,

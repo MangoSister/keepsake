@@ -1982,7 +1982,6 @@ struct GfxApp
     VkExtent2D swapchain_extent = {};
     std::vector<VkImage> swapchain_images;
     std::vector<VkImageView> swapchain_image_views;
-
     std::vector<VkSemaphore> present_complete_semaphores;
     std::vector<VkSemaphore> render_complete_semaphores;
     std::vector<VkFence> inflight_fences;
@@ -2000,9 +1999,7 @@ struct GfxApp
 
     // We will draw imgui into the swapchain images the last pass and present.
     VkDescriptorPool imgui_desc_pool = VK_NULL_HANDLE;
-    // VkRenderPass imgui_render_pass = VK_NULL_HANDLE;
-    // std::vector<VkFramebuffer> imgui_framebuffers;
-    bool has_output_to_swapchain = true;
+    bool has_output_to_swapchain = false;
 
     using time_point = std::chrono::time_point<std::chrono::steady_clock>;
     time_point curr_time;
