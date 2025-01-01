@@ -48,16 +48,32 @@ void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const 
     }
     gpu_initialized = true;
 
-    g_gpu_context.vkctx.create_instance(vkctx_args);
+    g_gpu_context.vk.create_instance(vkctx_args);
 
-    auto compatibles = g_gpu_context.vkctx.query_compatible_devices(vkctx_args, VK_NULL_HANDLE);
+    // TODO: improve this...
+    // If enabled swapchain, we test surface support by creating a temp window and surface and destroy right after
+    // this...
+    GLFWwindow *test_window = nullptr;
+    VkSurfaceKHR test_surface = VK_NULL_HANDLE;
+    if (vkctx_args.swapchain) {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        test_window = glfwCreateWindow(640, 480, "test", nullptr, nullptr);
+        vk::vk_check(glfwCreateWindowSurface(g_gpu_context.vk.instance, test_window, nullptr, &test_surface));
+    }
+    auto compatibles = g_gpu_context.vk.query_compatible_devices(vkctx_args, test_surface);
+
+    if (vkctx_args.swapchain) {
+        glfwDestroyWindow(test_window);
+        vkDestroySurfaceKHR(g_gpu_context.vk.instance, test_surface, nullptr);
+    }
+
     if (compatibles.empty()) {
         get_default_logger().critical("No compatible vulkan devices.");
         std::abort();
     }
 
     ASSERT(vk_device >= 0 && vk_device < compatibles.size());
-    g_gpu_context.vkctx.create_device(vkctx_args, compatibles[vk_device]);
+    g_gpu_context.vk.create_device(vkctx_args, compatibles[vk_device]);
 
     // First we need to create slang global session with work with the Slang API.
     slang_check(slang::createGlobalSession(g_gpu_context.slang_global_session.writeRef()));
@@ -96,13 +112,16 @@ void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const 
 // tracing, bindless, atomics, etc.
 // Validation can have performance overhead, but usually we want it for testing both in debug and release build until we
 // are very confident...
-static vk::ContextArgs get_default_context_args(bool validation)
+static vk::ContextArgs get_default_context_args(bool validation, bool swapchain)
 {
     vk::ContextArgs ctx_args{};
     ctx_args.api_version_major = 1;
     ctx_args.api_version_minor = 3;
     if (validation) {
         ctx_args.enable_validation();
+    }
+    if (swapchain) {
+        ctx_args.enable_swapchain();
     }
     //
     ctx_args.device_features.features.samplerAnisotropy = VK_TRUE;
@@ -168,9 +187,9 @@ static vk::ContextArgs get_default_context_args(bool validation)
     return ctx_args;
 }
 
-void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation)
+void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation, bool vk_swapchain)
 {
-    vk::ContextArgs vkctx_args = get_default_context_args(vk_validation);
+    vk::ContextArgs vkctx_args = get_default_context_args(vk_validation, vk_swapchain);
     init_gpu(shader_search_paths, vk_device, vkctx_args);
 }
 
@@ -1088,7 +1107,25 @@ void ContextArgs::enable_validation()
     validation = true;
 }
 
-void ContextArgs::enable_swapchain() { device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); }
+void ContextArgs::enable_swapchain()
+{
+    if (!glfwInit()) {
+        fprintf(stderr, "GLFW: Failed to initialize.\n");
+        std::abort();
+    }
+    if (!glfwVulkanSupported()) {
+        fprintf(stderr, "GLFW: vulkan not supported.\n");
+        std::abort();
+    }
+
+    uint32_t glfw_extension_count = 0;
+    const char **glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    for (uint32_t i = 0; i < glfw_extension_count; ++i) {
+        instance_extensions.push_back(glfw_extensions[i]);
+    }
+    device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    swapchain = true;
+}
 
 Context::~Context()
 {
@@ -3235,4 +3272,553 @@ void GUI::upload_frame()
 }
 
 } // namespace vk
+
+void GfxApp::glfw_error_callback(int error, const char *description)
+{
+    fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
+void GfxApp::glfw_key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+    //
+}
+
+void GfxApp::glfw_scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
+{
+    //
+}
+
+GfxApp::GfxApp(const GfxAppArgs &args)
+    : gpu(args.gpu_context), max_frames_ahead(args.max_frames_ahead), app_name(args.app_name)
+{
+    glfwSetErrorCallback(glfw_error_callback);
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    // glfwWindowHint(GLFW_DECORATED , GLFW_FALSE);
+    window = glfwCreateWindow(args.window_width, args.window_height, args.app_name.c_str(), nullptr, nullptr);
+    // glfwGetWindowSize
+    glfwSetWindowUserPointer(window, this);
+    glfwSetKeyCallback(window, glfw_key_callback);
+    glfwSetScrollCallback(window, glfw_scroll_callback);
+
+    vk::vk_check(glfwCreateWindowSurface(gpu->vk.instance, window, nullptr, &surface));
+
+    // 1. swapchain
+    present_complete_semaphores.resize(max_frames_ahead);
+    render_complete_semaphores.resize(max_frames_ahead);
+    inflight_fences.resize(max_frames_ahead);
+
+    VkSemaphoreCreateInfo semaphoreInfo = {};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkFenceCreateInfo fenceInfo = {};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    VkDevice device = gpu->vk.device;
+    for (uint32_t i = 0; i < max_frames_ahead; i++) {
+        vk::vk_check(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &present_complete_semaphores[i]));
+        vk::vk_check(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &render_complete_semaphores[i]));
+        vk::vk_check(vkCreateFence(device, &fenceInfo, nullptr, &inflight_fences[i]));
+    }
+
+    create_swapchain_and_images(args.window_width, args.window_height);
+
+    // 2. cmd frames
+    cmd_frames.resize(swapchain_image_views.size());
+    for (auto &frame : cmd_frames) {
+        VkCommandPoolCreateInfo poolInfo = {};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.queueFamilyIndex = gpu->vk.main_queue_family_index;
+        poolInfo.flags = 0; // Optional
+        vk::vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &frame.pool));
+    }
+
+    // 3. imgui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    (void)io;
+    io.FontGlobalScale = 1.5f; // TODO: Auto-scaling?
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    // ImGui::StyleColorsClassic();
+    // ImGui::GetStyle().ScaleAllSizes(2.0f);
+
+    ImGui_ImplVulkan_LoadFunctions(
+        [](const char *function_name, void *user_data) {
+            VkInstance instance = (VkInstance)user_data;
+            return vkGetInstanceProcAddr(instance, function_name);
+        },
+        gpu->vk.instance);
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
+    create_imgui_render_pass();
+    create_imgui_framebuffers();
+
+    std::array<VkDescriptorPoolSize, 11> poolSizes = {{{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+                                                       {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}}};
+
+    VkDescriptorPoolCreateInfo poolCI{.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                      .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+                                      .maxSets = 1,
+                                      .poolSizeCount = (uint32_t)poolSizes.size(),
+                                      .pPoolSizes = poolSizes.data()};
+
+    vk::vk_check(vkCreateDescriptorPool(gpu->vk.device, &poolCI, nullptr, &imgui_desc_pool));
+
+    ImGui_ImplVulkan_InitInfo initInfo{};
+    initInfo.Instance = gpu->vk.instance;
+    initInfo.PhysicalDevice = gpu->vk.physical_device;
+    initInfo.Device = gpu->vk.device;
+    initInfo.QueueFamily = gpu->vk.main_queue_family_index;
+    initInfo.Queue = gpu->vk.main_queue;
+    initInfo.MinImageCount = initInfo.ImageCount = (uint32_t)swapchain_images.size();
+    initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    initInfo.DescriptorPool = imgui_desc_pool;
+    initInfo.CheckVkResultFn = vk::imgui_vk_debug_callback;
+
+    ImGui_ImplVulkan_Init(&initInfo, imgui_render_pass);
+
+    ImFontConfig font_config;
+    font_config.RasterizerDensity = 2.0f;
+    io.Fonts->AddFontFromFileTTF((fs::path(DATA_DIR) / "NotoSans-Regular.ttf").string().c_str(), 16.0f, &font_config);
+}
+
+void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
+{
+    VkPhysicalDevice physical_device = gpu->vk.physical_device;
+    VkDevice device = gpu->vk.device;
+
+    VkSurfaceCapabilitiesKHR capabilities;
+    vk::vk_check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
+
+    std::vector<VkSurfaceFormatKHR> allFormats;
+    uint32_t formatCount = 0;
+    vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, nullptr));
+    ASSERT_FATAL(formatCount > 0);
+    allFormats.resize(formatCount);
+    vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &formatCount, allFormats.data()));
+
+    std::vector<VkPresentModeKHR> allPresentModes;
+    uint32_t presentModeCount = 0;
+    vk::vk_check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, nullptr));
+    ASSERT_FATAL(presentModeCount > 0);
+    allPresentModes.resize(presentModeCount);
+    vk::vk_check(
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, allPresentModes.data()));
+
+    VkSurfaceFormatKHR surfaceFormat;
+    surfaceFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
+    surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    bool fmtSupported = false;
+    for (const auto &fmt : allFormats) {
+        if (fmt.format == surfaceFormat.format && fmt.colorSpace == surfaceFormat.colorSpace) {
+            fmtSupported = true;
+            break;
+        }
+    }
+    ASSERT_FATAL(fmtSupported, "Requested surface format not compatible!");
+
+    VkPresentModeKHR presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+    if (std::find(allPresentModes.begin(), allPresentModes.end(), presentMode) == allPresentModes.end()) {
+        presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        ASSERT_FATAL(std::find(allPresentModes.begin(), allPresentModes.end(), presentMode) != allPresentModes.end());
+    }
+
+    swapchain_extent = capabilities.currentExtent;
+    if (swapchain_extent.width == UINT32_MAX) {
+        swapchain_extent = {width, height};
+        swapchain_extent.width =
+            std::clamp(swapchain_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        swapchain_extent.height =
+            std::clamp(swapchain_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    }
+
+    // Simply sticking to this minimum means that we may sometimes have to wait on the driver to complete internal
+    // operations before we can acquire another image to render to. Therefore it is recommended to request at least one
+    // more image than the minimum:
+    uint32_t imageCount = capabilities.minImageCount + 1;
+    if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
+        imageCount = capabilities.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR swapchainCreateInfo{};
+    swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchainCreateInfo.surface = surface;
+
+    swapchainCreateInfo.minImageCount = imageCount;
+    swapchainCreateInfo.imageFormat = surfaceFormat.format;
+    swapchainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
+    swapchainCreateInfo.imageExtent = swapchain_extent;
+    swapchainCreateInfo.imageArrayLayers = 1;
+
+    // TODO: Need to change this based on what is rendered before.
+    swapchainCreateInfo.imageUsage =
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+    swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // We only use one queue now.
+
+    swapchainCreateInfo.preTransform = capabilities.currentTransform;
+    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchainCreateInfo.presentMode = presentMode;
+    swapchainCreateInfo.clipped = VK_TRUE;
+
+    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+    vk::vk_check(vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain));
+
+    swapchain_format = surfaceFormat.format;
+    vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr));
+    swapchain_images.resize(imageCount);
+    vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchain_images.data()));
+    ASSERT_FATAL(max_frames_ahead <= imageCount);
+
+    swapchain_image_views.resize(swapchain_images.size());
+    for (uint32_t i = 0; i < (uint32_t)swapchain_images.size(); i++) {
+        VkImageViewCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = swapchain_images[i];
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = swapchain_format;
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
+        vk::vk_check(vkCreateImageView(device, &createInfo, nullptr, &swapchain_image_views[i]));
+    }
+}
+
+void GfxApp::destroy_swapchain_and_images()
+{
+    VkDevice device = gpu->vk.device;
+    swapchain_images.clear();
+    for (size_t i = 0; i < swapchain_image_views.size(); i++) {
+        vkDestroyImageView(device, swapchain_image_views[i], nullptr);
+    }
+    swapchain_image_views.clear();
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+}
+
+void GfxApp::create_imgui_render_pass()
+{
+    // TODO: Need to change this based on what is rendered before.
+    VkAttachmentDescription colorAtt{};
+    colorAtt.format = swapchain_format;
+    colorAtt.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAtt.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAtt.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference ref{};
+    ref.attachment = 0;
+    ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.pColorAttachments = &ref;
+    subpass.colorAttachmentCount = 1;
+
+    VkSubpassDependency dep{};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.srcAccessMask = 0;
+    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    VkRenderPassCreateInfo renderPassCI{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    renderPassCI.pAttachments = &colorAtt;
+    renderPassCI.attachmentCount = 1;
+    renderPassCI.pSubpasses = &subpass;
+    renderPassCI.subpassCount = 1;
+    renderPassCI.pDependencies = &dep;
+    renderPassCI.dependencyCount = 1;
+
+    vk::vk_check(vkCreateRenderPass(gpu->vk.device, &renderPassCI, nullptr, &imgui_render_pass));
+}
+
+void GfxApp::destroy_imgui_render_pass()
+{
+    //
+    vkDestroyRenderPass(gpu->vk.device, imgui_render_pass, nullptr);
+}
+
+void GfxApp::create_imgui_framebuffers()
+{
+    imgui_framebuffers.resize(swapchain_images.size());
+    for (uint32_t i = 0; i < (uint32_t)swapchain_images.size(); ++i) {
+        VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+        fbCI.attachmentCount = 1;
+        fbCI.pAttachments = &swapchain_image_views[i];
+        fbCI.layers = 1;
+        fbCI.renderPass = imgui_render_pass;
+        fbCI.width = swapchain_extent.width;
+        fbCI.height = swapchain_extent.height;
+        vk::vk_check(vkCreateFramebuffer(gpu->vk.device, &fbCI, nullptr, &imgui_framebuffers[i]));
+    }
+}
+
+void GfxApp::destroy_imgui_framebuffers()
+{
+    for (auto fb : imgui_framebuffers) {
+        vkDestroyFramebuffer(gpu->vk.device, fb, nullptr);
+    }
+}
+
+GfxApp::~GfxApp()
+{
+    // 3. imgui
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    destroy_imgui_framebuffers();
+    destroy_imgui_render_pass();
+
+    vkDestroyDescriptorPool(gpu->vk.device, imgui_desc_pool, nullptr);
+
+    // 2. cmd frames
+    VkDevice device = gpu->vk.device;
+    for (auto &frame : cmd_frames) {
+        vkFreeCommandBuffers(device, frame.pool, (uint32_t)frame.cbs.size(), frame.cbs.data());
+        vkDestroyCommandPool(device, frame.pool, nullptr);
+    }
+
+    // 1. swapchain
+    destroy_swapchain_and_images();
+
+    for (uint32_t i = 0; i < max_frames_ahead; i++) {
+        vkDestroySemaphore(device, render_complete_semaphores[i], nullptr);
+        vkDestroySemaphore(device, present_complete_semaphores[i], nullptr);
+        vkDestroyFence(device, inflight_fences[i], nullptr);
+    }
+
+    vkDestroySurfaceKHR(gpu->vk.instance, surface, nullptr);
+
+    glfwDestroyWindow(window);
+}
+
+void GfxApp::run()
+{
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        process_frame();
+    }
+
+    vk::vk_check(vkDeviceWaitIdle(gpu->vk.device));
+}
+
+void GfxApp::process_frame()
+{
+    float delta_time = std::chrono::duration<float>(curr_time - prev_time).count();
+    float delta_time_ms = std::chrono::duration<float, std::milli>(curr_time - prev_time).count();
+    {
+        // Show simple stats.
+        prev_time = curr_time;
+        curr_time = std::chrono::steady_clock::now();
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        std::array<char, 512> title;
+#ifndef NDEBUG
+        constexpr char build[] = "Debug";
+#else
+        constexpr char build[] = "Release";
+#endif
+        sprintf(title.data(), "%s (%s) [%d x %d] [%.3f ms]", app_name.c_str(), build, width, height, delta_time_ms);
+        glfwSetWindowTitle(window, title.data());
+    }
+
+    update(delta_time);
+    update_imgui_base();
+
+    if (!acquire_swapchain()) {
+        resize();
+        return;
+    }
+
+    encode_cmds_base();
+
+    if (!submit_cmds_and_present()) {
+        resize();
+    }
+}
+
+bool GfxApp::acquire_swapchain()
+{
+    VkDevice device = gpu->vk.device;
+    vk::vk_check(vkWaitForFences(device, 1, &inflight_fences[render_ahead_index], VK_TRUE, UINT64_MAX));
+
+    VkResult ret = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, present_complete_semaphores[render_ahead_index],
+                                         VK_NULL_HANDLE, &frame_index);
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        return false;
+    }
+    ASSERT_FATAL(ret == VK_SUCCESS || ret == VK_SUBOPTIMAL_KHR);
+    return true;
+}
+
+void GfxApp::encode_cmds_base()
+{
+    vk::vk_check(
+        vkResetCommandPool(gpu->vk.device, cmd_frames[frame_index].pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));
+    cmd_frames[frame_index].next_cb = 0;
+
+    encode_cmds();
+
+    {
+        VkCommandBuffer cb = acquire_cbs(1)[0];
+        vk::CmdBufRecorder recorder(cb, VkCommandBufferBeginInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                                                                 .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT});
+        encode_imgui(cb);
+    }
+}
+
+std::vector<VkCommandBuffer> GfxApp::acquire_cbs(uint32_t count)
+{
+    auto &frame = cmd_frames[frame_index];
+
+    uint32_t numAvailable = (uint32_t)frame.cbs.size() - frame.next_cb;
+    if (numAvailable < count) {
+        uint32_t oldCount = (uint32_t)frame.cbs.size();
+        frame.cbs.resize(oldCount + count - numAvailable);
+        VkCommandBufferAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = frame.pool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = count;
+        vk::vk_check(vkAllocateCommandBuffers(gpu->vk.device, &allocInfo, &frame.cbs[oldCount]));
+    }
+    std::vector<VkCommandBuffer> ret;
+    ret.insert(ret.end(), frame.cbs.begin() + frame.next_cb, frame.cbs.begin() + frame.next_cb + count);
+    frame.next_cb += count;
+    return ret;
+}
+
+bool GfxApp::submit_cmds_and_present()
+{
+    VkDevice device = gpu->vk.device;
+    VkQueue queue = gpu->vk.main_queue;
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    submitInfo.commandBufferCount = (uint32_t)cmd_frames[frame_index].cbs.size();
+    submitInfo.pCommandBuffers = cmd_frames[frame_index].cbs.data();
+
+    std::array<VkSemaphore, 1> submitWaitSemaphores = {present_complete_semaphores[render_ahead_index]};
+    std::array<VkPipelineStageFlags, 1> submitWaitStages = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submitInfo.waitSemaphoreCount = (uint32_t)submitWaitSemaphores.size();
+    submitInfo.pWaitSemaphores = submitWaitSemaphores.data();
+    submitInfo.pWaitDstStageMask = submitWaitStages.data();
+    std::array<VkSemaphore, 1> submitSignalSemaphores = {render_complete_semaphores[render_ahead_index]};
+    submitInfo.signalSemaphoreCount = (uint32_t)submitSignalSemaphores.size();
+    submitInfo.pSignalSemaphores = submitSignalSemaphores.data();
+
+    vk::vk_check(vkResetFences(device, 1, &inflight_fences[render_ahead_index]));
+    vk::vk_check(vkQueueSubmit(queue, 1, &submitInfo, inflight_fences[render_ahead_index]));
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+    std::array<VkSemaphore, 1> presentWaitSemaphores = {render_complete_semaphores[render_ahead_index]};
+    presentInfo.waitSemaphoreCount = (uint32_t)presentWaitSemaphores.size();
+    presentInfo.pWaitSemaphores = presentWaitSemaphores.data();
+    std::array<VkSwapchainKHR, 1> swapchains = {swapchain};
+    presentInfo.swapchainCount = (uint32_t)swapchains.size();
+    presentInfo.pSwapchains = swapchains.data();
+    presentInfo.pImageIndices = &frame_index;
+    presentInfo.pResults = nullptr; // Optional
+
+    VkResult ret = vkQueuePresentKHR(queue, &presentInfo);
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
+        return false;
+    } else {
+        vk::vk_check(ret);
+    }
+
+    render_ahead_index = (render_ahead_index + 1) % max_frames_ahead;
+
+    return true;
+}
+
+void GfxApp::resize()
+{
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vk::vk_check(vkDeviceWaitIdle(gpu->vk.device));
+    uint32_t old_swapchain_image_count = (uint32_t)swapchain_images.size();
+
+    destroy_swapchain_and_images();
+    create_swapchain_and_images(width, height);
+
+    ASSERT_FATAL(old_swapchain_image_count == swapchain_images.size(), "New swapchain has different number of images!");
+
+    ImGui_ImplVulkan_SetMinImageCount((uint32_t)swapchain_images.size());
+    // recreate render pass
+    destroy_imgui_render_pass();
+    create_imgui_render_pass();
+    // recreate framebuffer
+    destroy_imgui_framebuffers();
+    create_imgui_framebuffers();
+}
+
+void GfxApp::update_imgui_base()
+{
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    update_imgui();
+
+    ImGui::End();
+}
+
+void GfxApp::encode_imgui(VkCommandBuffer cb)
+{
+    ImGui::Render();
+    ImDrawData *drawData = ImGui::GetDrawData();
+    bool is_minimized = (drawData->DisplaySize.x <= 0.0f || drawData->DisplaySize.y <= 0.0f);
+    if (is_minimized) {
+        return;
+    }
+
+    {
+        VkClearValue clear_value;
+        clear_value.color.float32[0] = 0.0f;
+        clear_value.color.float32[1] = 0.0f;
+        clear_value.color.float32[2] = 0.0f;
+        clear_value.color.float32[3] = 1.0f;
+        vk::RenderPassRecorder guiPass(cb,
+                                       VkRenderPassBeginInfo{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                                                             .renderPass = imgui_render_pass,
+                                                             .framebuffer = imgui_framebuffers[frame_index],
+                                                             .renderArea = {VkOffset2D(0, 0), swapchain_extent},
+                                                             .clearValueCount = 1,
+                                                             .pClearValues = &clear_value},
+                                       VK_SUBPASS_CONTENTS_INLINE);
+        ImGui_ImplVulkan_RenderDrawData(drawData, cb);
+    }
+}
+
 } // namespace ks

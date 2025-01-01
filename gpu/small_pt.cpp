@@ -294,10 +294,10 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
     const CompoundMeshAsset *compound_mesh_asset =
         args.asset_table().get<CompoundMeshAsset>(args.load_string("compound_object"));
 
-    GPUScene gpu_scene(*compound_mesh_asset, gpu.vkctx);
+    GPUScene gpu_scene(*compound_mesh_asset, gpu.vk);
     gpu_scene.prepare_for_ray_tracing();
 
-    GPUSmallPT gpu_small_pt(gpu.vkctx, *gpu.slang_session, gpu_scene);
+    GPUSmallPT gpu_small_pt(gpu.vk, *gpu.slang_session, gpu_scene);
     // gpu_small_pt.scene = &gpu_scene;
 
     GPUSmallPTInput gpu_small_pt_in;
@@ -315,7 +315,7 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
     gpu_small_pt_in.spp_prog_interval = args.load_integer("spp_prog_interval", 32);
 
     vk::AutoRelease<vk::ImageWithView> render_target;
-    gpu.vkctx.allocator->stage_session([&](vk::Allocator &self) {
+    gpu.vk.allocator->stage_session([&](vk::Allocator &self) {
         VkImageCreateInfo render_target_img_ci{
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType = VK_IMAGE_TYPE_2D,
@@ -332,12 +332,12 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
         render_target = vk::AutoRelease<vk::ImageWithView>(
             self.create_image_with_view(render_target_img, vk::simple_view_info_from_image_info(
                                                                render_target_img_ci, render_target_img, false)),
-            gpu.vkctx.allocator);
+            gpu.vk.allocator);
     });
     gpu_small_pt_in.render_target = *render_target;
 
     vk::AutoRelease<vk::Image> render_target_readback(
-        gpu.vkctx.allocator->create_image(
+        gpu.vk.allocator->create_image(
             VkImageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .imageType = VK_IMAGE_TYPE_2D,
@@ -350,7 +350,7 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
                 .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
             },
             VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT),
-        gpu.vkctx.allocator);
+        gpu.vk.allocator);
 
     const CameraAnimation *camera_anim = nullptr;
     std::unique_ptr<Camera> camera_static;
@@ -514,10 +514,10 @@ void gpu_small_pt(const ks::ConfigArgs &args, const fs::path &task_dir, int task
             // Get layout of the image (including row pitch)
             VkImageSubresource subResource{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
             VkSubresourceLayout subResourceLayout;
-            vkGetImageSubresourceLayout(gpu.vkctx.device, render_target_readback->image, &subResource,
+            vkGetImageSubresourceLayout(gpu.vk.device, render_target_readback->image, &subResource,
                                         &subResourceLayout);
 
-            gpu.vkctx.allocator->map(render_target_readback->allocation, false, [&](std::byte *ptr) {
+            gpu.vk.allocator->map(render_target_readback->allocation, false, [&](std::byte *ptr) {
                 uint32_t w = gpu_small_pt_in.render_width;
                 uint32_t h = gpu_small_pt_in.render_height;
                 if (subResourceLayout.offset == 0 && subResourceLayout.rowPitch == sizeof(float[4]) * w) {

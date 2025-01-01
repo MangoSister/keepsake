@@ -15,13 +15,13 @@ AdamOptimizerShared::AdamOptimizerShared(GPUContext &gpu, uint32_t max_insts)
     desc_set_helper.add_binding("second_moments",
                                 {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr});
 
-    param_block_meta = vk::ParameterBlockMeta(gpu.vkctx.device, max_insts, std::move(desc_set_helper));
+    param_block_meta = vk::ParameterBlockMeta(gpu.vk.device, max_insts, std::move(desc_set_helper));
 
     std::array<VkPushConstantRange, 1> pc_ranges{VkPushConstantRange{
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .offset = 0, .size = sizeof(AdamOptimizerHyperParams)}};
 
     const std::string entry_point_name = "adam_optimizer_step";
-    CompiledSlangShader compiled_slang_shader(*gpu.slang_session, gpu.vkctx.device, "ks", {&entry_point_name, 1});
+    CompiledSlangShader compiled_slang_shader(*gpu.slang_session, gpu.vk.device, "ks", {&entry_point_name, 1});
 
     VkPipelineLayoutCreateInfo pipeline_layout_info{.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                                                     .setLayoutCount = 1,
@@ -29,7 +29,7 @@ AdamOptimizerShared::AdamOptimizerShared(GPUContext &gpu, uint32_t max_insts)
                                                     .pushConstantRangeCount = (uint32_t)pc_ranges.size(),
                                                     .pPushConstantRanges = pc_ranges.data()};
 
-    vk::vk_check(vkCreatePipelineLayout(gpu.vkctx.device, &pipeline_layout_info, nullptr, &pipeline_layout));
+    vk::vk_check(vkCreatePipelineLayout(gpu.vk.device, &pipeline_layout_info, nullptr, &pipeline_layout));
 
     VkComputePipelineCreateInfo pipelineCreateInfo = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
     pipelineCreateInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -39,7 +39,7 @@ AdamOptimizerShared::AdamOptimizerShared(GPUContext &gpu, uint32_t max_insts)
     pipelineCreateInfo.layout = pipeline_layout;
 
     vk::vk_check(
-        vkCreateComputePipelines(gpu.vkctx.device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline));
+        vkCreateComputePipelines(gpu.vk.device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline));
 }
 
 AdamOptimizerShared::~AdamOptimizerShared()

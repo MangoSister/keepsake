@@ -69,10 +69,7 @@ inline void vk_check(VkResult err, const std::source_location location = std::so
                                                                                                                        \
     STRUCT_TYPE &operator=(const STRUCT_TYPE &other) = delete;                                                         \
                                                                                                                        \
-    STRUCT_TYPE(STRUCT_TYPE &&other) noexcept : STRUCT_TYPE()                                                          \
-    {                                                                                                                  \
-        swap(*this, other);                                                                                            \
-    }                                                                                                                  \
+    STRUCT_TYPE(STRUCT_TYPE &&other) noexcept : STRUCT_TYPE() { swap(*this, other); }                                  \
                                                                                                                        \
     STRUCT_TYPE &operator=(STRUCT_TYPE &&other) noexcept                                                               \
     {                                                                                                                  \
@@ -584,6 +581,9 @@ struct ContextArgs
     void enable_validation();
     void enable_swapchain();
 
+    bool validation = false;
+    bool swapchain = false;
+
     uint32_t api_version_major;
     uint32_t api_version_minor;
 
@@ -599,8 +599,6 @@ struct ContextArgs
     std::vector<std::unique_ptr<void, DeleteByFree>> device_features_data;
 
     std::vector<std::string> device_extensions;
-
-    bool validation = false;
 
     template <typename T>
     T &add_device_feature()
@@ -1925,13 +1923,93 @@ struct CompiledSlangShader
 
 struct GPUContext
 {
-    vk::Context vkctx;
+    vk::Context vk;
     Slang::ComPtr<slang::IGlobalSession> slang_global_session;
     Slang::ComPtr<slang::ISession> slang_session;
 };
 
 void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const vk::ContextArgs &vkctx_args);
-void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation);
+void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation,
+              bool vk_swapchain = false);
 GPUContext &get_gpu_context();
+
+struct GfxAppArgs
+{
+    GPUContext *gpu_context;
+    uint32_t max_frames_ahead = 2;
+    uint32_t window_width;
+    uint32_t window_height;
+    std::string app_name;
+};
+
+struct GfxApp
+{
+    GfxApp(const GfxAppArgs &args);
+    virtual ~GfxApp();
+
+    void run();
+    virtual void update(float delta_time) = 0;
+    virtual void update_imgui() = 0;
+    virtual void encode_cmds() = 0;
+
+  protected:
+    void create_swapchain_and_images(uint32_t width, uint32_t height);
+    void destroy_swapchain_and_images();
+    void create_imgui_render_pass();
+    void destroy_imgui_render_pass();
+    void create_imgui_framebuffers();
+    void destroy_imgui_framebuffers();
+
+    static void glfw_error_callback(int error, const char *description);
+    static void glfw_key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
+    static void glfw_scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
+
+    void process_frame();
+    bool acquire_swapchain();
+    void encode_cmds_base();
+    std::vector<VkCommandBuffer> acquire_cbs(uint32_t count);
+
+    bool submit_cmds_and_present();
+    void resize();
+
+    void update_imgui_base();
+    void encode_imgui(VkCommandBuffer cb);
+
+    std::string app_name;
+    GLFWwindow *window = nullptr;
+    GPUContext *gpu = nullptr;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+
+    // swapchain
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkFormat swapchain_format = {};
+    VkExtent2D swapchain_extent = {};
+    std::vector<VkImage> swapchain_images;
+    std::vector<VkImageView> swapchain_image_views;
+
+    std::vector<VkSemaphore> present_complete_semaphores;
+    std::vector<VkSemaphore> render_complete_semaphores;
+    std::vector<VkFence> inflight_fences;
+    uint32_t max_frames_ahead = 0;
+    uint32_t render_ahead_index = 0;
+    uint32_t frame_index = 0;
+    // commands each swapchain frame
+    struct CmdFrame
+    {
+        VkCommandPool pool;
+        std::vector<VkCommandBuffer> cbs;
+        uint32_t next_cb = 0;
+    };
+    std::vector<CmdFrame> cmd_frames;
+
+    // We will draw imgui into the swapchain images the last pass and present.
+    VkDescriptorPool imgui_desc_pool = VK_NULL_HANDLE;
+    VkRenderPass imgui_render_pass = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> imgui_framebuffers;
+
+    using time_point = std::chrono::time_point<std::chrono::steady_clock>;
+    time_point curr_time;
+    time_point prev_time;
+};
 
 } // namespace ks
