@@ -820,130 +820,6 @@ class CommandPool
     VkCommandPool m_commandPool = VK_NULL_HANDLE;
 };
 
-//-----------------------------------------------------------------------------
-// [Swap chain]
-//-----------------------------------------------------------------------------
-
-struct SwapchainCreateInfo
-{
-    VkPhysicalDevice physical_device;
-    VkDevice device;
-    VkQueue queue;
-    VkSurfaceKHR surface;
-    uint32_t width;
-    uint32_t height;
-    uint32_t max_frames_ahead;
-};
-
-struct Swapchain
-{
-    Swapchain() = default;
-    explicit Swapchain(const SwapchainCreateInfo &info);
-    ~Swapchain();
-
-    friend void swap(Swapchain &x, Swapchain &y) noexcept
-    {
-        using std::swap;
-
-        swap(x.physical_device, y.physical_device);
-        swap(x.device, y.device);
-        swap(x.queue, y.queue);
-        swap(x.surface, y.surface);
-        swap(x.swapchain, y.swapchain);
-        swap(x.format, y.format);
-        swap(x.extent, y.extent);
-        swap(x.images, y.images);
-        swap(x.image_views, y.image_views);
-        swap(x.present_complete_semaphores, y.present_complete_semaphores);
-        swap(x.render_complete_semaphores, y.render_complete_semaphores);
-        swap(x.inflight_fences, y.inflight_fences);
-        swap(x.max_frames_ahead, y.max_frames_ahead);
-        swap(x.render_ahead_index, y.render_ahead_index);
-        swap(x.frame_index, y.frame_index);
-    }
-
-    NO_COPY_AND_SWAP_AS_MOVE(Swapchain);
-
-    bool acquire();
-    bool submit_and_present(const std::vector<VkCommandBuffer> &cbs);
-    void resize(uint32_t width, uint32_t height);
-
-    void create_swapchain_and_images(uint32_t width, uint32_t height);
-    void destroy_swapchain_and_images();
-
-    uint32_t frame_count() const { return (uint32_t)image_views.size(); }
-    float aspect() const { return (float)extent.width / (float)extent.height; }
-
-    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-
-    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    VkFormat format = {};
-    VkExtent2D extent = {};
-    std::vector<VkImage> images;
-    std::vector<VkImageView> image_views;
-
-    std::vector<VkSemaphore> present_complete_semaphores;
-    std::vector<VkSemaphore> render_complete_semaphores;
-    std::vector<VkFence> inflight_fences;
-    uint32_t max_frames_ahead = 0;
-    uint32_t render_ahead_index = 0;
-    uint32_t frame_index = 0;
-};
-
-//-----------------------------------------------------------------------------
-// [Command buffer management]
-//-----------------------------------------------------------------------------
-
-struct CmdBufManager
-{
-    CmdBufManager() = default;
-    CmdBufManager(uint32_t frame_count, uint32_t queue_family_index, VkDevice device);
-    ~CmdBufManager();
-
-    friend void swap(CmdBufManager &x, CmdBufManager &y) noexcept
-    {
-        using std::swap;
-
-        swap(x.frames, y.frames);
-        swap(x.device, y.device);
-        swap(x.frame_index, y.frame_index);
-    }
-
-    NO_COPY_AND_SWAP_AS_MOVE(CmdBufManager)
-
-    void start_frame(uint32_t frame_index);
-    std::vector<VkCommandBuffer> acquire_cbs(uint32_t count);
-    std::vector<VkCommandBuffer> all_acquired() const
-    {
-        auto &frame = frames[frame_index];
-        std::vector<VkCommandBuffer> acquired;
-        acquired.insert(acquired.end(), frame.cbs.begin(), frame.cbs.begin() + frame.next_cb);
-        return acquired;
-    }
-    VkCommandBuffer last_acquired() const
-    {
-        const auto &frame = frames[frame_index];
-        return frame.next_cb > 0 ? frame.cbs[frame.next_cb - 1] : VK_NULL_HANDLE;
-    }
-
-  private:
-    struct Frame
-    {
-        VkCommandPool pool;
-        std::vector<VkCommandBuffer> cbs;
-        uint32_t next_cb = 0;
-    };
-    std::vector<Frame> frames;
-    VkDevice device = VK_NULL_HANDLE;
-    uint32_t frame_index = 0;
-};
-
-void encode_cmd_now(VkDevice device, uint32_t queue_family_index, VkQueue queue,
-                    const std::function<void(VkCommandBuffer)> &func);
-
 // Convenience RAII wrappers.
 struct CmdBufRecorder
 {
@@ -1632,140 +1508,6 @@ class SBTWrapper
     uint32_t m_queueIndex{0};
 };
 
-//-----------------------------------------------------------------------------
-// [Top wrapper class for graphics services and resources]
-//-----------------------------------------------------------------------------
-
-struct GFXArgs
-{
-    int width, height;
-    GLFWwindow *window = nullptr;
-};
-
-struct GFX
-{
-    GFX() = default;
-    explicit GFX(const GFXArgs &args);
-    ~GFX();
-
-    friend void swap(GFX &x, GFX &y) noexcept
-    {
-        using std::swap;
-
-        swap(x.swapchain, y.swapchain);
-        swap(x.cb_manager, y.cb_manager);
-        swap(x.surface, y.surface);
-        swap(x.ctx, y.ctx);
-    }
-
-    NO_COPY_AND_SWAP_AS_MOVE(GFX)
-
-    uint32_t frame_index() const { return swapchain.frame_index; }
-    uint32_t render_ahead_index() const { return swapchain.render_ahead_index; }
-
-    bool acquire_frame()
-    {
-        if (!swapchain.acquire()) {
-            return false;
-        }
-        return true;
-    }
-
-    void start_frame()
-    {
-        uint32_t frameIndex = swapchain.frame_index;
-        cb_manager.start_frame(frameIndex);
-    }
-
-    bool submit_frame()
-    {
-        uint32_t frameIndex = swapchain.frame_index;
-        return swapchain.submit_and_present(cb_manager.all_acquired());
-    }
-
-    struct SurfaceWrapper
-    {
-        SurfaceWrapper() = default;
-
-        ~SurfaceWrapper()
-        {
-            if (instance != VK_NULL_HANDLE) {
-                vkDestroySurfaceKHR(instance, surface, nullptr);
-            }
-        }
-
-        friend void swap(SurfaceWrapper &x, SurfaceWrapper &y)
-        {
-            using std::swap;
-            swap(x.surface, y.surface);
-            swap(x.instance, y.instance);
-        }
-
-        NO_COPY_AND_SWAP_AS_MOVE(SurfaceWrapper)
-
-        VkSurfaceKHR surface = VK_NULL_HANDLE;
-        VkInstance instance = VK_NULL_HANDLE;
-    };
-
-    // Note the destruction order...
-    Context ctx;
-    SurfaceWrapper surface;
-    Swapchain swapchain;
-    CmdBufManager cb_manager;
-};
-
-//-----------------------------------------------------------------------------
-// [ImGui integration]
-//-----------------------------------------------------------------------------
-
-struct GUICreateInfo
-{
-    const GFX *gfx = nullptr;
-    GLFWwindow *window = nullptr;
-};
-
-struct GUI
-{
-    GUI() = default;
-    explicit GUI(const GUICreateInfo &info);
-    ~GUI();
-
-    friend void swap(GUI &x, GUI &y) noexcept
-    {
-        using std::swap;
-
-        swap(x.window, y.window);
-        swap(x.gfx, y.gfx);
-        swap(x.pool, y.pool);
-        swap(x.render_pass, y.render_pass);
-        swap(x.framebuffers, y.framebuffers);
-        swap(x.update_fn, y.update_fn);
-        swap(x.show, y.show);
-    }
-
-    NO_COPY_AND_SWAP_AS_MOVE(GUI)
-
-    void render(VkCommandBuffer cmdBuf);
-
-    void resize();
-    void create_render_pass();
-    void destroy_render_pass();
-    void create_framebuffers();
-    void destroy_framebuffers();
-
-    void upload_frame();
-
-    GLFWwindow *window = nullptr;
-    const GFX *gfx = nullptr;
-
-    VkDescriptorPool pool = VK_NULL_HANDLE;
-    VkRenderPass render_pass = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> framebuffers;
-
-    std::function<void()> update_fn;
-    bool show = true;
-};
-
 } // namespace vk
 
 // TODO: maybe a separate header for slang?
@@ -1921,6 +1663,10 @@ struct CompiledSlangShader
     VkDevice device;
 };
 
+//-----------------------------------------------------------------------------
+// [Top level context for graphics services and resources]
+//-----------------------------------------------------------------------------
+
 struct GPUContext
 {
     vk::Context vk;
@@ -1933,12 +1679,20 @@ void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool v
               bool vk_swapchain = false);
 GPUContext &get_gpu_context();
 
+//-----------------------------------------------------------------------------
+// [Template for interactive apps ]
+// with swapchain management, command recoding, imgui integration, etc
+//-----------------------------------------------------------------------------
+
 struct GfxAppArgs
 {
     GPUContext *gpu_context;
-    uint32_t max_frames_ahead = 2;
     uint32_t window_width;
     uint32_t window_height;
+    // Only allows 2: double buffering | 3: triple buffering
+    uint32_t swapchain_image_count = 3;
+    // max_frames_in_flight should be <= swapchain_image_count.
+    uint32_t max_frames_in_flight = 2;
     std::string app_name;
 };
 
@@ -1963,7 +1717,8 @@ struct GfxApp
     void process_frame();
     bool acquire_swapchain();
     void encode_cmds_base();
-    std::vector<VkCommandBuffer> acquire_cbs(uint32_t count);
+    std::span<VkCommandBuffer> acquire_cbs(uint32_t count);
+    VkCommandBuffer acquire_cb();
 
     bool submit_cmds_and_present();
     void resize();
@@ -1977,6 +1732,8 @@ struct GfxApp
     VkSurfaceKHR surface = VK_NULL_HANDLE;
 
     // swapchain
+    uint32_t swapchain_image_count;
+    uint32_t max_frames_in_flight;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     VkFormat swapchain_format = {};
     VkExtent2D swapchain_extent = {};
@@ -1984,10 +1741,10 @@ struct GfxApp
     std::vector<VkImageView> swapchain_image_views;
     std::vector<VkSemaphore> present_complete_semaphores;
     std::vector<VkSemaphore> render_complete_semaphores;
-    std::vector<VkFence> inflight_fences;
-    uint32_t max_frames_ahead = 0;
-    uint32_t render_ahead_index = 0;
-    uint32_t frame_index = 0;
+    std::vector<VkFence> in_flight_fences;
+    uint32_t curr_frame_in_flight_index = 0;
+    uint32_t curr_swapchain_image_index = 0;
+
     // commands each swapchain frame
     struct CmdFrame
     {
