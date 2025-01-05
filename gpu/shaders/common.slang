@@ -101,12 +101,6 @@ public float3x3 orthonormal_basis_to_local(float3 N)
     return float3x3(X, Y, N);
 }
 
-public float luminance(float3 rgb)
-{
-    static const float3 lum_weight = float3(0.212671f, 0.715160f, 0.072169f);
-    return dot(rgb, lum_weight);
-}
-
 public struct Frame
 {
     public __init(float3 t, float3 b, float3 n) { m = transpose(float3x3(t, b, n)); }
@@ -405,70 +399,6 @@ public float3 spherical_fibonacci(int i, int N)
 
 public float rounding_error_gamma(int n) { return (n * fp32_machine_epsilon) / (1 - n * fp32_machine_epsilon); }
 
-public bool isect_ray_aabb(float3 bmin, float3 bmax, float3 o, float3 d, float tmin, float tmax, out float hitt0,
-                           out float hitt1)
-{
-    float t0 = tmin, t1 = tmax;
-    [[ForceUnroll]]
-    for (int i = 0; i < 3; ++i) {
-        // Update interval for _i_th bounding box slab
-        float invRayDir = 1 / d[i];
-        float tNear = (bmin[i] - o[i]) * invRayDir;
-        float tFar = (bmax[i] - o[i]) * invRayDir;
-        // Update parametric interval from slab intersection $t$ values
-        if (tNear > tFar) {
-            swap(tNear, tFar);
-        }
-        // Update _tFar_ to ensure robust ray--bounds intersection
-        tFar *= 1 + 2 * rounding_error_gamma(3);
-
-        t0 = tNear > t0 ? tNear : t0;
-        t1 = tFar < t1 ? tFar : t1;
-        if (t0 > t1) {
-            hitt0 = hitt1 = 0.0;
-            return false;
-        }
-    }
-
-    hitt0 = t0;
-    hitt1 = t1;
-    return true;
-}
-
-public bool isect_ray_aabb(float3 b[2], float3 o, float3 d, float raytMax, float3 invDir, int3 dirIsNeg)
-{
-    // Check for ray intersection against $x$ and $y$ slabs
-    float tMin = (b[dirIsNeg[0]].x - o.x) * invDir.x;
-    float tMax = (b[1 - dirIsNeg[0]].x - o.x) * invDir.x;
-    float tyMin = (b[dirIsNeg[1]].y - o.y) * invDir.y;
-    float tyMax = (b[1 - dirIsNeg[1]].y - o.y) * invDir.y;
-    // Update _tMax_ and _tyMax_ to ensure robust bounds intersection
-    tMax *= 1 + 2 * rounding_error_gamma(3);
-    tyMax *= 1 + 2 * rounding_error_gamma(3);
-
-    if (tMin > tyMax || tyMin > tMax)
-        return false;
-    if (tyMin > tMin)
-        tMin = tyMin;
-    if (tyMax < tMax)
-        tMax = tyMax;
-
-    // Check for ray intersection against $z$ slab
-    float tzMin = (b[dirIsNeg[2]].z - o.z) * invDir.z;
-    float tzMax = (b[1 - dirIsNeg[2]].z - o.z) * invDir.z;
-    // Update _tzMax_ to ensure robust bounds intersection
-    tzMax *= 1 + 2 * rounding_error_gamma(3);
-
-    if (tMin > tzMax || tzMin > tMax)
-        return false;
-    if (tzMin > tMin)
-        tMin = tzMin;
-    if (tzMax < tMax)
-        tMax = tzMax;
-
-    return (tMin < raytMax) && (tMax > 0);
-}
-
 // Wächter, Carsten, and Nikolaus Binder. "A fast and robust method for avoiding self-intersection." Ray Tracing Gems:
 // High-Quality and Real-Time Rendering with DXR and Other APIs (2019): 77-85.
 //
@@ -595,4 +525,149 @@ public matrix<T, 3, 3> cholesky_decompose<T>(matrix<T, 3, 3> A)
     L[2][0] = l31; L[2][1] = l32;   L[2][2] = l33;
     // clang-format on
     return L;
+}
+
+public struct AABB<let N : int>
+{
+    public __init()
+    {
+        min_value = float.maxValue;
+        max_value = -float.maxValue;
+    }
+
+    public __init(vector<float, N> _min, vector<float, N> _max)
+    {
+        min_value = _min;
+        max_value = _max;
+    }
+
+    public __subscript(int i)->vector<float, N>
+    {
+        get { return i == 0 ? min_value : max_value; }
+    }
+
+    [mutating]
+    public void expand(vector<float, N> point)
+    {
+        min_value = min(min_value, point);
+        max_value = max(max_value, point);
+    }
+
+    [mutating]
+    public void expand(AABB<N> aabb)
+    {
+        min_value = min(min_value, aabb.min_value);
+        max_value = max(max_value, aabb.max_value);
+    }
+
+    public bool is_empty() { return any(min_value > max_value); }
+
+    public vector<float, N> center() { return 0.5f * (min_value + max_value); }
+
+    public vector<float, N> extent() { return max_value - min_value; }
+
+    public float offset(vector<float, N> point, uint32_t dim)
+    {
+        float ext = extent()[dim];
+        if (ext == 0.0f) {
+            return 0.0f;
+        }
+        return (point[dim] - min_value[dim]) / ext;
+    }
+
+    public vector<float, N> offset(vector<float, N> point)
+    {
+        vector<float, N> ext = extent();
+        vector<float, N> o = select(ext == 0.0f, 0.0, (point - min_value) / ext);
+        return o;
+    }
+
+    public vector<float, N> lerp(vector<float, N> t) { return ::lerp(min_value, max_value, t); }
+
+    public vector<float, N> min_value;
+    public vector<float, N> max_value;
+}
+
+public bool isect_ray_aabb(AABB<3> b, float3 o, float3 d, float tmin, float tmax, out float hitt0, out float hitt1)
+{
+    float t0 = tmin, t1 = tmax;
+    [[ForceUnroll]]
+    for (int i = 0; i < 3; ++i) {
+        // Update interval for _i_th bounding box slab
+        float invRayDir = 1 / d[i];
+        float tNear = (b.min_value[i] - o[i]) * invRayDir;
+        float tFar = (b.max_value[i] - o[i]) * invRayDir;
+        // Update parametric interval from slab intersection $t$ values
+        if (tNear > tFar) {
+            swap(tNear, tFar);
+        }
+        // Update _tFar_ to ensure robust ray--bounds intersection
+        tFar *= 1 + 2 * rounding_error_gamma(3);
+
+        t0 = tNear > t0 ? tNear : t0;
+        t1 = tFar < t1 ? tFar : t1;
+        if (t0 > t1) {
+            hitt0 = hitt1 = 0.0;
+            return false;
+        }
+    }
+
+    hitt0 = t0;
+    hitt1 = t1;
+    return true;
+}
+
+public bool isect_ray_aabb(AABB<3> b, RayDesc ray, out float hitt0, out float hitt1)
+{
+    return isect_ray_aabb(b, ray.Origin, ray.Direction, ray.TMin, ray.TMax, hitt0, hitt1);
+}
+
+public bool isect_ray_aabb(AABB<3> b, float3 o, float3 d, float raytMax, float3 invDir, int3 dirIsNeg)
+{
+    // Check for ray intersection against $x$ and $y$ slabs
+    float tMin = (b[dirIsNeg[0]].x - o.x) * invDir.x;
+    float tMax = (b[1 - dirIsNeg[0]].x - o.x) * invDir.x;
+    float tyMin = (b[dirIsNeg[1]].y - o.y) * invDir.y;
+    float tyMax = (b[1 - dirIsNeg[1]].y - o.y) * invDir.y;
+    // Update _tMax_ and _tyMax_ to ensure robust bounds intersection
+    tMax *= 1 + 2 * rounding_error_gamma(3);
+    tyMax *= 1 + 2 * rounding_error_gamma(3);
+
+    if (tMin > tyMax || tyMin > tMax)
+        return false;
+    if (tyMin > tMin)
+        tMin = tyMin;
+    if (tyMax < tMax)
+        tMax = tyMax;
+
+    // Check for ray intersection against $z$ slab
+    float tzMin = (b[dirIsNeg[2]].z - o.z) * invDir.z;
+    float tzMax = (b[1 - dirIsNeg[2]].z - o.z) * invDir.z;
+    // Update _tzMax_ to ensure robust bounds intersection
+    tzMax *= 1 + 2 * rounding_error_gamma(3);
+
+    if (tMin > tzMax || tzMin > tMax)
+        return false;
+    if (tzMin > tMin)
+        tMin = tzMin;
+    if (tzMax < tMax)
+        tMax = tzMax;
+
+    return (tMin < raytMax) && (tMax > 0);
+}
+
+public float luminance(float3 rgb)
+{
+    static const float3 lum_weight = float3(0.212671f, 0.715160f, 0.072169f);
+    return dot(rgb, lum_weight);
+}
+
+public vector<float, N> srgb_to_linear<let N : int>(vector<float, N> x)
+{
+    return select(x < 0.04045f, x / 12.92f, pow((x + 0.055f) / 1.055f, 2.4f));
+}
+
+public vector<float, N> linear_to_srgb<let N : int>(vector<float, N> x)
+{
+    return select(x < 0.0031308f, x * 12.92f, pow(x, 1.0f / 2.4f) * 1.055f - 0.055f);
 }

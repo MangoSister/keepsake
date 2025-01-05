@@ -85,6 +85,11 @@ public struct RNG
     public uint64_t inc;
 }
 
+// https://www.shadertoy.com/view/XlGcRh
+
+// One-liner linear congruential generator. Quick but low quality.
+public uint lcg(uint p) { return p * 1664525u + 1013904223u; }
+
 public uint xxhash32_1(uint p)
 {
     static const uint PRIME32_2 = 2246822519U, PRIME32_3 = 3266489917U;

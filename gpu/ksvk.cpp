@@ -170,6 +170,12 @@ static vk::ContextArgs get_default_context_args(bool validation, bool swapchain)
         };
     ctx_args.device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 
+    ctx_args.add_device_feature<VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT>() =
+        VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_IMAGE_ATOMIC_INT64_FEATURES_EXT,
+            .shaderImageInt64Atomics = VK_TRUE};
+    ctx_args.device_extensions.push_back(VK_EXT_SHADER_IMAGE_ATOMIC_INT64_EXTENSION_NAME);
+
     ctx_args.add_device_feature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>() =
         VkPhysicalDeviceAccelerationStructureFeaturesKHR{
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
