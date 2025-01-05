@@ -112,9 +112,19 @@ struct BinaryReader
     std::ifstream stream;
 };
 
+enum class BinaryWriterMode : int
+{
+    Truncate,
+    Append
+};
+
 struct BinaryWriter
 {
-    explicit BinaryWriter(const fs::path &path) : stream(path, std::ios::binary) { ASSERT(stream); }
+    explicit BinaryWriter(const fs::path &path, BinaryWriterMode mode = BinaryWriterMode::Truncate)
+        : stream(path, mode == BinaryWriterMode::Truncate ? (std::ios::binary) : (std::ios::binary | std::ios ::app))
+    {
+        ASSERT(stream);
+    }
 
     void write(const void *ptr, size_t bytes)
     {
