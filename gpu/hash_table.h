@@ -133,13 +133,13 @@ class HashTable
 
     // TODO: make this better....
     template <typename TableEntryCopyFn>
-    vk::AutoRelease<vk::Buffer> create_gpu(size_t gpu_table_entry_byte_size, const TableEntryCopyFn &copy_fn,
-                                           std::shared_ptr<vk::Allocator> allocator, VmaMemoryUsage usage,
-                                           VmaAllocationCreateFlags flags) const
+    vk::AutoRelease<vk::Buffer> create_gpu(std::shared_ptr<vk::Allocator> allocator, VmaMemoryUsage usage,
+                                           VmaAllocationCreateFlags flags, size_t gpu_table_entry_byte_size,
+                                           const TableEntryCopyFn &copy_fn) const
     {
         std::vector<std::byte> copy(gpu_table_entry_byte_size * capacity());
         for (int i = 0; i < capacity(); ++i) {
-            copy_fn(table[i], copy.data() + i * gpu_table_entry_byte_size);
+            copy_fn(table[i].key, table[i].value, table[i].set, copy.data() + i * gpu_table_entry_byte_size);
         }
         return vk::AutoRelease<vk::Buffer>(allocator,
                                            VkBufferCreateInfo{

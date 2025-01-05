@@ -454,10 +454,7 @@ void FrequentUploadBuffer::upload(VkCommandBuffer cb, VkPipelineStageFlags dst_s
         barrier.offset = 0;
         barrier.size = VK_WHOLE_SIZE;
 
-        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_HOST_BIT,
-                             VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR |
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             0, {}, {&barrier, 1}, {});
+        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_HOST_BIT, dst_stage_mask, 0, {}, {&barrier, 1}, {});
     } else {
         VkBufferMemoryBarrier barrier_mapping = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         barrier_mapping.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
@@ -488,10 +485,7 @@ void FrequentUploadBuffer::upload(VkCommandBuffer cb, VkPipelineStageFlags dst_s
         barrier_copy.offset = 0;
         barrier_copy.size = VK_WHOLE_SIZE;
 
-        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR |
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             0, {}, {&barrier_copy, 1}, {});
+        vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, dst_stage_mask, 0, {}, {&barrier_copy, 1}, {});
     }
 }
 
@@ -583,13 +577,15 @@ void Allocator::end_staging_session()
 
 VkDeviceSize Allocator::image_size(const VkImageCreateInfo &info) const
 {
-    uint32_t numPixels = 0;
-    for (uint32_t i = 0, w = info.extent.width, h = info.extent.height; i < info.mipLevels; ++i) {
-        numPixels += w * h;
+    size_t num_pixels = 0;
+    for (uint32_t i = 0, w = info.extent.width, h = info.extent.height, d = info.extent.depth; i < info.mipLevels;
+         ++i) {
+        num_pixels += w * h * d;
         w = std::max(w / 2, 1u);
         h = std::max(h / 2, 1u);
+        d = std::max(d / 2, 1u);
     }
-    return numPixels * vkuFormatElementSize(info.format) * info.arrayLayers;
+    return num_pixels * vkuFormatElementSize(info.format) * info.arrayLayers;
 }
 
 #include <vulkan/utility/vk_format_utils.h>
@@ -2728,8 +2724,9 @@ void GfxApp::glfw_scroll_callback(GLFWwindow *window, double xoffset, double yof
 }
 
 GfxApp::GfxApp(const GfxAppArgs &args)
-    : gpu(args.gpu_context), swapchain_image_count(args.swapchain_image_count),
-      max_frames_in_flight(args.max_frames_in_flight), app_name(args.app_name)
+    : app_name(args.app_name), gpu(args.gpu_context), swapchain_image_count(args.swapchain_image_count),
+      max_frames_in_flight(args.max_frames_in_flight), swapchain_image_usage(args.swapchain_image_usage),
+      swapchain_image_format(args.swapchain_image_format)
 {
     ASSERT(swapchain_image_count == 2 || swapchain_image_count == 3);
     ASSERT(max_frames_in_flight <= swapchain_image_count);
@@ -2825,10 +2822,10 @@ GfxApp::GfxApp(const GfxAppArgs &args)
     initInfo.PipelineCache = VK_NULL_HANDLE;
     initInfo.DescriptorPool = imgui_desc_pool;
     initInfo.Subpass = 0;
-    initInfo.MinImageCount = initInfo.ImageCount = (uint32_t)swapchain_images.size();
+    initInfo.MinImageCount = initInfo.ImageCount = swapchain_image_count;
     initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     initInfo.UseDynamicRendering = true;
-    initInfo.ColorAttachmentFormat = swapchain_format;
+    initInfo.ColorAttachmentFormat = swapchain_image_format;
     initInfo.CheckVkResultFn = imgui_vk_debug_callback;
 
     ImGui_ImplVulkan_Init(&initInfo, VK_NULL_HANDLE);
@@ -2852,7 +2849,7 @@ void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
     vk::vk_check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, all_formats.data()));
 
     VkSurfaceFormatKHR surface_format;
-    surface_format.format = VK_FORMAT_B8G8R8A8_UNORM;
+    surface_format.format = swapchain_image_format;
     surface_format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     bool format_supported = false;
     for (const auto &fmt : all_formats) {
@@ -2906,8 +2903,9 @@ void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
     swapchain_create_info.imageColorSpace = surface_format.colorSpace;
     swapchain_create_info.imageExtent = swapchain_extent;
     swapchain_create_info.imageArrayLayers = 1;
-    // We assume the last pass is imgui. If not we need to change this based on what is rendered before.
-    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    // We assume the last pass is imgui so or'ed with color attachment
+    swapchain_create_info.imageUsage =
+        swapchain_image_usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     // We only use one queue now.
     swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchain_create_info.preTransform = capabilities.currentTransform;
@@ -2917,7 +2915,6 @@ void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
     swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
     vk::vk_check(vkCreateSwapchainKHR(device, &swapchain_create_info, nullptr, &swapchain));
 
-    swapchain_format = surface_format.format;
     vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, nullptr));
     swapchain_images.resize(swapchain_image_count);
     vk::vk_check(vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, swapchain_images.data()));
@@ -2928,7 +2925,7 @@ void GfxApp::create_swapchain_and_images(uint32_t width, uint32_t height)
         view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         view_info.image = swapchain_images[i];
         view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view_info.format = swapchain_format;
+        view_info.format = swapchain_image_format;
         view_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         view_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
         view_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -2996,26 +2993,10 @@ void GfxApp::run()
 void GfxApp::process_frame()
 {
     float delta_time = std::chrono::duration<float>(curr_time - prev_time).count();
-    float delta_time_ms = std::chrono::duration<float, std::milli>(curr_time - prev_time).count();
-    {
-        // Show simple stats.
-        prev_time = curr_time;
-        curr_time = std::chrono::steady_clock::now();
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        std::array<char, 512> title;
-#ifndef NDEBUG
-        constexpr char build[] = "Debug";
-#else
-        constexpr char build[] = "Release";
-#endif
-        sprintf(title.data(), "%s (%s) [%d x %d] [%.3f ms / %.1f fps]", app_name.c_str(), build, width, height,
-                delta_time_ms, 1000.0f / delta_time_ms);
-        glfwSetWindowTitle(window, title.data());
-    }
 
     update(delta_time);
     update_imgui_base();
+    update_title();
 
     if (!acquire_swapchain()) {
         resize();
@@ -3196,7 +3177,7 @@ void GfxApp::encode_imgui(VkCommandBuffer cb)
     color_attachment_info.clearValue.color.float32[1] = 0.0f;
     color_attachment_info.clearValue.color.float32[2] = 0.0f;
     color_attachment_info.clearValue.color.float32[3] = 1.0f;
-    color_attachment_info.loadOp = has_output_to_swapchain ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    color_attachment_info.loadOp = has_output_to_swapchain ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment_info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkRenderingInfo rendering_info{
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -3227,6 +3208,27 @@ void GfxApp::encode_imgui(VkCommandBuffer cb)
     vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, (VkDependencyFlags)(0), {}, {},
                          {&swapchain_to_present, 1});
+}
+
+void GfxApp::update_title()
+{
+    float delta_time_ms = std::chrono::duration<float, std::milli>(curr_time - prev_time).count();
+    {
+        // Show simple stats.
+        prev_time = curr_time;
+        curr_time = std::chrono::steady_clock::now();
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        std::array<char, 512> title;
+#ifndef NDEBUG
+        constexpr char build[] = "Debug";
+#else
+        constexpr char build[] = "Release";
+#endif
+        sprintf(title.data(), "%s (%s) [%d x %d] [%.3f ms / %.1f fps]", app_name.c_str(), build, width, height,
+                delta_time_ms, 1000.0f / delta_time_ms);
+        glfwSetWindowTitle(window, title.data());
+    }
 }
 
 } // namespace ks

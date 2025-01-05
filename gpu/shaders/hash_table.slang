@@ -10,6 +10,12 @@ public interface IKeyEqual<T>
     public bool operator()(T x, T y);
 }
 
+public struct DefaultEqual<T> : IKeyEqual<T>
+    where T : IComparable
+{
+    public bool operator()(T x, T y) { return x == y; }
+}
+
 public struct ReadonlyHashTable<Key, Value, Hash, KeyEqual>
     where Hash : IHash<Key>
     where KeyEqual : IKeyEqual<Key>

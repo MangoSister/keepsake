@@ -277,7 +277,9 @@ struct PerFrameBuffer
 struct FrequentUploadBuffer
 {
     bool require_staging() const { return staging.buffer != VK_NULL_HANDLE; }
-    void upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask) const;
+    void upload(VkCommandBuffer cb, VkPipelineStageFlags dst_stage_mask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+                                                                          VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR |
+                                                                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) const;
 
     Buffer dest;
     Buffer staging;
@@ -833,6 +835,8 @@ struct CmdBufRecorder
     CmdBufRecorder(CmdBufRecorder &&other) = delete;
     CmdBufRecorder &operator=(const CmdBufRecorder &other) = delete;
     CmdBufRecorder &operator=(CmdBufRecorder &&other) = delete;
+
+    operator VkCommandBuffer() const { return cb; }
 
     VkCommandBuffer cb;
 };
@@ -1686,6 +1690,7 @@ GPUContext &get_gpu_context();
 
 struct GfxAppArgs
 {
+    std::string app_name;
     GPUContext *gpu_context;
     uint32_t window_width;
     uint32_t window_height;
@@ -1693,7 +1698,8 @@ struct GfxAppArgs
     uint32_t swapchain_image_count = 3;
     // max_frames_in_flight should be <= swapchain_image_count.
     uint32_t max_frames_in_flight = 2;
-    std::string app_name;
+    VkImageUsageFlags swapchain_image_usage = (VkImageUsageFlags)(0);
+    VkFormat swapchain_image_format = VK_FORMAT_B8G8R8A8_SRGB;
 };
 
 struct GfxApp
@@ -1726,6 +1732,8 @@ struct GfxApp
     void update_imgui_base();
     void encode_imgui(VkCommandBuffer cb);
 
+    void update_title();
+
     std::string app_name;
     GLFWwindow *window = nullptr;
     GPUContext *gpu = nullptr;
@@ -1734,8 +1742,9 @@ struct GfxApp
     // swapchain
     uint32_t swapchain_image_count;
     uint32_t max_frames_in_flight;
+    VkImageUsageFlags swapchain_image_usage = (VkImageUsageFlags)(0);
+    VkFormat swapchain_image_format = VK_FORMAT_B8G8R8A8_UNORM;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    VkFormat swapchain_format = {};
     VkExtent2D swapchain_extent = {};
     std::vector<VkImage> swapchain_images;
     std::vector<VkImageView> swapchain_image_views;
