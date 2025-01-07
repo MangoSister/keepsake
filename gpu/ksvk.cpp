@@ -1605,7 +1605,7 @@ void ParameterBlockMeta::init(VkDevice device, uint32_t max_sets, DescriptorSetH
     this->device = device;
     this->max_sets = max_sets;
 
-    last_unbounded_array = helper.last_unbounded_array;
+    last_unbounded_array = this->desc_set_helper.last_unbounded_array;
 
     desc_pool = desc_set_helper.create_pool(device, max_sets);
     desc_set_layout = desc_set_helper.create_set_layout(device);

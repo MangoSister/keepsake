@@ -269,6 +269,9 @@ struct ByteEqual
     bool operator()(const T &a, const T &b) const { return std::memcmp(&a, &b, sizeof(T)) == 0; }
 };
 
+template <typename T>
+using ByteOpHashTable = std::unordered_map<T, uint32_t, ByteHash<T>, ByteEqual<T>>;
+
 // heterogeneous lookup: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1690r1.html
 // https://www.cppstories.com/2021/heterogeneous-access-cpp20/
 struct string_hash

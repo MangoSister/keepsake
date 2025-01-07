@@ -507,6 +507,15 @@ public uint3 decode_morton_3(uint32_t code)
     return uint3(x, y, z);
 }
 
+inline float2 demux_float(float f)
+{
+    // ASSERT(f >= 0 && f < 1);
+    uint32_t v = (uint32_t)(f * (float)(1ull << 32));
+    // ASSERT(v < 0x100000000);
+    uint32_t bits[2] = { compact_1_by_1(v), compact_1_by_1(v >> 1) };
+    return { bits[0] / float(1 << 16), bits[1] / float(1 << 16) };
+}
+
 // https://rosettacode.org/wiki/Cholesky_decomposition
 public matrix<T, 3, 3> cholesky_decompose<T>(matrix<T, 3, 3> A)
     where T : __BuiltinFloatingPointType
@@ -670,4 +679,18 @@ public vector<float, N> srgb_to_linear<let N : int>(vector<float, N> x)
 public vector<float, N> linear_to_srgb<let N : int>(vector<float, N> x)
 {
     return select(x < 0.0031308f, x * 12.92f, pow(x, 1.0f / 2.4f) * 1.055f - 0.055f);
+}
+
+// TODO
+public struct Quaternion
+{
+    public __init()
+    {
+        w = 1;
+        x = y = z = 0;
+    }
+    float w;
+    float x;
+    float y;
+    float z;
 }

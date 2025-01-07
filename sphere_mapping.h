@@ -174,6 +174,25 @@ inline vec2 sphere_to_square(const vec3 &d)
     return vec2(u, v);
 }
 
+inline vec2 wrap(vec2 uv)
+{
+    if (uv[0] < 0) {
+        uv[0] = -uv[0];    // mirror across u = 0
+        uv[1] = 1 - uv[1]; // mirror across v = 0.5
+    } else if (uv[0] > 1) {
+        uv[0] = 2 - uv[0]; // mirror across u = 1
+        uv[1] = 1 - uv[1]; // mirror across v = 0.5
+    }
+    if (uv[1] < 0) {
+        uv[0] = 1 - uv[0]; // mirror across u = 0.5
+        uv[1] = -uv[1];    // mirror across v = 0;
+    } else if (uv[1] > 1) {
+        uv[0] = 1 - uv[0]; // mirror across u = 0.5
+        uv[1] = 2 - uv[1]; // mirror across v = 1
+    }
+    return uv;
+}
+
 inline void bilerp(const vec2 &pos, int N, std::array<vec2i, 4> &idx, vec4 &weight)
 {
     // ASSERT(is_pow2(N));

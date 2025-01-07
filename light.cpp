@@ -4,6 +4,7 @@
 #include "ray.h"
 #include "rng.h"
 #include "sat.h"
+#include "sphere_mapping.h"
 #include <atomic>
 #include <tuple>
 #include <utility>
@@ -19,7 +20,15 @@ SkyLight::SkyLight(const fs::path &path, const Transform &l2w, bool transform_y_
     : l2w(l2w), transform_y_up(transform_y_up), strength(strength)
 {
     int width, height;
-    std::unique_ptr<color3[]> pixels = load_from_hdr<3>(path, width, height);
+    std::unique_ptr<color3[]> pixels;
+    if (path.extension() == ".hdr") {
+        pixels = load_from_hdr<3>(path, width, height);
+    } else if (path.extension() == ".exr") {
+        pixels = load_from_exr<3>(path, width, height);
+    } else {
+        fprintf(stderr, "Unsupported hdri format (only hdr or exr)!\n");
+        std::abort();
+    }
     map = BlockedArray<color3>(width, height, 1, pixels.get());
     std::vector<float> lum(width * height);
     std::atomic<float> lum_sum(0.0);
@@ -149,6 +158,47 @@ color3 SkyLight::power(const AABB3 &scene_bound) const
     return Phi;
 }
 
+EqualAreaSkyLight::EqualAreaSkyLight(const fs::path &path, quat to_world, float strength)
+    : to_world(to_world), strength(strength)
+{
+    int width, height;
+    if (path.extension() == ".hdr") {
+        texels = load_from_hdr<3>(path, width, height);
+    } else if (path.extension() == ".exr") {
+        texels = load_from_exr<3>(path, width, height);
+    } else {
+        fprintf(stderr, "Unsupported hdri format (only hdr or exr)!\n");
+        std::abort();
+    }
+    ASSERT(width == height, "The map should use equal-area parameterization and have a square shape");
+    res = width;
+    std::vector<float> lum(sqr(res));
+    for (size_t i = 0; i < lum.size(); ++i) {
+        lum[i] = luminance(texels[i]);
+    }
+    pmf = AliasTable(lum);
+}
+
+color3 EqualAreaSkyLight::power(const AABB3 &scene_bound) const
+{
+    std::array<std::atomic<float>, 3> sum{0.0f, 0.0f, 0.0f};
+
+    parallel_for(res, [&](int row) {
+        color3 row_sum = color3::Zero();
+        for (int col = 0; col < res; ++col) {
+            row_sum += texels[row * res + col];
+        }
+        for (int c = 0; c < 3; ++c)
+            sum[c].fetch_add(row_sum[c]);
+    });
+
+    color3 Phi(sum[0], sum[1], sum[2]);
+    Phi *= (4 * pi) / sqr(res);
+    float scene_radius = 0.5f * scene_bound.extents().norm();
+    Phi *= pi * sqr(scene_radius);
+    return Phi;
+}
+
 color3 DirectionalLight::sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const
 {
     wi = dir;
@@ -193,6 +243,8 @@ std::unique_ptr<Light> create_light(const ConfigArgs &args)
         light = create_point_light(args);
     } else if (light_type == "sky") {
         light = create_sky_light(args);
+    } else if (light_type == "equal_area_sky") {
+        light = create_equal_area_sky_light(args);
     }
     return light;
 }
@@ -211,6 +263,17 @@ std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args)
         float strength = args.load_float("strength", 1.0f);
         return std::make_unique<SkyLight>(map, to_world, transform_y_up, strength);
     }
+}
+
+std::unique_ptr<EqualAreaSkyLight> create_equal_area_sky_light(const ConfigArgs &args)
+{
+
+    fs::path map = args.load_path("map");
+    quat to_world = quat::Identity();
+    if (args.contains("to_world"))
+        to_world = quat(args.load_vec4("to_world"));
+    float strength = args.load_float("strength", 1.0f);
+    return std::make_unique<EqualAreaSkyLight>(map, to_world, strength);
 }
 
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args)
@@ -629,6 +692,76 @@ const Light *PowerLightSampler::get(uint32_t light_index) const
     } else {
         return &mesh_lights[group_index - 1]->lights[offset];
     }
+}
+
+void convert_hdri(const ks::ConfigArgs &args, const fs::path &task_dir, int task_id)
+{
+    fs::path hdri_path = args.load_path("path");
+    int hdri_width, hdri_height;
+    std::unique_ptr<color3[]> hdri_pixels;
+    if (hdri_path.extension() == ".hdr") {
+        hdri_pixels = load_from_hdr<3>(hdri_path, hdri_width, hdri_height);
+    } else if (hdri_path.extension() == ".exr") {
+        hdri_pixels = load_from_exr<3>(hdri_path, hdri_width, hdri_height);
+    } else {
+        fprintf(stderr, "Unsupported hdri format (only hdr or exr)!\n");
+        std::abort();
+    }
+
+    int res = args.load_integer("res");
+
+    constexpr int filter_tap = 5;
+    constexpr float filter_radius = 1.5;
+    constexpr float filter_sigma = 2.0;
+    std::array<float, filter_tap> filter_samples;
+    std::array<float, filter_tap> filter_weights;
+
+    auto gaussian = [](float x, float mu, float sigma) {
+        // #sqrt(2 * pi) = 2.5066282746
+        return 1.0f / (sigma * 2.5066282746f) * std::exp(-(ks::sqr(x - mu)) / (2.0f * (sigma * sigma)));
+    };
+
+    float filter_weights_sum = 0.0f;
+    for (int i = 0; i < filter_tap; ++i) {
+        filter_samples[i] = std::lerp(-filter_radius, filter_radius, (float)i / (filter_tap - 1)) * 0.8f;
+        filter_weights[i] = std::max(
+            gaussian(filter_samples[i], 0.0f, filter_sigma) - gaussian(filter_radius, 0.0f, filter_sigma), 0.0f);
+        filter_weights_sum += filter_weights[i];
+    }
+    for (int i = 0; i < filter_tap; ++i) {
+        filter_weights[i] /= filter_weights_sum;
+    }
+
+    std::vector<ks::color3> equal_area(res * res, ks::color3::Zero());
+    parallel_tile_2d(res, res, [&](int x, int y) {
+        for (int yy = 0; yy < filter_tap; ++yy) {
+            for (int xx = 0; xx < filter_tap; ++xx) {
+                vec2 s(filter_samples[xx], filter_samples[yy]);
+                vec2 p_jitter = (vec2(x, y) + s) / res;
+                p_jitter = sph_map::wrap(p_jitter);
+                vec3 dir = sph_map::square_to_sphere(p_jitter);
+                float theta = std::acos(dir.z());
+                float phi = std::atan2(dir.y(), dir.x());
+                if (phi < 0.0f)
+                    phi += pi * 2.0f;
+                int v0, v1;
+                float vt;
+                int u0, u1;
+                float ut;
+                lerp_helper(theta / pi, hdri_height, WrapMode::Clamp, TickMode::Middle, v0, v1, vt);
+                lerp_helper(phi / (pi * 2.0f), hdri_width, WrapMode::Clamp, TickMode::Middle, u0, u1, ut);
+                color3 value = (1.0f - vt) * (1.0f - ut) * hdri_pixels[v0 * hdri_width + u0] +
+                               (1.0f - vt) * ut * hdri_pixels[v0 * hdri_width + u1] +
+                               vt * (1.0f - ut) * hdri_pixels[v1 * hdri_width + u0] +
+                               vt * ut * hdri_pixels[v1 * hdri_width + u1];
+                equal_area[y * res + x] += value * filter_weights[xx] * filter_weights[yy];
+            }
+        }
+    });
+
+    fs::path output_path = task_dir / hdri_path.stem();
+    output_path += "_equalarea.exr";
+    ks::save_to_exr((const std::byte *)equal_area.data(), false, res, res, 3, output_path);
 }
 
 } // namespace ks

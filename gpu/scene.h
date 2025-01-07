@@ -81,83 +81,6 @@ enum class SceneBindings : uint32_t
 
 } // namespace host_device
 
-template <typename T>
-using ByteOpHashTable = std::unordered_map<T, uint32_t, ByteHash<T>, ByteEqual<T>>;
-
-struct SamplerCache
-{
-    SamplerCache(const VkDevice &device) : device(device){};
-    ~SamplerCache()
-    {
-        for (VkSampler s : samplers) {
-            vkDestroySampler(device, s, nullptr);
-        }
-        samplers.clear();
-        map.clear();
-    }
-
-    VkSampler get_or_create(const VkSamplerCreateInfo &info, uint32_t *id)
-    {
-        auto insert = map.insert({info, 0});
-        if (insert.second) {
-            VkSampler sampler;
-            vk::vk_check(vkCreateSampler(device, &info, nullptr, &sampler));
-            insert.first->second = (uint32_t)samplers.size();
-            if (id) {
-                *id = (uint32_t)samplers.size();
-            }
-            samplers.push_back(sampler);
-            return sampler;
-        } else {
-            if (id) {
-                *id = insert.first->second;
-            }
-            return samplers[insert.first->second];
-        }
-    }
-
-    ByteOpHashTable<VkSamplerCreateInfo> map;
-    std::vector<VkSampler> samplers;
-    VkDevice device;
-};
-
-struct ImageViewCache
-{
-    ImageViewCache(const VkDevice &device) : device(device){};
-    ~ImageViewCache()
-    {
-        for (VkImageView v : views) {
-            vkDestroyImageView(device, v, nullptr);
-        }
-        views.clear();
-        map.clear();
-    }
-
-    VkImageView get_or_create(const VkImageViewCreateInfo &info, uint32_t *id)
-    {
-        auto insert = map.insert({info, 0});
-        if (insert.second) {
-            VkImageView view;
-            vk::vk_check(vkCreateImageView(device, &info, nullptr, &view));
-            insert.first->second = (uint32_t)views.size();
-            if (id) {
-                *id = (uint32_t)views.size();
-            }
-            views.push_back(view);
-            return view;
-        } else {
-            if (id) {
-                *id = insert.first->second;
-            }
-            return views[insert.first->second];
-        }
-    }
-
-    ByteOpHashTable<VkImageViewCreateInfo> map;
-    std::vector<VkImageView> views;
-    VkDevice device;
-};
-
 // Corresponds to one geometry in the BLAS.
 struct GPUMeshData
 {
@@ -252,8 +175,8 @@ struct GPUScene
     std::vector<vk::AutoRelease<vk::Image>> material_textures_2d;
     std::vector<VkImageCreateInfo> material_textures_2d_ci;
     // It's common to have one multiple views for a texture (roughness/metallic channels).
-    ImageViewCache material_textures_2d_view_cache;
-    SamplerCache sampler_cache;
+    vk::ImageViewCache material_textures_2d_view_cache;
+    vk::SamplerCache sampler_cache;
     // (image_view_id, sampler_id) -> (combined_id)
     ByteOpHashTable<std::pair<uint32_t, uint32_t>> material_texture_2d_combined_sampler_map;
 

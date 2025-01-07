@@ -1,5 +1,11 @@
 implementing ks;
 
+public struct AliasTableBin
+{
+    float q, p;
+    int alias;
+};
+
 public struct AliasTableSample
 {
     int index;
@@ -9,6 +15,8 @@ public struct AliasTableSample
 
 public struct AliasTable
 {
+    public __init(StructuredBuffer<AliasTableBin, ScalarDataLayout> b) { bins = b; }
+
     public AliasTableSample sample(float u)
     {
         // Compute alias table _offset_ and remapped random sample _up_
@@ -42,10 +50,5 @@ public struct AliasTable
 
     public float pmf(int index) { return bins[index].p; }
 
-    struct Bin
-    {
-        float q, p;
-        int alias;
-    };
-    StructuredBuffer<Bin, ScalarDataLayout> bins;
+    StructuredBuffer<AliasTableBin, ScalarDataLayout> bins;
 };

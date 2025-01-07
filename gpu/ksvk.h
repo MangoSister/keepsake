@@ -949,6 +949,7 @@ struct ParameterBlockMeta
         swap(x.device, y.device);
         swap(x.max_sets, y.max_sets);
         swap(x.allocated_sets, y.allocated_sets);
+        swap(x.last_unbounded_array, y.last_unbounded_array);
     }
 
     NO_COPY_AND_SWAP_AS_MOVE(ParameterBlockMeta)
@@ -1510,6 +1511,80 @@ class SBTWrapper
     Allocator *m_pAlloc{nullptr}; // Allocator for buffer, images, acceleration structures
     DebugUtil m_debug;            // Utility to name objects
     uint32_t m_queueIndex{0};
+};
+
+struct SamplerCache
+{
+    SamplerCache(const VkDevice &device) : device(device) {};
+    ~SamplerCache()
+    {
+        for (VkSampler s : samplers) {
+            vkDestroySampler(device, s, nullptr);
+        }
+        samplers.clear();
+        map.clear();
+    }
+
+    VkSampler get_or_create(const VkSamplerCreateInfo &info, uint32_t *id)
+    {
+        auto insert = map.insert({info, 0});
+        if (insert.second) {
+            VkSampler sampler;
+            vk::vk_check(vkCreateSampler(device, &info, nullptr, &sampler));
+            insert.first->second = (uint32_t)samplers.size();
+            if (id) {
+                *id = (uint32_t)samplers.size();
+            }
+            samplers.push_back(sampler);
+            return sampler;
+        } else {
+            if (id) {
+                *id = insert.first->second;
+            }
+            return samplers[insert.first->second];
+        }
+    }
+
+    ByteOpHashTable<VkSamplerCreateInfo> map;
+    std::vector<VkSampler> samplers;
+    VkDevice device;
+};
+
+struct ImageViewCache
+{
+    ImageViewCache(const VkDevice &device) : device(device) {};
+    ~ImageViewCache()
+    {
+        for (VkImageView v : views) {
+            vkDestroyImageView(device, v, nullptr);
+        }
+        views.clear();
+        map.clear();
+    }
+
+    VkImageView get_or_create(const VkImageViewCreateInfo &info, uint32_t *id)
+    {
+        auto insert = map.insert({info, 0});
+        if (insert.second) {
+            VkImageView view;
+            vk::vk_check(vkCreateImageView(device, &info, nullptr, &view));
+            insert.first->second = (uint32_t)views.size();
+            if (id) {
+                *id = (uint32_t)views.size();
+            }
+            views.push_back(view);
+            return view;
+        } else {
+            if (id) {
+                *id = insert.first->second;
+            }
+            return views[insert.first->second];
+        }
+    }
+
+    ByteOpHashTable<VkImageViewCreateInfo> map;
+    std::vector<VkImageView> views;
+    VkDevice device;
 };
 
 } // namespace vk

@@ -53,10 +53,44 @@ struct SkyLight : public Light
     float strength = 1.0f;
 };
 
+// TODO: currently this is only used to interface GPU. Not implemented for CPU.
+struct EqualAreaSkyLight : public Light
+{
+    EqualAreaSkyLight(const fs::path &path, quat to_world, float strength = 1.0f);
+
+    bool delta_position() const { return false; };
+    bool delta_direction() const { return false; };
+
+    color3 eval(const vec3 &wi) const
+    {
+        ASSERT(false);
+        return color3::Zero();
+    }
+    // NOTE: return throughput weight: (L / pdf)
+    color3 sample(const vec3 &p_shade, const vec2 &u, vec3 &wi, float &wi_dist, float &pdf) const
+    {
+        ASSERT(false);
+        return color3::Zero();
+    }
+    float pdf(const vec3 &p_shade, const vec3 &wi, float wi_dist) const
+    {
+        ASSERT(false);
+        return 0.0f;
+    }
+
+    color3 power(const AABB3 &scene_bound) const;
+
+    quat to_world;
+    float strength;
+    std::unique_ptr<color3[]> texels;
+    int res;
+    AliasTable pmf;
+};
+
 struct DirectionalLight : public Light
 {
     DirectionalLight() = default;
-    DirectionalLight(const color3 &L, const vec3 &dir) : L(L), dir(dir){};
+    DirectionalLight(const color3 &L, const vec3 &dir) : L(L), dir(dir) {};
 
     bool delta_position() const { return false; };
     bool delta_direction() const { return true; };
@@ -72,7 +106,7 @@ struct DirectionalLight : public Light
 struct PointLight : public Light
 {
     PointLight() = default;
-    PointLight(const color3 &I, const vec3 &pos) : I(I), pos(pos){};
+    PointLight(const color3 &I, const vec3 &pos) : I(I), pos(pos) {};
 
     bool delta_position() const { return true; };
     bool delta_direction() const { return false; };
@@ -123,6 +157,7 @@ struct MeshTriLight : public Light
 
 std::unique_ptr<Light> create_light(const ConfigArgs &args);
 std::unique_ptr<SkyLight> create_sky_light(const ConfigArgs &args);
+std::unique_ptr<EqualAreaSkyLight> create_equal_area_sky_light(const ConfigArgs &args);
 std::unique_ptr<DirectionalLight> create_directional_light(const ConfigArgs &args);
 std::unique_ptr<PointLight> create_point_light(const ConfigArgs &args);
 

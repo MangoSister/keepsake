@@ -9,3 +9,4 @@ __include pixel_filter;
 __include adam;
 __include alias_table;
 __include hash_table;
+__include light;
