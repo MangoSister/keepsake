@@ -78,9 +78,9 @@ struct PointLight : ILight
     float3 pos;
 }
 
-struct EqualAreaSkyLight : ILight
+public struct EqualAreaSkyLight : ILight
 {
-    __init(Sampler2D<float4> _map, AliasTable _pmf)
+    public __init(Sampler2D<float4> _map, AliasTable _pmf)
     {
         map = _map;
         pmf = _pmf;
@@ -88,7 +88,7 @@ struct EqualAreaSkyLight : ILight
         strength = 1.0;
     }
 
-    uint get_map_res()
+    public uint get_map_res()
     {
         uint width, height, num_levels;
         map.GetDimensions(0, width, height, num_levels);
@@ -98,7 +98,7 @@ struct EqualAreaSkyLight : ILight
         return width;
     }
 
-    LightSample sample(float3 p_shade, float2 u)
+    public LightSample sample(float3 p_shade, float2 u)
     {
         uint map_res = get_map_res();
 
@@ -119,7 +119,7 @@ struct EqualAreaSkyLight : ILight
         return s;
     }
 
-    float pdf(float3 p_shade, float3 wi, float wi_dist)
+    public float pdf(float3 p_shade, float3 wi, float wi_dist)
     {
         uint map_res = get_map_res();
 
@@ -129,7 +129,7 @@ struct EqualAreaSkyLight : ILight
         return pmf.pmf(idx) * sqr(map_res) / (4.0f * pi);
     }
 
-    float3 eval(float3 wi)
+    public float3 eval(float3 wi)
     {
         // float3 wi_local = to_world.inv_direction(wi);
         float2 p_square = equal_area_sphere_to_square(wi);
@@ -146,7 +146,7 @@ struct EqualAreaSkyLight : ILight
 
         float3 Le = float3(0);
         for (int i = 0; i < 4; ++i) {
-            Le += weight[i] * map.SampleLevel((float2)idx[i] / float2(map_res, map_res), 0).rgb;
+            Le += weight[i] * map.SampleLevel(((float2)idx[i] + 0.5) / float2(map_res, map_res), 0).rgb;
         }
         Le *= strength;
 
@@ -174,41 +174,6 @@ public struct LightHeader
     public float3 field2;
     public int ext;
 }
-
-// struct LightContextUniforms
-// {
-//     uint num_skylights;
-// }
-
-// public struct LightContext
-// {
-//     ILight get_light(int index)
-//     {
-//         if (headers[index].flag & (LightFlag::Directional)) {
-//             return DirectionalLight(headers[index].field1, headers[index].field2);
-//         } else if (headers[index].flag & (LightFlag::Point)) {
-//             return PointLight(headers[index].field1, headers[index].field2);
-//         } else if (headers[index].flag & (LightFlag::Sky)) {
-//             return get_skylight(index);
-//         } else {
-//             return DirectionalLight(float3(1, 0, 1), float3(0, 0, 1));
-//         }
-//     }
-
-//     SkyLight get_skylight(int index)
-//     {
-//         int tex_idx = headers[index].ext;
-//         return SkyLight(textures[tex_idx], skylight_pmf[index]);
-//     }
-
-//     static const uint max_skylights = 2;
-//     LightContextUniforms uniforms;
-//     // Skylights are always at front.
-//     public StructuredBuffer<LightHeader, ScalarDataLayout> headers;
-//     public AliasTable pmf;
-//     public AliasTable skylight_pmf[max_skylights];
-//     public Sampler2D<float4> textures[];
-// }
 
 public struct LightSystemUniforms
 {
@@ -247,7 +212,7 @@ public struct LightPMFArray
 
 public struct LightSystem
 {
-    ILight get_light(int index)
+    public ILight get_light(int index)
     {
         LightHeader h = global.headers[index];
         if (h.flag & (LightFlag::Directional)) {
@@ -261,7 +226,9 @@ public struct LightSystem
         }
     }
 
-    EqualAreaSkyLight get_skylight(int index)
+    public uint num_skylights() { return global.uniforms.num_skylights; }
+
+    public EqualAreaSkyLight get_skylight(int index)
     {
         LightHeader h = global.headers[index];
 

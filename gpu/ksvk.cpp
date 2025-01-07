@@ -2722,11 +2722,24 @@ void GfxApp::glfw_error_callback(int error, const char *description)
 void GfxApp::glfw_key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
     //
+    reinterpret_cast<GfxApp *>(glfwGetWindowUserPointer(window))->key_callback(key, scancode, action, mods);
 }
 
 void GfxApp::glfw_scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
 {
     //
+    reinterpret_cast<GfxApp *>(glfwGetWindowUserPointer(window))->scroll_callback(xoffset, yoffset);
+}
+
+void GfxApp::glfw_cursor_position_callback(GLFWwindow *window, double xpos, double ypos)
+{
+    //
+    reinterpret_cast<GfxApp *>(glfwGetWindowUserPointer(window))->cursor_position_callback(xpos, ypos);
+}
+void GfxApp::glfw_mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
+{
+    //
+    reinterpret_cast<GfxApp *>(glfwGetWindowUserPointer(window))->mouse_button_callback(button, action, mods);
 }
 
 GfxApp::GfxApp(const GfxAppArgs &args)
@@ -2742,10 +2755,11 @@ GfxApp::GfxApp(const GfxAppArgs &args)
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     // glfwWindowHint(GLFW_DECORATED , GLFW_FALSE);
     window = glfwCreateWindow(args.window_width, args.window_height, args.app_name.c_str(), nullptr, nullptr);
-    // glfwGetWindowSize
     glfwSetWindowUserPointer(window, this);
     glfwSetKeyCallback(window, glfw_key_callback);
     glfwSetScrollCallback(window, glfw_scroll_callback);
+    glfwSetCursorPosCallback(window, glfw_cursor_position_callback);
+    glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
 
     vk::vk_check(glfwCreateWindowSurface(gpu->vk.instance, window, nullptr, &surface));
 
@@ -2989,7 +3003,6 @@ GfxApp::~GfxApp()
 void GfxApp::run()
 {
     while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
         process_frame();
     }
 
@@ -2998,11 +3011,7 @@ void GfxApp::run()
 
 void GfxApp::process_frame()
 {
-    float delta_time = std::chrono::duration<float>(curr_time - prev_time).count();
-
-    update(delta_time);
-    update_imgui_base();
-    update_title();
+    update_base();
 
     if (!acquire_swapchain()) {
         resize();
@@ -3014,6 +3023,44 @@ void GfxApp::process_frame()
     if (!submit_cmds_and_present()) {
         resize();
     }
+}
+
+float GfxApp::delta_time() const { return std::chrono::duration<float>(curr_time - prev_time).count(); }
+
+void GfxApp::update_base()
+{
+    prev_time = curr_time;
+    curr_time = std::chrono::steady_clock::now();
+    if (prev_time == time_point()) {
+        prev_time = curr_time;
+    }
+
+    float delta_time_ms = std::chrono::duration<float, std::milli>(curr_time - prev_time).count();
+
+    // Show simple stats.
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    std::array<char, 512> title;
+#ifndef NDEBUG
+    constexpr char build[] = "Debug";
+#else
+    constexpr char build[] = "Release";
+#endif
+    sprintf(title.data(), "%s (%s) [%d x %d] [%.3f ms / %.1f fps]", app_name.c_str(), build, width, height,
+            delta_time_ms, 1000.0f / delta_time_ms);
+    glfwSetWindowTitle(window, title.data());
+
+    glfwPollEvents();
+
+    update();
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    update_imgui();
+
+    ImGui::End();
 }
 
 bool GfxApp::acquire_swapchain()
@@ -3134,17 +3181,6 @@ void GfxApp::resize()
     ImGui_ImplVulkan_SetMinImageCount((uint32_t)swapchain_images.size());
 }
 
-void GfxApp::update_imgui_base()
-{
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
-
-    update_imgui();
-
-    ImGui::End();
-}
-
 void GfxApp::encode_imgui(VkCommandBuffer cb)
 {
     ImGui::Render();
@@ -3214,27 +3250,6 @@ void GfxApp::encode_imgui(VkCommandBuffer cb)
     vk::pipeline_barrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, (VkDependencyFlags)(0), {}, {},
                          {&swapchain_to_present, 1});
-}
-
-void GfxApp::update_title()
-{
-    float delta_time_ms = std::chrono::duration<float, std::milli>(curr_time - prev_time).count();
-    {
-        // Show simple stats.
-        prev_time = curr_time;
-        curr_time = std::chrono::steady_clock::now();
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        std::array<char, 512> title;
-#ifndef NDEBUG
-        constexpr char build[] = "Debug";
-#else
-        constexpr char build[] = "Release";
-#endif
-        sprintf(title.data(), "%s (%s) [%d x %d] [%.3f ms / %.1f fps]", app_name.c_str(), build, width, height,
-                delta_time_ms, 1000.0f / delta_time_ms);
-        glfwSetWindowTitle(window, title.data());
-    }
 }
 
 } // namespace ks

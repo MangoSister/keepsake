@@ -1783,31 +1783,36 @@ struct GfxApp
     virtual ~GfxApp();
 
     void run();
-    virtual void update(float delta_time) = 0;
+    virtual void update() = 0;
     virtual void update_imgui() = 0;
     virtual void encode_cmds() = 0;
 
+    virtual void key_callback(int key, int scancode, int action, int mods) = 0;
+    virtual void scroll_callback(double xoffset, double yoffset) = 0;
+    virtual void cursor_position_callback(double xpos, double ypos) = 0;
+    virtual void mouse_button_callback(int button, int action, int mods) = 0;
+
   protected:
+    float delta_time() const;
+
     static void glfw_error_callback(int error, const char *description);
     static void glfw_key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
     static void glfw_scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
+    static void glfw_cursor_position_callback(GLFWwindow *window, double xpos, double ypos);
+    static void glfw_mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
 
     void create_swapchain_and_images(uint32_t width, uint32_t height);
     void destroy_swapchain_and_images();
 
     void process_frame();
+    void update_base();
     bool acquire_swapchain();
     void encode_cmds_base();
     std::span<VkCommandBuffer> acquire_cbs(uint32_t count);
     VkCommandBuffer acquire_cb();
-
+    void encode_imgui(VkCommandBuffer cb);
     bool submit_cmds_and_present();
     void resize();
-
-    void update_imgui_base();
-    void encode_imgui(VkCommandBuffer cb);
-
-    void update_title();
 
     std::string app_name;
     GLFWwindow *window = nullptr;
