@@ -174,12 +174,59 @@ inline vec3 roberts_qmc_3d(uint32_t n, const vec3 &p0 = vec3::Zero())
     return p;
 }
 
+// Marques, Ricardo, et al. "Spherical Fibonacci point sets for illumination integrals." Computer Graphics Forum.
+// Vol. 32. No. 8. 2013. Keinert, Benjamin, et al. "Spherical fibonacci mapping." ACM Transactions on Graphics
+// (TOG) 34.6 (2015): 1-7.
+// https://www.shadertoy.com/view/lllXz4
 inline vec3 spherical_fibonacci(int i, int N)
 {
     constexpr float golden_ratio = 1.61803398875f;
     float phi = two_pi * ((float)i / golden_ratio - std::floor((float)i / golden_ratio));
     float z = 1.0f - (float)(2 * i + 1) / (float)N;
     return to_cartesian(phi, std::acos(z));
+}
+
+inline int inv_spherical_fibonacci(const vec3 &p, int N)
+{
+    constexpr float golden_ratio = 1.61803398875f;
+    constexpr float sqrt_5 = 2.2360679775f;
+    constexpr float log2_gr_1 = 1.38848382726f;
+
+    float k = std::max(2.0, std::floor(std::log2(N * pi * sqrt_5 * (1.0 - p.z() * p.z())) / log2_gr_1));
+    float Fk = std::pow(golden_ratio, k) / sqrt_5;
+    vec2 F = vec2(std::round(Fk), std::round(Fk * golden_ratio)); // |Fk|, |Fk+1|
+
+    vec2 ka = 2.0 * F / N;
+    // vec2  kb = kTau*(fract((F+1.0)*kPhi)-(kPhi-1.0));
+    vec2 kb = (F + vec2(1.0, 1.0)) * golden_ratio;
+    kb -= vec2(kb.array().floor());
+    kb = two_pi * (kb - vec2::Constant(golden_ratio - 1.0));
+
+    // mat2 iB = mat2( ka.y, -ka.x, kb.y, -kb.x ) / (ka.y*kb.x - ka.x*kb.y);
+    mat2 iB;
+    iB << ka.y(), kb.y(), -ka.x(), -kb.x();
+    iB /= (ka.y() * kb.x() - ka.x() * kb.y());
+    vec2 c = (iB * vec2(atan2(p.y(), p.x()), p.z() - 1.0 + 1.0 / N)).array().floor();
+
+    float d = 8.0;
+    int j = 0;
+    for (int s = 0; s < 4; s++) {
+        vec2 uv = vec2(s & 1, s >> 1);
+        int id = clamp((int)F.dot(uv + c), 0, N - 1); // all quantities are integers
+
+        float phi = two_pi * fract(id * golden_ratio);
+        float cosTheta = 1.0 - (2.0 * id + 1.0) / N;
+        float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+        vec3 q = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+        float tmp = (q - p).squaredNorm();
+        if (tmp < d) {
+            d = tmp;
+            j = id;
+        }
+    }
+    ASSERT(j >= 0 && j < N);
+    return j;
 }
 
 inline vec3 sample_uniform_hemisphere(const vec2 &u)

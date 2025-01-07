@@ -64,10 +64,24 @@ public T sigmoid<T>(T x)
 
 // No built-in inverse???
 [Differentiable]
-public float2x2 inverse(float2x2 A)
+public matrix<T, 2, 2> inverse<T>(matrix<T, 2, 2> A)
+    where T : __BuiltinFloatingPointType
 {
-    float det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
-    return float2x2(A[1][1], -A[0][1], -A[1][0], A[0][0]) / det;
+    T det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    return matrix<T, 2, 2>(A[1][1], -A[0][1], -A[1][0], A[0][0]) / det;
+}
+
+[Differentiable]
+public matrix<T, 3, 3> inverse<T>(matrix<T, 3, 3> A)
+    where T : __BuiltinFloatingPointType
+{
+    return matrix<T, 3, 3>(
+               // clang-format off
+        A[2][2] * A[1][1] - A[2][1] * A[1][2],      -(A[2][2] * A[0][1] - A[2][1] * A[0][2]),   A[1][2] * A[0][1] - A[1][1] * A[0][2],
+        -(A[2][2] * A[1][0] - A[2][0] * A[1][2]),   A[2][2] * A[0][0] - A[2][0] * A[0][2],      -(A[1][2] * A[0][0] - A[1][0] * A[0][2]),
+        A[2][1] * A[1][0] - A[2][0] * A[1][1],      -(A[2][1] * A[0][0] - A[2][0] * A[0][1]),   A[1][1] * A[0][0] - A[1][0] * A[0][1]) /
+           // clang-format on
+           determinant(A);
 }
 
 public matrix<T, N, N> make_diagonal<T, let N : int>(vector<T, N> diag)
@@ -389,12 +403,55 @@ public void equal_area_bilerp(float2 uv, int N, out int2 idx[4], out float4 weig
         idx[3] = int2(x1, y1);
 }
 
+// Marques, Ricardo, et al. "Spherical Fibonacci point sets for illumination integrals." Computer Graphics Forum.
+// Vol. 32. No. 8. 2013. Keinert, Benjamin, et al. "Spherical fibonacci mapping." ACM Transactions on Graphics
+// (TOG) 34.6 (2015): 1-7.
+// https://www.shadertoy.com/view/lllXz4
 public float3 spherical_fibonacci(int i, int N)
 {
     static const float golden_ratio = 1.61803398875f;
     float phi = two_pi * ((float)i / golden_ratio - floor((float)i / golden_ratio));
     float z = 1.0f - (float)(2 * i + 1) / (float)N;
     return to_cartesian(float2(phi, acos(z)));
+}
+
+public int inv_spherical_fibonacci(float3 p, int N)
+{
+    static const float golden_ratio = 1.61803398875f;
+    static const float sqrt_5 = 2.2360679775f;
+    static const float log2_gr_1 = 1.38848382726f;
+
+    float k = max(2.0, floor(log2(N * pi * sqrt_5 * (1.0 - p.z * p.z)) / log2_gr_1));
+    float Fk = pow(golden_ratio, k) / sqrt_5;
+    float2 F = float2(round(Fk), round(Fk * golden_ratio)); // |Fk|, |Fk+1|
+
+    float2 ka = 2.0 * F / N;
+    float2 kb = two_pi * (fract((F + 1.0) * golden_ratio) - (golden_ratio - 1.0));
+
+    // mat2 iB = mat2( ka.y, -ka.x, kb.y, -kb.x ) / (ka.y*kb.x - ka.x*kb.y);
+    // row-major
+    float2x2 iB = float2x2(ka.y, kb.y, -ka.x, -kb.x) / (ka.y * kb.x - ka.x * kb.y);
+    float2 c = floor(mul(iB, float2(atan2(p.y, p.x), p.z - 1.0 + 1.0 / N)));
+
+    float d = 8.0;
+    int j = 0;
+    for (int s = 0; s < 4; s++) {
+        float2 uv = float2(s & 1, s >> 1);
+        float id = clamp(dot(F, uv + c), 0.0, N - 1.0); // all quantities are integers
+
+        float phi = two_pi * fract(id * golden_ratio);
+        float cosTheta = 1.0 - (2.0 * id + 1.0) / N;
+        float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+        float3 q = float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+        float tmp = length_sqr(q - p);
+        if (tmp < d) {
+            d = tmp;
+            j = (int)id;
+        }
+    }
+    // ASSERT(j >= 0 && j < N);
+    return j;
 }
 
 public float rounding_error_gamma(int n) { return (n * fp32_machine_epsilon) / (1 - n * fp32_machine_epsilon); }
