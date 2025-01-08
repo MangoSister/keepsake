@@ -738,6 +738,83 @@ public vector<float, N> linear_to_srgb<let N : int>(vector<float, N> x)
     return select(x < 0.0031308f, x * 12.92f, pow(x, 1.0f / 2.4f) * 1.055f - 0.055f);
 }
 
+// Suggested by pbrt-v4
+// Jeannerod, Claude-Pierre, Nicolas Louvet, and Jean-Michel Muller.
+// "Further analysis of Kahan’s algorithm for the accurate computation of 2× 2 determinants." Mathematics of
+// Computation 82.284 (2013): 2245-2264.
+public T difference_of_products<T>(T a, T b, T c, T d)
+    where T : __BuiltinFloatingPointType
+{
+    T w = d * c;
+    T e = fma(-d, c, w);
+    T f = fma(a, b, -w);
+    return f + e;
+}
+public bool solve_quadratic(float a, float b, float c, out float t0, out float t1)
+{
+    // Handle case of $a=0$ for quadratic solution
+    if (a == 0) {
+        if (b == 0)
+            return false;
+        t0 = t1 = -c / b;
+        return true;
+    }
+
+    // Find quadratic discriminant
+    float discrim = difference_of_products(b, b, 4 * a, c);
+    if (discrim < 0)
+        return false;
+    float rootDiscrim = sqrt(discrim);
+
+    // Compute quadratic _t_ values
+    float q = -0.5f * (b + copysign(rootDiscrim, b));
+    t0 = q / a;
+    t1 = c / q;
+    if (t0 > t1)
+        swap(t0, t1);
+
+    return true;
+}
+
+public bool solve_quadratic(double a, double b, double c, out double t0, out double t1)
+{
+    // Find quadratic discriminant
+    double discrim = difference_of_products(b, b, 4 * a, c);
+    if (discrim < 0)
+        return false;
+    double rootDiscrim = sqrt(discrim);
+
+    if (a == 0) {
+        t0 = t1 = -c / b;
+        return true;
+    }
+
+    // Compute quadratic _t_ values
+    double q = -0.5 * (b + copysign(rootDiscrim, b));
+    t0 = q / a;
+    t1 = c / q;
+    if (t0 > t1)
+        swap(t0, t1);
+    return true;
+}
+
+// Find x s.t. Lx = b. L must be an invertible lower triangular matrix.
+public vector<float, N> forward_substitution<let N : int>(matrix<float, N, N> L, vector<float, N> b)
+{
+    vector<float, N> x;
+    [ForceUnroll]
+    for (int i = 0; i < N; ++i) {
+        float sum = 0;
+        [MaxIters(4)]
+        for (int j = 0; j < i; ++j) {
+            sum += L[i][j] * x[j];
+        }
+
+        x[i] = (b[i] - sum) / L[i][i];
+    }
+    return x;
+}
+
 // TODO
 public struct Quaternion
 {
