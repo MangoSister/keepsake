@@ -316,6 +316,8 @@ public float2 equal_area_sphere_to_square(float3 d)
         // u = 1 - v;
         // v = 1 - tmp;
         swap(u, v);
+        u = 1 - u;
+        v = 1 - v;
     }
 
     // Move (u,v) to the correct quadrant based on the signs of (x,y)
@@ -754,16 +756,22 @@ public bool solve_quadratic(float a, float b, float c, out float t0, out float t
 {
     // Handle case of $a=0$ for quadratic solution
     if (a == 0) {
-        if (b == 0)
+        if (b == 0) {
+            unused(t0);
+            unused(t1);
             return false;
+        }
         t0 = t1 = -c / b;
         return true;
     }
 
     // Find quadratic discriminant
     float discrim = difference_of_products(b, b, 4 * a, c);
-    if (discrim < 0)
+    if (discrim < 0) {
+        unused(t0);
+        unused(t1);
         return false;
+    }
     float rootDiscrim = sqrt(discrim);
 
     // Compute quadratic _t_ values
@@ -780,8 +788,11 @@ public bool solve_quadratic(double a, double b, double c, out double t0, out dou
 {
     // Find quadratic discriminant
     double discrim = difference_of_products(b, b, 4 * a, c);
-    if (discrim < 0)
+    if (discrim < 0) {
+        unused(t0);
+        unused(t1);
         return false;
+    }
     double rootDiscrim = sqrt(discrim);
 
     if (a == 0) {
@@ -799,7 +810,7 @@ public bool solve_quadratic(double a, double b, double c, out double t0, out dou
 }
 
 // Find x s.t. Lx = b. L must be an invertible lower triangular matrix.
-public vector<float, N> forward_substitution<let N : int>(matrix<float, N, N> L, vector<float, N> b)
+public vector<float, N> forward_substitute<let N : int>(matrix<float, N, N> L, vector<float, N> b)
 {
     vector<float, N> x;
     [ForceUnroll]
@@ -827,4 +838,11 @@ public struct Quaternion
     float x;
     float y;
     float z;
+}
+
+public float power_heur<let N : int>(float pf, float pg)
+{
+    float pf_n = pow(pf, N);
+    float pg_n = pow(pg, N);
+    return pf_n / (pf_n + pg_n);
 }
