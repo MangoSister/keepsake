@@ -3050,9 +3050,9 @@ void GfxApp::update_base()
             delta_time_ms, 1000.0f / delta_time_ms);
     glfwSetWindowTitle(window, title.data());
 
-    glfwPollEvents();
+    early_update();
 
-    update();
+    glfwPollEvents();
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -3061,6 +3061,8 @@ void GfxApp::update_base()
     update_imgui();
 
     ImGui::End();
+
+    update();
 }
 
 bool GfxApp::acquire_swapchain()

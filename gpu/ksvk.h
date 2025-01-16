@@ -1783,8 +1783,10 @@ struct GfxApp
     virtual ~GfxApp();
 
     void run();
-    virtual void update() = 0;
+    // update loop order: early_update -> glfw poll events -> update_imgui -> update -> render.
+    virtual void early_update() = 0;
     virtual void update_imgui() = 0;
+    virtual void update() = 0;
     virtual void encode_cmds() = 0;
 
     virtual void key_callback(int key, int scancode, int action, int mods) = 0;
