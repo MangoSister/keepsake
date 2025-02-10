@@ -463,9 +463,7 @@ create_texture_shader_field(const Texture &texture, int sampler_idx, const tinyg
                                              scale);
 }
 
-static void traverse_gltf_scene_graph(const tinygltf::Model &model,
-                                      const std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
-                                                               const Transform &to_world)> &callback)
+static void traverse_gltf_scene_graph(const tinygltf::Model &model, const TraverseGLTFSceneGraphCallback &callback)
 {
     auto dfs = [&](int node_idx, Transform transform, auto &self) -> bool {
         const auto &node = model.nodes[node_idx];
@@ -501,7 +499,7 @@ static void traverse_gltf_scene_graph(const tinygltf::Model &model,
 
         transform = transform * local_transform;
 
-        if (!callback(model, node, transform)) {
+        if (!callback(model, node, local_transform, transform)) {
             return false;
         }
 
@@ -544,9 +542,7 @@ static tinygltf::Model load_gltf_from_file(const fs::path &path)
     return model;
 }
 
-void traverse_gltf_scene_graph(const fs::path &path,
-                               const std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
-                                                        const Transform &to_world)> &callback)
+void traverse_gltf_scene_graph(const fs::path &path, const TraverseGLTFSceneGraphCallback &callback)
 {
     tinygltf::Model model = load_gltf_from_file(path);
     traverse_gltf_scene_graph(model, callback);
@@ -960,15 +956,77 @@ CompoundMeshAsset::LoadStats CompoundMeshAsset::load_from_gltf(const fs::path &p
         prototypes[i] = std::move(mesh_asset);
     }
 
-    traverse_gltf_scene_graph(model,
-                              [&](const tinygltf::Model &model, const tinygltf::Node &node, const Transform &to_world) {
-                                  if (node.mesh >= 0) {
-                                      uint32_t prototype = node.mesh;
-                                      instances.push_back({prototype, to_world});
-                                  }
-                                  return true;
-                              });
+    scene_graph_nodes.resize(model.nodes.size());
 
+    traverse_gltf_scene_graph(model, [&](const tinygltf::Model &model, const tinygltf::Node &node,
+                                         const Transform &local, const Transform &to_world) {
+        auto &dst_node = scene_graph_nodes[std::distance(&model.nodes[0], &node)];
+        decompose_srt(local.m, dst_node.translation, dst_node.rotation, dst_node.scale);
+        if (node.mesh >= 0) {
+            uint32_t prototype = node.mesh;
+            dst_node.instance_idx = (int)instances.size();
+            instances.push_back({prototype, to_world});
+        }
+        return true;
+    });
+
+    // Load transform animations (skinning not supported yet).
+    transform_animation.resize(model.animations.size());
+    for (int anim_idx = 0; anim_idx < model.animations.size(); ++anim_idx) {
+        const auto &src = model.animations[anim_idx];
+        auto &dst = transform_animation[anim_idx];
+        dst.name = src.name;
+        dst.channels.resize(src.channels.size());
+        for (int ch_idx = 0; ch_idx < src.channels.size(); ++ch_idx) {
+            dst.channels[ch_idx].node = src.channels[ch_idx].target_node;
+            if (src.channels[ch_idx].target_path == "translation") {
+                dst.channels[ch_idx].path = AnimationPath::Translation;
+            } else if (src.channels[ch_idx].target_path == "rotation") {
+                dst.channels[ch_idx].path = AnimationPath::Rotation;
+            } else if (src.channels[ch_idx].target_path == "scale") {
+                dst.channels[ch_idx].path = AnimationPath::Scale;
+            } else if (src.channels[ch_idx].target_path == "weights") {
+                dst.channels[ch_idx].path = AnimationPath::Weight;
+            }
+            dst.channels[ch_idx].sampler = src.channels[ch_idx].sampler;
+        }
+        dst.samplers.resize(src.samplers.size());
+        std::unordered_map<int, int> acc_to_data_array_map;
+        auto try_add_anim_data = [&](int acc_idx) {
+            auto it = acc_to_data_array_map.find(acc_idx);
+            if (it == acc_to_data_array_map.end()) {
+                const auto &acc = accessors[acc_idx];
+                const auto &view = bufferviews[acc.bufferView];
+                const auto &buf = buffers[view.buffer];
+                ASSERT(acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT);
+                ASSERT((acc.type == TINYGLTF_TYPE_SCALAR) || (acc.type == TINYGLTF_TYPE_VEC3) ||
+                       (acc.type == TINYGLTF_TYPE_VEC4));
+                int num_comp = tinygltf::GetNumComponentsInType(static_cast<uint32_t>(acc.type));
+
+                int data_array_idx = (int)dst.data_arrays.size();
+                dst.data_arrays.resize(dst.data_arrays.size() + 1);
+                dst.data_arrays[data_array_idx].resize(acc.count * num_comp);
+                copy_accessor_to_linear(buf, view, acc,
+                                        reinterpret_cast<uint8_t *>(dst.data_arrays[data_array_idx].data()));
+                it = acc_to_data_array_map.insert({acc_idx, data_array_idx}).first;
+            }
+            return it->second;
+        };
+
+        for (int s_idx = 0; s_idx < src.samplers.size(); ++s_idx) {
+            dst.samplers[s_idx].input_data_idx = try_add_anim_data(src.samplers[s_idx].input);
+            dst.samplers[s_idx].output_data_idx = try_add_anim_data(src.samplers[s_idx].output);
+            if (src.samplers[s_idx].interpolation == "STEP") {
+                dst.samplers[s_idx].interpolation = AnimationSamplerInterpolation::Step;
+            } else if (src.samplers[s_idx].interpolation == "LINEAR") {
+                dst.samplers[s_idx].interpolation = AnimationSamplerInterpolation::Linear;
+            } else if (src.samplers[s_idx].interpolation == "CUBICSPLINE") {
+                dst.samplers[s_idx].interpolation = AnimationSamplerInterpolation::CubicSpline;
+            }
+        }
+    }
+
+    // Finishing.
     LoadStats stats;
     stats.unique_tri_count = 0;
     stats.instanced_tri_count = 0;

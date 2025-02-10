@@ -44,9 +44,46 @@ std::unique_ptr<MeshAsset> create_mesh_asset(const ConfigArgs &args);
 Scene create_scene_from_mesh_asset(const MeshAsset &mesh_asset, const EmbreeDevice &device);
 void assign_material_list(Scene &scene, const ConfigArgs &args_materials);
 
-void traverse_gltf_scene_graph(const fs::path &path,
-                               const std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
-                                                        const Transform &to_world)> &callback);
+using TraverseGLTFSceneGraphCallback = std::function<bool(const tinygltf::Model &model, const tinygltf::Node &node,
+                                                          const Transform &local, const Transform &to_world)>;
+void traverse_gltf_scene_graph(const fs::path &path, const TraverseGLTFSceneGraphCallback &callback);
+
+enum class AnimationPath
+{
+    Translation,
+    Rotation,
+    Scale,
+    Weight, // TODO: morph target weights not supported yet.
+};
+
+struct AnimationChannel
+{
+    uint32_t node;
+    AnimationPath path;
+    uint32_t sampler;
+};
+
+enum class AnimationSamplerInterpolation
+{
+    Step,
+    Linear,
+    CubicSpline,
+};
+
+struct AnimationSampler
+{
+    uint32_t input_data_idx;
+    uint32_t output_data_idx;
+    AnimationSamplerInterpolation interpolation;
+};
+
+struct TransformAnimation
+{
+    std::string name;
+    std::vector<std::vector<float>> data_arrays;
+    std::vector<AnimationChannel> channels;
+    std::vector<AnimationSampler> samplers;
+};
 
 struct CompoundMeshAsset : public Configurable
 {
@@ -76,6 +113,17 @@ struct CompoundMeshAsset : public Configurable
     std::vector<std::pair<uint32_t, Transform>> instances;
     // Textures are owned here instead of in each child prototype mesh asset.
     std::vector<std::unique_ptr<Texture>> textures;
+
+    //
+    struct SceneGraphNode
+    {
+        vec3 scale = vec3::Ones();
+        quat rotation = quat::Identity();
+        vec3 translation = vec3::Zero();
+        int instance_idx = -1;
+    };
+    std::vector<SceneGraphNode> scene_graph_nodes;
+    std::vector<TransformAnimation> transform_animation;
 };
 
 std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &args);
