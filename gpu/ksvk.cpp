@@ -112,7 +112,7 @@ void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const 
 // tracing, bindless, atomics, etc.
 // Validation can have performance overhead, but usually we want it for testing both in debug and release build until we
 // are very confident...
-static vk::ContextArgs get_default_context_args(bool validation, bool swapchain)
+vk::ContextArgs get_default_context_args(bool validation, bool swapchain)
 {
     vk::ContextArgs ctx_args{};
     ctx_args.api_version_major = 1;

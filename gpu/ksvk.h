@@ -1754,6 +1754,7 @@ struct GPUContext
 };
 
 void init_gpu(std::span<const char *> shader_search_paths, int vk_device, const vk::ContextArgs &vkctx_args);
+vk::ContextArgs get_default_context_args(bool validation, bool swapchain);
 void init_gpu(std::span<const char *> shader_search_paths, int vk_device, bool vk_validation,
               bool vk_swapchain = false);
 GPUContext &get_gpu_context();
