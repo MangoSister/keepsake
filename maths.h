@@ -931,6 +931,43 @@ inline Frame transform_frame(const mat4 &m, const Frame &f)
     return Frame(t, b);
 }
 
+// https://www.pbr-book.org/3ed-2018/Geometry_and_Transformations/Animating_Transformations
+// Assuming an affine transformation.
+inline void decompose_srt(const mat4 &m, vec3 &T, quat &Rq, vec3 &Sv)
+{
+    T[0] = m(0, 3);
+    T[1] = m(1, 3);
+    T[2] = m(2, 3);
+
+    mat4 M = m;
+    for (int i = 0; i < 3; ++i)
+        M(i, 3) = M(3, i) = 0.f;
+    M(3, 3) = 1.f;
+
+    // Extract rotation by polar decomposition.
+    float norm;
+    int count = 0;
+    mat4 R = M;
+    do {
+        mat4 Rit = (R.transpose()).inverse();
+        mat4 Rnext = (R + Rit) / 2;
+
+        norm = 0;
+        for (int i = 0; i < 3; ++i) {
+            float n =
+                std::abs((R)(i, 0) - Rnext(i, 0)) + std::abs(R(i, 1) - Rnext(i, 1)) + std::abs((R)(i, 2) - Rnext(i, 2));
+            norm = std::max(norm, n);
+        }
+
+        R = Rnext;
+    } while (++count < 100 && norm > .0001);
+
+    mat4 S = R.inverse() * M;
+
+    Rq = quat(mat3(R.topLeftCorner(3, 3)));
+    Sv = vec3(S(0, 0), S(1, 1), S(2, 2));
+}
+
 struct Transform
 {
     Transform() = default;
