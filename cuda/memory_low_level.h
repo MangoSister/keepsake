@@ -1,5 +1,5 @@
 #pragma once
-#include "basic.cuh"
+#include "api_error.h"
 
 namespace ksc
 {

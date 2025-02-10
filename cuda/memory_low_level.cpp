@@ -1,4 +1,4 @@
-#include "memory_low_level.cuh"
+#include "memory_low_level.h"
 #include <cstdio>
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
@@ -13,14 +13,14 @@
 #include <windows.h>
 #include <winternl.h>
 #elif defined(__linux__)
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/wait.h>
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/un.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace ksc
