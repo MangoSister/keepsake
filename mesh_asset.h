@@ -48,6 +48,7 @@ using TraverseGLTFSceneGraphCallback = std::function<bool(const tinygltf::Model 
                                                           const Transform &local, const Transform &to_world)>;
 void traverse_gltf_scene_graph(const fs::path &path, const TraverseGLTFSceneGraphCallback &callback);
 
+// TODO: Consolidate with camera animation...
 enum class AnimationPath
 {
     Translation,
@@ -108,6 +109,7 @@ struct CompoundMeshAsset : public Configurable
     };
 
     LoadStats load_from_gltf(const fs::path &path, LoadMaterialOptions load_material_options);
+    AABB3 compute_rest_bound() const;
 
     std::vector<MeshAsset> prototypes;
     std::vector<std::pair<uint32_t, Transform>> instances;
@@ -121,8 +123,10 @@ struct CompoundMeshAsset : public Configurable
         quat rotation = quat::Identity();
         vec3 translation = vec3::Zero();
         int instance_idx = -1;
+        std::vector<uint32_t> children;
     };
     std::vector<SceneGraphNode> scene_graph_nodes;
+    std::vector<uint32_t> scene_graph_root_nodes;
     std::vector<TransformAnimation> transform_animation;
 };
 

@@ -961,14 +961,46 @@ CompoundMeshAsset::LoadStats CompoundMeshAsset::load_from_gltf(const fs::path &p
     traverse_gltf_scene_graph(model, [&](const tinygltf::Model &model, const tinygltf::Node &node,
                                          const Transform &local, const Transform &to_world) {
         auto &dst_node = scene_graph_nodes[std::distance(&model.nodes[0], &node)];
-        decompose_srt(local.m, dst_node.translation, dst_node.rotation, dst_node.scale);
+        if (!node.matrix.empty()) {
+            decompose_srt(local.m, dst_node.translation, dst_node.rotation, dst_node.scale);
+        } else {
+            dst_node.scale = vec3::Ones();
+            dst_node.rotation = quat::Identity();
+            dst_node.translation = vec3::Zero();
+            if (!node.scale.empty()) {
+                dst_node.scale[0] = node.scale[0];
+                dst_node.scale[1] = node.scale[1];
+                dst_node.scale[2] = node.scale[2];
+            }
+            if (!node.rotation.empty()) {
+                // GLTF rotations are stored as XYZW quaternions
+                dst_node.rotation.w() = node.rotation[3];
+                dst_node.rotation.x() = node.rotation[0];
+                dst_node.rotation.y() = node.rotation[1];
+                dst_node.rotation.z() = node.rotation[2];
+            }
+            if (!node.translation.empty()) {
+                dst_node.translation[0] = node.translation[0];
+                dst_node.translation[1] = node.translation[1];
+                dst_node.translation[2] = node.translation[2];
+            }
+        }
+
         if (node.mesh >= 0) {
             uint32_t prototype = node.mesh;
             dst_node.instance_idx = (int)instances.size();
             instances.push_back({prototype, to_world});
         }
+        dst_node.children.resize(node.children.size());
+        for (int i = 0; i < dst_node.children.size(); ++i) {
+            dst_node.children[i] = node.children[i];
+        }
         return true;
     });
+    scene_graph_root_nodes.resize(model.scenes[model.defaultScene].nodes.size());
+    for (int i = 0; i < scene_graph_root_nodes.size(); ++i) {
+        scene_graph_root_nodes[i] = (uint32_t)model.scenes[model.defaultScene].nodes[i];
+    }
 
     // Load transform animations (skinning not supported yet).
     transform_animation.resize(model.animations.size());
@@ -1056,6 +1088,27 @@ CompoundMeshAsset::LoadStats CompoundMeshAsset::load_from_gltf(const fs::path &p
     }
 
     return stats;
+}
+
+AABB3 CompoundMeshAsset::compute_rest_bound() const
+{
+    AABB3 scene_bound;
+    for (const auto &[subscene, transform] : instances) {
+        const MeshAsset &mesh_asset = prototypes[subscene];
+        for (const auto &mesh : mesh_asset.meshes) {
+            Combinable<AABB3> bounds_workers;
+            parallel_for(
+                mesh->vertex_count(),
+                [&](uint32_t v) {
+                    vec3 p = transform.point(mesh->get_pos(v));
+                    AABB3 &b = bounds_workers.local();
+                    b.expand(p);
+                },
+                16);
+            bounds_workers.combine_each([&](const AABB3 &local) { scene_bound.expand(local); });
+        }
+    }
+    return scene_bound;
 }
 
 std::unique_ptr<CompoundMeshAsset> create_compound_mesh_asset(const ConfigArgs &args)
