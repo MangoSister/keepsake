@@ -72,7 +72,7 @@ struct SBVH
     CUDA_HOST_DEVICE
     uint32_t tri_count() const { return (uint32_t)indices.size / 3; };
     CUDA_HOST_DEVICE
-    array<vec3, 3> tri_verts(size_t tri_idx) const
+    cuda::std::array<vec3, 3> tri_verts(size_t tri_idx) const
     {
         return {vertices[indices[tri_idx * 3 + 0]], vertices[indices[tri_idx * 3 + 1]],
                 vertices[indices[tri_idx * 3 + 2]]};

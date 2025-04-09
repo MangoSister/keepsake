@@ -2,6 +2,7 @@
 
 #include "transform.cuh"
 #include "vecmath.cuh"
+#include <cuda/std/bit>
 
 namespace ksc
 {
@@ -47,6 +48,8 @@ CUDA_HOST_DEVICE inline vec3 offset_ray(const vec3 &p, const vec3 &n)
     constexpr float int_scale = 256.0f;
 
     vec3i of_i(int_scale * n.x, int_scale * n.y, int_scale * n.z);
+
+    // using cuda::std::bit_cast
 
     vec3 p_i(bit_cast<float, int>(bit_cast<int, float>(p.x) + ((p.x < 0) ? -of_i.x : of_i.x)),
              bit_cast<float, int>(bit_cast<int, float>(p.y) + ((p.y < 0) ? -of_i.y : of_i.y)),

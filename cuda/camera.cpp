@@ -5,6 +5,7 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
+/*
 // Define these only in *one* .cc file.
 #define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
@@ -20,6 +21,7 @@
 #undef far
 #endif
 #endif
+*/
 
 namespace ksc
 {
@@ -36,6 +38,7 @@ void Camera::load_from_config(const ks::ConfigArgs &args)
                    ksc::vec3(camera_up.x(), camera_up.y(), camera_up.z()), camera_vfov, camera_aspect);
 }
 
+/*
 void copy_accessor_to_linear(const std::vector<tinygltf::Buffer> &buffers,
                              const std::vector<tinygltf::BufferView> &bufferviews, const tinygltf::Accessor &acc,
                              uint8_t *dest)
@@ -227,5 +230,5 @@ void CameraAnimation::load_from_config(const ks::ConfigArgs &args)
         }
     }
 }
-
+*/
 } // namespace ksc

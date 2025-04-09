@@ -257,7 +257,7 @@ CUDA_HOST_DEVICE inline vec3 sample_tetrahedron(const vec3 &v0, const vec3 &v1, 
     return v0 * coord[0] + v1 * coord[1] + v2 * coord[2] + v3 * coord[3];
 }
 
-CUDA_HOST_DEVICE inline int sample_small_discrete(span<const float> data, float u, float *u_remap = nullptr)
+CUDA_HOST_DEVICE inline int sample_small_discrete(cuda::std::span<const float> data, float u, float *u_remap = nullptr)
 {
     int N = (int)data.size();
     float sum_w = 0.0f;

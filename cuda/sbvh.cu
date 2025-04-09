@@ -492,7 +492,7 @@ struct IsectQuery
     CUDA_HOST_DEVICE
     bool intersect(const AABB3 &bound) const { return isect_ray_aabb(ray, bound, rb); }
     CUDA_HOST_DEVICE
-    bool intersect(const array<vec3, 3> &tri, RayTriIsect *isect = nullptr) const
+    bool intersect(const cuda::std::array<vec3, 3> &tri, RayTriIsect *isect = nullptr) const
     {
         float check = dot(ray.dir, cross(tri[1] - tri[0], tri[2] - tri[1]));
         if (check >= 0.0f && option.culling == SBVHCulling::CullBackface) {

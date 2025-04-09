@@ -60,7 +60,7 @@ vec2 equal_area_sphere_to_square(vec3 d)
 
     if (d.z < 0) {
         // southern hemisphere -> mirror u,v
-        ksc::_swap(u, v);
+        cuda::std::swap(u, v);
         u = 1 - u;
         v = 1 - v;
     }
@@ -92,7 +92,7 @@ vec2 wrap_equal_area_square(vec2 uv)
     return uv;
 }
 
-void equal_area_bilerp(vec2 uv, int N, array<vec2i, 4> &idx, array<float, 4> &weight)
+void equal_area_bilerp(vec2 uv, int N, cuda::std::array<vec2i, 4> &idx, cuda::std::array<float, 4> &weight)
 {
     // ASSERT(is_pow2(N));
     float x = uv.x * N - 0.5f;

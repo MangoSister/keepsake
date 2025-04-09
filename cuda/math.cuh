@@ -1,14 +1,15 @@
 #pragma once
 
 #include "basic.cuh"
-#include "span.cuh"
+#include <cuda/std/limits>
+#include <cuda/std/span>
 
 namespace ksc
 {
 
 CONSTEXPR_VAL float float_before_one = 0x1.fffffep-1;
 CONSTEXPR_VAL float pi = 3.14159265358979323846;
-CONSTEXPR_VAL float inf = numeric_limits<float>::infinity();
+CONSTEXPR_VAL float inf = cuda::std::numeric_limits<float>::infinity();
 
 // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH.html#group__CUDA__MATH
 // Note also that due to implementation constraints, certain math functions from std:: namespace may be callable in
@@ -72,6 +73,26 @@ CUDA_HOST_DEVICE inline T sqrt(T x)
     return ::sqrt(x);
 #else
     return std::sqrt(x);
+#endif
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline T log(T x)
+{
+#ifdef __CUDACC__
+    return ::log(x);
+#else
+    return std::log(x);
+#endif
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline T exp(T x)
+{
+#ifdef __CUDACC__
+    return ::exp(x);
+#else
+    return std::exp(x);
 #endif
 }
 
@@ -303,7 +324,7 @@ CUDA_HOST_DEVICE inline void lerp_helper(const float *u, const int *res, const W
 }
 
 // 0 is the lowest dimension
-CUDA_HOST_DEVICE inline void unravel_index(int index, span<const int> dim, span<int> unraveled)
+CUDA_HOST_DEVICE inline void unravel_index(int index, cuda::std::span<const int> dim, cuda::std::span<int> unraveled)
 {
     int D = 1;
     for (int i = 0; i < (int)dim.size() - 1; ++i) {
@@ -430,6 +451,37 @@ CUDA_HOST_DEVICE inline float smoothstep(float edge0, float edge1, float x)
 {
     float t = saturate((x - edge0) / (edge1 - edge0));
     return t * t * (3.0f - 2.0f * t);
+}
+
+CUDA_HOST_DEVICE inline float erfinv(float x)
+{
+    float w, p;
+    x = clamp(x, -.99999f, .99999f);
+    w = -log((1 - x) * (1 + x));
+    if (w < 5) {
+        w = w - 2.5f;
+        p = 2.81022636e-08f;
+        p = 3.43273939e-07f + p * w;
+        p = -3.5233877e-06f + p * w;
+        p = -4.39150654e-06f + p * w;
+        p = 0.00021858087f + p * w;
+        p = -0.00125372503f + p * w;
+        p = -0.00417768164f + p * w;
+        p = 0.246640727f + p * w;
+        p = 1.50140941f + p * w;
+    } else {
+        w = sqrt(w) - 3;
+        p = -0.000200214257f;
+        p = 0.000100950558f + p * w;
+        p = 0.00134934322f + p * w;
+        p = -0.00367342844f + p * w;
+        p = 0.00573950773f + p * w;
+        p = -0.0076224613f + p * w;
+        p = 0.00943887047f + p * w;
+        p = 1.00167406f + p * w;
+        p = 2.83297682f + p * w;
+    }
+    return p * x;
 }
 
 } // namespace ksc

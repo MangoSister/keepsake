@@ -1,9 +1,9 @@
 #pragma once
 
-#include "array.cuh"
 #include "math.cuh"
-#include "optional.cuh"
-#include "span.cuh"
+#include <cuda/std/array>
+#include <cuda/std/optional>
+#include <cuda/std/span>
 
 namespace ksc
 {
@@ -40,6 +40,9 @@ struct Vector2
     explicit constexpr Vector2(T s) : x(s), y(s) {}
     CUDA_HOST_DEVICE
     constexpr Vector2(T x, T y) : x(x), y(y) {}
+    CUDA_HOST_DEVICE
+    constexpr Vector2(cuda::std::span<const T> v) : x(v[0]), y(v[1]) {}
+
     CUDA_HOST_DEVICE
     bool has_nan() const { return isnan(x) || isnan(y); }
 
@@ -202,7 +205,7 @@ CUDA_HOST_DEVICE inline int max_component_index(Vector2<T> t)
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline Vector2<T> permute(Vector2<T> t, ksc::array<int, 2> p)
+CUDA_HOST_DEVICE inline Vector2<T> permute(Vector2<T> t, cuda::std::array<int, 2> p)
 {
     return {t[p[0]], t[p[1]]};
 }
@@ -223,6 +226,18 @@ template <typename T>
 CUDA_HOST_DEVICE inline Vector2<T> sqrt(Vector2<T> t)
 {
     return {sqrt(t.x), sqrt(t.y)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector2<T> exp(Vector2<T> t)
+{
+    return {exp(t.x), exp(t.y)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector2<T> log(Vector2<T> t)
+{
+    return {log(t.x), log(t.y)};
 }
 
 template <typename T>
@@ -337,6 +352,8 @@ struct Vector3
     explicit constexpr Vector3(T s) : x(s), y(s), z(s) {}
     CUDA_HOST_DEVICE
     constexpr Vector3(T x, T y, T z) : x(x), y(y), z(z) {}
+    CUDA_HOST_DEVICE
+    constexpr Vector3(cuda::std::span<const T> v) : x(v[0]), y(v[1]), z(v[2]) {}
 
     CUDA_HOST_DEVICE
     bool has_nan() const { return isnan(x) || isnan(y) || isnan(z); }
@@ -523,7 +540,7 @@ CUDA_HOST_DEVICE inline int max_component_index(Vector3<T> t)
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline Vector3<T> permute(Vector3<T> t, ksc::array<int, 3> p)
+CUDA_HOST_DEVICE inline Vector3<T> permute(Vector3<T> t, cuda::std::array<int, 3> p)
 {
     return {t[p[0]], t[p[1]], t[p[2]]};
 }
@@ -544,6 +561,18 @@ template <typename T>
 CUDA_HOST_DEVICE inline Vector3<T> sqrt(Vector3<T> t)
 {
     return {sqrt(t.x), sqrt(t.y), sqrt(t.z)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector3<T> exp(Vector3<T> t)
+{
+    return {exp(t.x), exp(t.y), exp(t.z)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector3<T> log(Vector3<T> t)
+{
+    return {log(t.x), log(t.y), log(t.z)};
 }
 
 template <typename T>
@@ -696,6 +725,8 @@ struct Vector4
     explicit constexpr Vector4(T s) : x(s), y(s), z(s), w(s) {}
     CUDA_HOST_DEVICE
     constexpr Vector4(T x, T y, T z, T w) : x(x), y(y), z(z), w(w) {}
+    CUDA_HOST_DEVICE
+    constexpr Vector4(cuda::std::span<const T> v) : x(v[0]), y(v[1]), z(v[2]), w(v[3]) {}
 
     CUDA_HOST_DEVICE
     bool has_nan() const { return isnan(x) || isnan(y) || isnan(z) || isnan(w); }
@@ -911,6 +942,18 @@ CUDA_HOST_DEVICE inline Vector4<T> sqrt(Vector4<T> t)
 }
 
 template <typename T>
+CUDA_HOST_DEVICE inline Vector4<T> exp(Vector4<T> t)
+{
+    return {exp(t.x), exp(t.y), exp(t.z), exp(t.w)};
+}
+
+template <typename T>
+CUDA_HOST_DEVICE inline Vector4<T> log(Vector4<T> t)
+{
+    return {log(t.x), log(t.y), log(t.z), log(t.w)};
+}
+
+template <typename T>
 CUDA_HOST_DEVICE inline auto lerp(float t, Vector4<T> t0, Vector4<T> t1)
 {
     return (1 - t) * t0 + t * t1;
@@ -966,6 +1009,7 @@ using vec2u = Vector2<uint32_t>;
 
 using vec3 = Vector3<float>;
 using vec3f = Vector3<float>;
+using vec3d = Vector3<double>;
 using vec3i = Vector3<int>;
 using vec3u = Vector3<uint32_t>;
 
@@ -1070,7 +1114,7 @@ struct SquareMatrix
                 m[i][j] = mat[i][j];
     }
     CUDA_HOST_DEVICE
-    SquareMatrix(ksc::span<const float> t);
+    SquareMatrix(cuda::std::span<const float> t);
     template <typename... Args>
     CUDA_HOST_DEVICE SquareMatrix(float v, Args... args)
     {
@@ -1209,9 +1253,9 @@ struct SquareMatrix
     bool is_identity() const;
 
     CUDA_HOST_DEVICE
-    ksc::span<const float> operator[](int i) const { return m[i]; }
+    cuda::std::span<const float> operator[](int i) const { return m[i]; }
     CUDA_HOST_DEVICE
-    ksc::span<float> operator[](int i) { return ksc::span<float>(m[i]); }
+    cuda::std::span<float> operator[](int i) { return cuda::std::span<float>(m[i]); }
 
     template <typename T>
     CUDA_HOST_DEVICE T col(int j) const
@@ -1331,12 +1375,12 @@ CUDA_HOST_DEVICE inline float determinant(const SquareMatrix<3> &m)
 template <int N>
 CUDA_HOST_DEVICE inline SquareMatrix<N> transpose(const SquareMatrix<N> &m);
 template <int N>
-CUDA_HOST_DEVICE ksc::optional<SquareMatrix<N>> try_inverse(const SquareMatrix<N> &);
+CUDA_HOST_DEVICE cuda::std::optional<SquareMatrix<N>> try_inverse(const SquareMatrix<N> &);
 
 template <int N>
 CUDA_HOST_DEVICE SquareMatrix<N> inverse(const SquareMatrix<N> &m)
 {
-    ksc::optional<SquareMatrix<N>> inv = try_inverse(m);
+    cuda::std::optional<SquareMatrix<N>> inv = try_inverse(m);
     CUDA_ASSERT(inv.has_value());
     return *inv;
 }
@@ -1352,7 +1396,7 @@ CUDA_HOST_DEVICE inline SquareMatrix<N> transpose(const SquareMatrix<N> &m)
 }
 
 template <>
-CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<3>> try_inverse(const SquareMatrix<3> &m)
+CUDA_HOST_DEVICE inline cuda::std::optional<SquareMatrix<3>> try_inverse(const SquareMatrix<3> &m)
 {
     float det = determinant(m);
     if (det == 0)
@@ -1408,7 +1452,7 @@ CUDA_HOST_DEVICE inline SquareMatrix<N> operator*(const SquareMatrix<N> &m1, con
 }
 
 template <int N>
-CUDA_HOST_DEVICE inline SquareMatrix<N>::SquareMatrix(ksc::span<const float> t)
+CUDA_HOST_DEVICE inline SquareMatrix<N>::SquareMatrix(cuda::std::span<const float> t)
 {
     CUDA_ASSERT(N * N == t.size());
     for (int i = 0; i < N * N; ++i)
@@ -1472,7 +1516,7 @@ CUDA_HOST_DEVICE inline float determinant(const SquareMatrix<N> &m)
 }
 
 template <>
-CUDA_HOST_DEVICE inline ksc::optional<SquareMatrix<4>> try_inverse(const SquareMatrix<4> &m)
+CUDA_HOST_DEVICE inline cuda::std::optional<SquareMatrix<4>> try_inverse(const SquareMatrix<4> &m)
 {
     // Via: https://github.com/google/ion/blob/master/ion/math/matrixutils.cc,
     // (c) Google, Apache license.
@@ -1785,7 +1829,7 @@ vec2 equal_area_sphere_to_square(vec3 d);
 CUDA_HOST_DEVICE
 vec2 wrap_equal_area_square(vec2 uv);
 CUDA_HOST_DEVICE
-void equal_area_bilerp(vec2 uv, int N, array<vec2i, 4> &idx, array<float, 4> &weight);
+void equal_area_bilerp(vec2 uv, int N, cuda::std::array<vec2i, 4> &idx, cuda::std::array<float, 4> &weight);
 
 CUDA_HOST_DEVICE
 inline float luminance(const color3 &rgb)

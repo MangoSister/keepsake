@@ -22,7 +22,7 @@ struct RayTriHelper
         ky = (kx + 1) % 3;
         // Swap kx and ky dimension to preserve winding direction of triangles.
         if (ray.dir[kz] < 0.0f) {
-            ksc::_swap(kx, ky);
+            cuda::std::swap(kx, ky);
         }
         // Calculate shear constants.
         shear = ksc::vec3(ray.dir[kx], ray.dir[ky], 1.0f);
