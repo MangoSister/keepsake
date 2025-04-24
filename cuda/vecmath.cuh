@@ -241,13 +241,13 @@ CUDA_HOST_DEVICE inline Vector2<T> log(Vector2<T> t)
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline auto lerp(float t, Vector2<T> t0, Vector2<T> t1)
+CUDA_HOST_DEVICE inline auto _lerp(Vector2<T> t0, Vector2<T> t1, float t)
 {
     return (1 - t) * t0 + t * t1;
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline auto lerp(Vector2<T> t, Vector2<T> t0, Vector2<T> t1)
+CUDA_HOST_DEVICE inline auto _lerp(Vector2<T> t0, Vector2<T> t1, Vector2<T> t)
 {
     return (Vector2<T>(1) - t) * t0 + t * t1;
 }
@@ -576,13 +576,13 @@ CUDA_HOST_DEVICE inline Vector3<T> log(Vector3<T> t)
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline auto lerp(float t, Vector3<T> t0, Vector3<T> t1)
+CUDA_HOST_DEVICE inline auto _lerp(Vector3<T> t0, Vector3<T> t1, float t)
 {
     return (1 - t) * t0 + t * t1;
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline auto lerp(Vector3<T> t, Vector3<T> t0, Vector3<T> t1)
+CUDA_HOST_DEVICE inline auto _lerp(Vector3<T> t0, Vector3<T> t1, Vector3<T> t)
 {
     return (Vector3<T>(1) - t) * t0 + t * t1;
 }
@@ -954,13 +954,13 @@ CUDA_HOST_DEVICE inline Vector4<T> log(Vector4<T> t)
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline auto lerp(float t, Vector4<T> t0, Vector4<T> t1)
+CUDA_HOST_DEVICE inline auto _lerp(Vector4<T> t0, Vector4<T> t1, float t)
 {
     return (1 - t) * t0 + t * t1;
 }
 
 template <typename T>
-CUDA_HOST_DEVICE inline auto lerp(Vector4<T> t, Vector4<T> t0, Vector4<T> t1)
+CUDA_HOST_DEVICE inline auto _lerp(Vector4<T> t0, Vector4<T> t1, Vector4<T> t)
 {
     return (Vector4<T>(1) - t) * t0 + t * t1;
 }
@@ -1753,7 +1753,7 @@ CUDA_HOST_DEVICE inline float angle_between(Quaternion q1, Quaternion q2)
 }
 
 // http://www.plunk.org/~hatch/rightway.html
-CUDA_HOST_DEVICE inline Quaternion slerp(float t, Quaternion q1, Quaternion q2)
+CUDA_HOST_DEVICE inline Quaternion _slerp(Quaternion q1, Quaternion q2, float t)
 {
     float theta = angle_between(q1, q2);
     float sinThetaOverTheta = sinx_over_x(theta);

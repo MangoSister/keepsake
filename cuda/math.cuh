@@ -264,7 +264,7 @@ CUDA_HOST_DEVICE inline std::enable_if_t<std::conjunction_v<std::is_arithmetic<T
 
 template <typename T, typename U, typename V>
     requires std::is_floating_point_v<T> and std::is_floating_point_v<U> and std::is_floating_point_v<V>
-CUDA_HOST_DEVICE inline auto lerp(T t, U t0, V t1)
+CUDA_HOST_DEVICE inline auto _lerp(U t0, V t1, T t)
 {
     return (1 - t) * t0 + t * t1;
 }

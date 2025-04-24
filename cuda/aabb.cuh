@@ -66,7 +66,7 @@ struct AABB3
     }
 
     CUDA_HOST_DEVICE
-    vec3 lerp(const vec3 &t) const { return ksc::lerp(t, min, max); }
+    vec3 lerp(const vec3 &t) const { return ksc::_lerp(min, max, t); }
 
     CUDA_HOST_DEVICE
     uint32_t largest_axis() const
