@@ -20,14 +20,39 @@ struct ParallelKdTreeBuildInput
     const thrust::device_vector<AABB3> &bounds;
 };
 
+struct SplitPlane
+{
+    uint32_t axis;
+    float t;
+};
+
+enum LargeNodeChildType : uint32_t
+{
+    Large,
+    Small,
+};
+
+struct LargeNodeChildRef
+{
+    LargeNodeChildType type : 1;
+    uint32_t index : 31;
+};
+
+struct LargeNodeChildInfo
+{
+    SplitPlane split;
+    LargeNodeChildRef children[2];
+};
+
 struct LargeNodeArray
 {
     thrust::device_vector<uint32_t> prim_ids;             // per-prim but sorted based on nodes. can have duplicates
     thrust::device_vector<uint32_t> node_prim_count_psum; // per-node
     thrust::device_vector<AABB3> node_loose_bounds;       // per-node
 
-    thrust::device_vector<uint32_t> node_chunk_count_psum; // per-node
-    thrust::device_vector<AABB3> node_tight_bounds;        // per-node
+    thrust::device_vector<uint32_t> node_chunk_count_psum;     // per-node
+    thrust::device_vector<AABB3> node_tight_bounds;            // per-node
+    thrust::device_vector<LargeNodeChildInfo> node_child_info; // per-node
 
     thrust::device_vector<AABB3> chunk_bounds;         // per-chunk
     thrust::device_vector<uint32_t> chunk_to_node_map; // per-chunk
@@ -40,16 +65,6 @@ struct SmallNodeArray
     thrust::device_vector<AABB3> node_loose_bounds;       // per-node
 };
 
-struct TestOutput
-{
-    LargeNodeArray large_nodes;
-};
-
-// struct ParallelKdTreeNode
-//{
-// int foo;
-//};
-
 // TODO: by default thrust is blocking. Check: thrust::cuda::par_nosync or other ways to control thrust
 // synchronization https://github.com/NVIDIA/thrust/pull/1568
 
@@ -58,8 +73,8 @@ struct ParallelKdTree
     // TODO
     void build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
-    LargeNodeArray large_node_one_level(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
-                                        SmallNodeArray &global_small_nodes);
+    LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
+                                   SmallNodeArray &global_small_nodes);
 
     // void build_large_nodes_stage(NodeChunkArray &active, NodeChunkArray &next);
 
