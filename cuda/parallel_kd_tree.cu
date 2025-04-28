@@ -322,17 +322,19 @@ partition_prims_assign(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds
 void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
 {
     std::vector<LargeNodeArray> upper_tree{init_build(input)};
-    SmallNodeArray small_nodes;
+    SmallNodeArray small_roots;
+    // Small node stage
     while (true) {
         LargeNodeArray &curr = upper_tree.back();
-        LargeNodeArray next = large_node_step(input, curr, small_nodes);
+        LargeNodeArray next = large_node_step(input, curr, small_roots);
         if (!next.node_loose_bounds.empty()) {
             upper_tree.push_back(std::move(next));
         } else {
             break;
         }
     }
-    //
+    // Small node stage
+    prepare_small_roots(input, small_roots);
 }
 
 LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
@@ -525,6 +527,119 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     }
 
     return next_large;
+}
+
+struct SAHSplitCandidate
+{
+    uint64_t left_mask;
+    uint64_t right_mask;
+    uint32_t split_axis;
+    float split_pos;
+};
+
+// Per split candidate
+__global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num_nodes,
+                                           const AABB3 *__restrict__ prim_bounds, const uint32_t *__restrict__ prim_ids,
+                                           const uint32_t *__restrict__ node_prim_count_psum,
+                                           SAHSplitCandidate *__restrict__ sah_split_candidates)
+{
+    uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (gid >= num_candidates) {
+        return;
+    }
+    // 6 candidates each prim: [xmin, xmax, ymin, ymax, zmin, zmax]
+    // what is my split axis and pos?
+    uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return (gid / 6) >= node_prim_count_psum[i]; });
+    uint32_t prim_offset = gid - 6 * (gid / 6);
+
+    uint32_t axis = (gid % 6) / 3;
+    uint32_t cand_prim_id = prim_ids[node_prim_count_psum[node_id] + prim_offset];
+    AABB3 cand_bound = prim_bounds[cand_prim_id];
+    float split_pos = cand_bound[gid % 2][axis];
+
+    uint64_t left_mask = 0;
+    uint64_t right_mask = 0;
+    for (uint32_t i = node_prim_count_psum[node_id]; i < node_prim_count_psum[node_id + 1]; ++i) {
+        // i should be < LARGE_NODE_THRESHOLD (64)
+        uint32_t prim_id = prim_ids[i];
+        AABB3 b = prim_bounds[prim_id];
+        // We can have primitives on both sides
+        if (b.min[axis] < split_pos) {
+            left_mask |= (1 << i);
+        }
+        if (b.max[axis] > split_pos) {
+            right_mask |= (1 << i);
+        }
+    }
+
+    sah_split_candidates[gid].left_mask = left_mask;
+    sah_split_candidates[gid].right_mask = right_mask;
+    sah_split_candidates[gid].split_axis = axis;
+    sah_split_candidates[gid].split_pos = split_pos;
+}
+
+void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, const SmallNodeArray &small_roots)
+{
+    uint32_t num_candidates = 0;
+    thrust::copy_n(small_roots.node_prim_count_psum.rbegin(), 1, &num_candidates);
+    num_candidates *= 6;
+    thrust::device_vector<SAHSplitCandidate> sah_split_candidates(num_candidates);
+    uint32_t num_nodes = small_roots.node_prim_count_psum.size() - 1;
+    run_kernel_1d(prepare_small_roots_kernel, 0, (cudaStream_t)(0), num_candidates, num_candidates, num_nodes,
+                  input.bounds.data().get(), small_roots.prim_ids.data().get(),
+                  small_roots.node_prim_count_psum.data().get(), sah_split_candidates.data().get());
+    cuda_check(cudaDeviceSynchronize());
+    cuda_check(cudaGetLastError());
+    //
+}
+
+// One node per thread
+__global__ void small_node_step_kernel(uint32_t num_nodes, const uint32_t *__restrict__ small_root_ids,
+                                       const uint64_t *__restrict__ prim_masks,
+                                       const AABB3 *__restrict__ node_loose_bounds,
+                                       const uint32_t *__restrict__ small_root_node_prim_count_psum,
+                                       const SAHSplitCandidate *__restrict__ sah_split_candidates)
+{
+    uint32_t node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (node_id >= num_nodes) {
+        return;
+    }
+    uint32_t small_root = small_root_ids[node_id];
+    uint64_t prim_mask = prim_masks[node_id];
+    AABB3 bound = node_loose_bounds[node_id];
+    float area = bound.surface_area();
+    float min_sah = (float)__popcll(prim_mask);
+    for (uint32_t i = 0; i < LARGE_NODE_THRESHOLD; ++i) {
+        if ((prim_mask >> i) & 1) {
+            uint32_t offset = (small_root_node_prim_count_psum[small_root] + i) * 6;
+            for (uint32_t j = 0; j < 6; ++j) {
+                const SAHSplitCandidate &s = sah_split_candidates[offset + j];
+                uint64_t left = prim_mask & s.left_mask;
+                uint64_t right = prim_mask & s.right_mask;
+                // Count the number of bits that are set to 1 in a 64-bit integer.
+                int n_left = __popcll(left);
+                int n_right = __popcll(right);
+                // Calculate split nodes area
+                AABB3 b_left = bound;
+                b_left.max[s.split_axis] = s.split_pos;
+                float area_left = b_left.surface_area();
+                AABB3 b_right = bound;
+                b_right.min[s.split_axis] = s.split_pos;
+                float area_right = b_right.surface_area();
+                // Compute SAH
+                // https://www.pbr-book.org/4ed/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies
+                // https://github.com/mmp/pbrt-v4/blob/master/src/pbrt/cpu/aggregates.cpp
+                constexpr float cost_ts = 0.5f;
+                float sah = (n_left * area_left + n_right + area_right) / area + cost_ts;
+                // TODO
+            }
+        }
+    }
+}
+
+void ParallelKdTree::small_node_step()
+{
+    //
 }
 
 } // namespace ksc

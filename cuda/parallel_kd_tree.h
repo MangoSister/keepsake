@@ -75,6 +75,8 @@ struct ParallelKdTree
     LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
                                    SmallNodeArray &global_small_nodes);
+    void prepare_small_roots(const ParallelKdTreeBuildInput &input, const SmallNodeArray &small_roots);
+    void small_node_step();
 
     // void build_large_nodes_stage(NodeChunkArray &active, NodeChunkArray &next);
 
