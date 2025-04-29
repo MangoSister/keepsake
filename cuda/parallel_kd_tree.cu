@@ -322,8 +322,8 @@ partition_prims_assign(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds
 void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
 {
     std::vector<LargeNodeArray> upper_tree{init_build(input)};
-    SmallNodeArray small_roots;
-    // Small node stage
+    SmallRootArray small_roots;
+    // Large node stage
     while (true) {
         LargeNodeArray &curr = upper_tree.back();
         LargeNodeArray next = large_node_step(input, curr, small_roots);
@@ -335,6 +335,17 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
     }
     // Small node stage
     prepare_small_roots(input, small_roots);
+    std::vector<SmallNodeArray> lower_tree{SmallNodeArray{}};
+    while (true) {
+        SmallNodeArray &curr = lower_tree.back();
+        SmallNodeArray next = small_node_step(curr, small_roots);
+        if (!next.node_loose_bounds.empty()) {
+            lower_tree.push_back(std::move(next));
+        } else {
+            break;
+        }
+    }
+    // TODO: final clean-up stage
 }
 
 LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
@@ -353,7 +364,7 @@ LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
 }
 
 LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
-                                               SmallNodeArray &global_small_nodes)
+                                               SmallRootArray &small_roots)
 {
     uint32_t num_prims = (uint32_t)input.bounds.size();
     uint32_t num_nodes = large_nodes.node_prim_count_psum.size() - 1;
@@ -438,7 +449,7 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     // vice-verse for small_flags_invert
 
     // Record parent/child references
-    uint32_t curr_small_node_count = global_small_nodes.node_loose_bounds.size();
+    uint32_t curr_small_node_count = small_roots.node_loose_bounds.size();
     run_kernel_1d(store_child_refs, 0, (cudaStream_t)(0), num_nodes, num_nodes, small_flags.data().get(),
                   small_flags_invert.data().get(), large_nodes.node_child_info.data().get(), curr_small_node_count);
     // cuda_check(cudaDeviceSynchronize());
@@ -497,45 +508,35 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
 
     // Append to a global small node array
     {
-        uint32_t old_size = global_small_nodes.prim_ids.size();
-        global_small_nodes.prim_ids.resize(old_size + next_prim_ids_small.size());
-        thrust::copy(next_prim_ids_small.begin(), next_prim_ids_small.end(),
-                     global_small_nodes.prim_ids.begin() + old_size);
+        uint32_t old_size = small_roots.prim_ids.size();
+        small_roots.prim_ids.resize(old_size + next_prim_ids_small.size());
+        thrust::copy(next_prim_ids_small.begin(), next_prim_ids_small.end(), small_roots.prim_ids.begin() + old_size);
     }
     {
-        uint32_t old_size = global_small_nodes.node_loose_bounds.size();
-        global_small_nodes.node_loose_bounds.resize(old_size + next_node_loose_bounds.size());
+        uint32_t old_size = small_roots.node_loose_bounds.size();
+        small_roots.node_loose_bounds.resize(old_size + next_node_loose_bounds.size());
         thrust::copy(next_node_loose_bounds.begin(), next_node_loose_bounds.end(),
-                     global_small_nodes.node_loose_bounds.begin() + old_size);
+                     small_roots.node_loose_bounds.begin() + old_size);
     }
 
     // Need to add a global offset and append
     uint32_t global_small_node_prim_count = 0;
-    if (global_small_nodes.node_prim_count_psum.size() > 0) {
-        thrust::copy_n(global_small_nodes.node_prim_count_psum.rbegin(), 1, &global_small_node_prim_count);
+    if (small_roots.node_prim_count_psum.size() > 0) {
+        thrust::copy_n(small_roots.node_prim_count_psum.rbegin(), 1, &global_small_node_prim_count);
         thrust::transform(
             next_node_prim_count_psum_small.begin(), next_node_prim_count_psum_small.end(),
             next_node_prim_count_psum_small.begin(),
             [global_small_node_prim_count] __device__(uint32_t x) { return x + global_small_node_prim_count; });
     }
     {
-        uint32_t old_size = global_small_nodes.node_prim_count_psum.size();
-        global_small_nodes.node_prim_count_psum.resize(std::max(old_size, 1u) - 1 +
-                                                       next_node_prim_count_psum_small.size());
+        uint32_t old_size = small_roots.node_prim_count_psum.size();
+        small_roots.node_prim_count_psum.resize(std::max(old_size, 1u) - 1 + next_node_prim_count_psum_small.size());
         thrust::copy(next_node_prim_count_psum_small.begin(), next_node_prim_count_psum_small.end(),
-                     global_small_nodes.node_prim_count_psum.begin() + std::max(old_size, 1u) - 1);
+                     small_roots.node_prim_count_psum.begin() + std::max(old_size, 1u) - 1);
     }
 
     return next_large;
 }
-
-struct SAHSplitCandidate
-{
-    uint64_t left_mask;
-    uint64_t right_mask;
-    uint32_t split_axis;
-    float split_pos;
-};
 
 // Per split candidate
 __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num_nodes,
@@ -578,42 +579,45 @@ __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num
     sah_split_candidates[gid].split_pos = split_pos;
 }
 
-void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, const SmallNodeArray &small_roots)
+void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots)
 {
     uint32_t num_candidates = 0;
     thrust::copy_n(small_roots.node_prim_count_psum.rbegin(), 1, &num_candidates);
     num_candidates *= 6;
-    thrust::device_vector<SAHSplitCandidate> sah_split_candidates(num_candidates);
+    small_roots.sah_split_candidates.resize(num_candidates);
     uint32_t num_nodes = small_roots.node_prim_count_psum.size() - 1;
     run_kernel_1d(prepare_small_roots_kernel, 0, (cudaStream_t)(0), num_candidates, num_candidates, num_nodes,
                   input.bounds.data().get(), small_roots.prim_ids.data().get(),
-                  small_roots.node_prim_count_psum.data().get(), sah_split_candidates.data().get());
+                  small_roots.node_prim_count_psum.data().get(), small_roots.sah_split_candidates.data().get());
     cuda_check(cudaDeviceSynchronize());
     cuda_check(cudaGetLastError());
     //
 }
 
 // One node per thread
-__global__ void small_node_step_kernel(uint32_t num_nodes, const uint32_t *__restrict__ small_root_ids,
-                                       const uint64_t *__restrict__ prim_masks,
-                                       const AABB3 *__restrict__ node_loose_bounds,
-                                       const uint32_t *__restrict__ small_root_node_prim_count_psum,
-                                       const SAHSplitCandidate *__restrict__ sah_split_candidates)
+__global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t *__restrict__ small_root_ids,
+                                              const uint64_t *__restrict__ prim_masks,
+                                              const AABB3 *__restrict__ node_loose_bounds,
+                                              const uint32_t *__restrict__ small_root_node_prim_count_psum,
+                                              const SAHSplitCandidate *__restrict__ sah_split_candidates,
+                                              uint32_t *__restrict__ sah_splits, uint32_t *__restrict__ split_tags)
 {
     uint32_t node_id = threadIdx.x + blockIdx.x * blockDim.x;
     if (node_id >= num_nodes) {
         return;
     }
-    uint32_t small_root = small_root_ids[node_id];
-    uint64_t prim_mask = prim_masks[node_id];
+    uint32_t small_root = small_root_ids ? small_root_ids[node_id] : node_id;
+    uint64_t prim_mask = prim_masks ? prim_masks[node_id] : (uint64_t)(~0llu);
     AABB3 bound = node_loose_bounds[node_id];
     float area = bound.surface_area();
     float min_sah = (float)__popcll(prim_mask);
+    uint32_t best_split = (uint32_t)(~0);
     for (uint32_t i = 0; i < LARGE_NODE_THRESHOLD; ++i) {
         if ((prim_mask >> i) & 1) {
             uint32_t offset = (small_root_node_prim_count_psum[small_root] + i) * 6;
             for (uint32_t j = 0; j < 6; ++j) {
-                const SAHSplitCandidate &s = sah_split_candidates[offset + j];
+                uint32_t split_idx = offset + j;
+                const SAHSplitCandidate &s = sah_split_candidates[split_idx];
                 uint64_t left = prim_mask & s.left_mask;
                 uint64_t right = prim_mask & s.right_mask;
                 // Count the number of bits that are set to 1 in a 64-bit integer.
@@ -627,19 +631,91 @@ __global__ void small_node_step_kernel(uint32_t num_nodes, const uint32_t *__res
                 b_right.min[s.split_axis] = s.split_pos;
                 float area_right = b_right.surface_area();
                 // Compute SAH
-                // https://www.pbr-book.org/4ed/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies
-                // https://github.com/mmp/pbrt-v4/blob/master/src/pbrt/cpu/aggregates.cpp
-                constexpr float cost_ts = 0.5f;
+                constexpr float cost_ts = 0.2f;
+                // int isect_cost = 5, int traversal_cost = 1
                 float sah = (n_left * area_left + n_right + area_right) / area + cost_ts;
-                // TODO
+                if (sah < min_sah) {
+                    min_sah = sah;
+                    best_split = split_idx;
+                }
             }
         }
     }
+    sah_splits[node_id] = best_split;
+    split_tags[node_id] = (best_split == (uint32_t)(~0)) ? 0 : 1;
 }
 
-void ParallelKdTree::small_node_step()
+// One node per thread
+__global__ void assign_children_small_nodes(uint32_t num_nodes_next, const uint32_t *__restrict__ parent_small_root_ids,
+                                            const uint64_t *__restrict__ parent_prim_masks,
+                                            const AABB3 *__restrict__ parent_node_loose_bounds,
+                                            const SAHSplitCandidate *__restrict__ sah_split_candidates,
+                                            const uint32_t *__restrict__ sah_splits,
+                                            uint32_t *__restrict__ child_small_root_ids,
+                                            uint64_t *__restrict__ child_prim_masks,
+                                            AABB3 *__restrict__ child_node_loose_bounds)
 {
-    //
+    uint32_t child_node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (child_node_id >= num_nodes_next) {
+        return;
+    }
+    uint32_t parent_node_id = child_node_id / 2;
+    bool left = (child_node_id % 2 == 0);
+    uint32_t split_idx = sah_splits[parent_node_id];
+    const SAHSplitCandidate &s = sah_split_candidates[split_idx];
+    uint64_t parent_prim_mask = parent_prim_masks ? parent_prim_masks[parent_node_id] : (uint64_t)(~0);
+    uint64_t child_prim_mask = parent_prim_mask & (left ? s.left_mask : s.right_mask);
+    child_prim_masks[child_node_id] = child_prim_mask;
+    child_small_root_ids[child_node_id] =
+        parent_small_root_ids ? parent_small_root_ids[parent_node_id] : parent_node_id;
+    AABB3 parent_bound = parent_node_loose_bounds[parent_node_id];
+    AABB3 child_bound = parent_bound;
+    if (left) {
+        child_bound.max[s.split_axis] = s.split_pos;
+    } else {
+        child_bound.min[s.split_axis] = s.split_pos;
+    }
+    child_node_loose_bounds[child_node_id] = child_bound;
+}
+
+SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots)
+{
+    uint32_t num_nodes = small_roots.node_prim_count_psum.size() - 1;
+    thrust::device_vector<uint32_t> split_tags(num_nodes);
+    // Skip duplicate bookkeeping in the first small stage iteration.
+    const uint32_t *curr_small_root_ids_ptr =
+        small_nodes.small_root_ids.size() ? small_nodes.small_root_ids.data().get() : nullptr;
+    const uint64_t *curr_prim_masks_ptr = small_nodes.prim_masks.size() ? small_nodes.prim_masks.data().get() : nullptr;
+    const AABB3 *curr_node_loose_bounds_ptr = small_nodes.node_loose_bounds.size()
+                                                  ? small_nodes.node_loose_bounds.data().get()
+                                                  : small_roots.node_loose_bounds.data().get();
+    small_nodes.sah_splits.resize(small_roots.node_loose_bounds.size());
+    run_kernel_1d(compute_sah_split_small_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes, curr_small_root_ids_ptr,
+                  curr_prim_masks_ptr, curr_node_loose_bounds_ptr, small_roots.node_prim_count_psum.data().get(),
+                  small_roots.sah_split_candidates.data().get(), small_nodes.sah_splits.data().get(),
+                  split_tags.data().get());
+    thrust::device_vector<uint32_t> child_offsets = split_tags;
+    thrust::inclusive_scan(child_offsets.begin(), child_offsets.end(), child_offsets.begin());
+    uint32_t num_nodes_next = 0;
+    thrust::copy_n(child_offsets.rbegin(), 1, &num_nodes_next);
+    if (num_nodes_next == 0) {
+        // All done.
+        return SmallNodeArray{};
+    }
+    num_nodes_next *= 2;
+    thrust::transform(child_offsets.begin(), child_offsets.end(), split_tags.begin(), child_offsets.begin(),
+                      fix_small_flag{});
+    SmallNodeArray small_nodes_next;
+    small_nodes_next.node_loose_bounds.resize(num_nodes_next);
+    small_nodes_next.prim_masks.resize(num_nodes_next);
+    small_nodes_next.small_root_ids.resize(num_nodes_next);
+    run_kernel_1d(assign_children_small_nodes, 0, (cudaStream_t)(0), num_nodes_next, num_nodes_next,
+                  curr_small_root_ids_ptr, curr_prim_masks_ptr, curr_node_loose_bounds_ptr,
+                  small_roots.sah_split_candidates.data().get(), small_nodes.sah_splits.data().get(),
+                  small_nodes_next.small_root_ids.data().get(), small_nodes_next.prim_masks.data().get(),
+                  small_nodes_next.node_loose_bounds.data().get());
+
+    return small_nodes_next;
 }
 
 } // namespace ksc
