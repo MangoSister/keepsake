@@ -452,17 +452,6 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     uint32_t curr_small_node_count = small_roots.node_loose_bounds.size();
     run_kernel_1d(store_child_refs, 0, (cudaStream_t)(0), num_nodes, num_nodes, small_flags.data().get(),
                   small_flags_invert.data().get(), large_nodes.node_child_info.data().get(), curr_small_node_count);
-    // cuda_check(cudaDeviceSynchronize());
-    // cuda_check(cudaGetLastError());
-    //{
-    //    // DEBUG
-    //    thrust::host_vector<LargeNodeChildInfo> debug = large_nodes.node_child_info;
-    //    std::vector<LargeNodeChildInfo> v{debug.begin(), debug.end()};
-    //    LargeNodeChildInfo a = v[0];
-    //    // LargeNodeChildInfo b = v[1];
-    //    LargeNodeChildInfo c = v.back();
-    //    c = v.back();
-    //}
 
     thrust::device_vector<uint32_t> next_node_prim_count_psum_small(num_small_nodes_next + 1);
     thrust::device_vector<uint32_t> next_node_prim_count_psum_large(num_large_nodes_next + 1);
@@ -551,25 +540,25 @@ __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num
     // 6 candidates each prim: [xmin, xmax, ymin, ymax, zmin, zmax]
     // what is my split axis and pos?
     uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return (gid / 6) >= node_prim_count_psum[i]; });
-    uint32_t prim_offset = gid - 6 * (gid / 6);
 
-    uint32_t axis = (gid % 6) / 3;
-    uint32_t cand_prim_id = prim_ids[node_prim_count_psum[node_id] + prim_offset];
+    uint32_t cand_prim_id = prim_ids[gid / 6];
+    uint32_t axis = (gid % 6) / 2;
     AABB3 cand_bound = prim_bounds[cand_prim_id];
     float split_pos = cand_bound[gid % 2][axis];
 
     uint64_t left_mask = 0;
     uint64_t right_mask = 0;
     for (uint32_t i = node_prim_count_psum[node_id]; i < node_prim_count_psum[node_id + 1]; ++i) {
-        // i should be < LARGE_NODE_THRESHOLD (64)
+        // There should be <= LARGE_NODE_THRESHOLD (64) prims
+        uint32_t bit = i - node_prim_count_psum[node_id];
         uint32_t prim_id = prim_ids[i];
         AABB3 b = prim_bounds[prim_id];
         // We can have primitives on both sides
         if (b.min[axis] < split_pos) {
-            left_mask |= (1 << i);
+            left_mask |= (uint64_t)(1llu << (uint64_t)bit);
         }
         if (b.max[axis] > split_pos) {
-            right_mask |= (1 << i);
+            right_mask |= (uint64_t)(1llu << (uint64_t)bit);
         }
     }
 
@@ -589,9 +578,15 @@ void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, 
     run_kernel_1d(prepare_small_roots_kernel, 0, (cudaStream_t)(0), num_candidates, num_candidates, num_nodes,
                   input.bounds.data().get(), small_roots.prim_ids.data().get(),
                   small_roots.node_prim_count_psum.data().get(), small_roots.sah_split_candidates.data().get());
-    cuda_check(cudaDeviceSynchronize());
-    cuda_check(cudaGetLastError());
-    //
+    // DEBUG
+    // cuda_check(cudaDeviceSynchronize());
+    // cuda_check(cudaGetLastError());
+    //{
+    //    thrust::host_vector<SAHSplitCandidate> h = small_roots.sah_split_candidates;
+    //    std::vector<SAHSplitCandidate> v(h.begin(), h.end());
+    //    SAHSplitCandidate a = v[0];
+    //    SAHSplitCandidate b = v.back();
+    //}
 }
 
 // One node per thread
@@ -606,11 +601,25 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
     if (node_id >= num_nodes) {
         return;
     }
+    // Skip duplicate bookkeeping in the first small stage iteration.
     uint32_t small_root = small_root_ids ? small_root_ids[node_id] : node_id;
-    uint64_t prim_mask = prim_masks ? prim_masks[node_id] : (uint64_t)(~0llu);
+    uint64_t prim_mask;
+    if (prim_masks) {
+        prim_mask = prim_masks[node_id];
+    } else {
+        // For first iteration (small roots), just fill mask with (least significant) n_prims bits.
+        uint32_t n_prims = small_root_node_prim_count_psum[node_id + 1] - small_root_node_prim_count_psum[node_id];
+        if (n_prims == LARGE_NODE_THRESHOLD) {
+            prim_mask = (uint64_t)(~0llu);
+        } else {
+            prim_mask = ((uint64_t)1llu << (uint64_t)n_prims) - 1llu;
+        }
+    }
+
     AABB3 bound = node_loose_bounds[node_id];
     float area = bound.surface_area();
     float min_sah = (float)__popcll(prim_mask);
+    // printf("%f, %f\n", area, min_sah);
     uint32_t best_split = (uint32_t)(~0);
     for (uint32_t i = 0; i < LARGE_NODE_THRESHOLD; ++i) {
         if ((prim_mask >> i) & 1) {
@@ -633,10 +642,11 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
                 // Compute SAH
                 constexpr float cost_ts = 0.2f;
                 // int isect_cost = 5, int traversal_cost = 1
-                float sah = (n_left * area_left + n_right + area_right) / area + cost_ts;
+                float sah = (n_left * area_left + n_right * area_right) / area + cost_ts;
                 if (sah < min_sah) {
                     min_sah = sah;
                     best_split = split_idx;
+                    // printf("%d, %d, %f, %f %f, %u\n", n_left, n_right, area_left, area_right, sah, split_idx);
                 }
             }
         }
@@ -646,71 +656,118 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
 }
 
 // One node per thread
-__global__ void assign_children_small_nodes(uint32_t num_nodes_next, const uint32_t *__restrict__ parent_small_root_ids,
+__global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *__restrict__ parent_small_root_ids,
                                             const uint64_t *__restrict__ parent_prim_masks,
                                             const AABB3 *__restrict__ parent_node_loose_bounds,
+                                            const uint32_t *__restrict__ child_offsets, //
+                                            const uint32_t *__restrict__ small_root_node_prim_count_psum,
                                             const SAHSplitCandidate *__restrict__ sah_split_candidates,
                                             const uint32_t *__restrict__ sah_splits,
                                             uint32_t *__restrict__ child_small_root_ids,
                                             uint64_t *__restrict__ child_prim_masks,
                                             AABB3 *__restrict__ child_node_loose_bounds)
 {
-    uint32_t child_node_id = threadIdx.x + blockIdx.x * blockDim.x;
-    if (child_node_id >= num_nodes_next) {
+    uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (parent_node_id >= num_nodes) {
         return;
     }
-    uint32_t parent_node_id = child_node_id / 2;
-    bool left = (child_node_id % 2 == 0);
+    uint32_t ch = child_offsets[parent_node_id];
+    if (ch == (uint32_t)(~0)) {
+        return;
+    }
+
+    uint64_t parent_prim_mask;
+    if (parent_prim_masks) {
+        parent_prim_mask = parent_prim_masks[parent_node_id];
+    } else {
+        // For first iteration (small roots), just fill mask with (least significant) n_prims bits.
+        uint32_t n_prims =
+            small_root_node_prim_count_psum[parent_node_id + 1] - small_root_node_prim_count_psum[parent_node_id];
+        if (n_prims == LARGE_NODE_THRESHOLD) {
+            parent_prim_mask = (uint64_t)(~0llu);
+        } else {
+            parent_prim_mask = ((uint64_t)1llu << (uint64_t)n_prims) - 1llu;
+        }
+    }
     uint32_t split_idx = sah_splits[parent_node_id];
     const SAHSplitCandidate &s = sah_split_candidates[split_idx];
-    uint64_t parent_prim_mask = parent_prim_masks ? parent_prim_masks[parent_node_id] : (uint64_t)(~0);
-    uint64_t child_prim_mask = parent_prim_mask & (left ? s.left_mask : s.right_mask);
-    child_prim_masks[child_node_id] = child_prim_mask;
-    child_small_root_ids[child_node_id] =
-        parent_small_root_ids ? parent_small_root_ids[parent_node_id] : parent_node_id;
+
     AABB3 parent_bound = parent_node_loose_bounds[parent_node_id];
-    AABB3 child_bound = parent_bound;
-    if (left) {
-        child_bound.max[s.split_axis] = s.split_pos;
-    } else {
-        child_bound.min[s.split_axis] = s.split_pos;
+
+    for (uint32_t i = 0; i < 2; ++i) {
+        uint32_t child_node_id = 2 * ch + i;
+        bool left = (i % 2 == 0);
+        uint64_t child_prim_mask = parent_prim_mask & (left ? s.left_mask : s.right_mask);
+        child_prim_masks[child_node_id] = child_prim_mask;
+        child_small_root_ids[child_node_id] =
+            parent_small_root_ids ? parent_small_root_ids[parent_node_id] : parent_node_id;
+        AABB3 child_bound = parent_bound;
+        if (left) {
+            child_bound.max[s.split_axis] = s.split_pos;
+        } else {
+            child_bound.min[s.split_axis] = s.split_pos;
+        }
+        child_node_loose_bounds[child_node_id] = child_bound;
     }
-    child_node_loose_bounds[child_node_id] = child_bound;
 }
 
 SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots)
 {
-    uint32_t num_nodes = small_roots.node_prim_count_psum.size() - 1;
-    thrust::device_vector<uint32_t> split_tags(num_nodes);
+    uint32_t num_nodes;
+    const uint32_t *curr_small_root_ids_ptr;
+    const uint64_t *curr_prim_masks_ptr;
+    const AABB3 *curr_node_loose_bounds_ptr;
     // Skip duplicate bookkeeping in the first small stage iteration.
-    const uint32_t *curr_small_root_ids_ptr =
-        small_nodes.small_root_ids.size() ? small_nodes.small_root_ids.data().get() : nullptr;
-    const uint64_t *curr_prim_masks_ptr = small_nodes.prim_masks.size() ? small_nodes.prim_masks.data().get() : nullptr;
-    const AABB3 *curr_node_loose_bounds_ptr = small_nodes.node_loose_bounds.size()
-                                                  ? small_nodes.node_loose_bounds.data().get()
-                                                  : small_roots.node_loose_bounds.data().get();
-    small_nodes.sah_splits.resize(small_roots.node_loose_bounds.size());
+    if (small_nodes.small_root_ids.empty()) {
+        num_nodes = small_roots.node_prim_count_psum.size() - 1;
+        curr_small_root_ids_ptr = nullptr;
+        curr_node_loose_bounds_ptr = small_roots.node_loose_bounds.data().get();
+        curr_prim_masks_ptr = nullptr;
+
+    } else {
+        num_nodes = small_nodes.node_loose_bounds.size();
+        curr_small_root_ids_ptr = small_nodes.small_root_ids.data().get();
+        curr_node_loose_bounds_ptr = small_nodes.node_loose_bounds.data().get();
+        curr_prim_masks_ptr = small_nodes.prim_masks.data().get();
+    }
+
+    thrust::device_vector<uint32_t> split_tags(num_nodes);
+    small_nodes.sah_splits.resize(num_nodes);
     run_kernel_1d(compute_sah_split_small_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes, curr_small_root_ids_ptr,
                   curr_prim_masks_ptr, curr_node_loose_bounds_ptr, small_roots.node_prim_count_psum.data().get(),
                   small_roots.sah_split_candidates.data().get(), small_nodes.sah_splits.data().get(),
                   split_tags.data().get());
-    thrust::device_vector<uint32_t> child_offsets = split_tags;
-    thrust::inclusive_scan(child_offsets.begin(), child_offsets.end(), child_offsets.begin());
+
+    small_nodes.child_offsets = split_tags;
+    thrust::inclusive_scan(small_nodes.child_offsets.begin(), small_nodes.child_offsets.end(),
+                           small_nodes.child_offsets.begin());
     uint32_t num_nodes_next = 0;
-    thrust::copy_n(child_offsets.rbegin(), 1, &num_nodes_next);
+    thrust::copy_n(small_nodes.child_offsets.rbegin(), 1, &num_nodes_next);
     if (num_nodes_next == 0) {
         // All done.
         return SmallNodeArray{};
     }
     num_nodes_next *= 2;
-    thrust::transform(child_offsets.begin(), child_offsets.end(), split_tags.begin(), child_offsets.begin(),
-                      fix_small_flag{});
+
+    thrust::transform(small_nodes.child_offsets.begin(), small_nodes.child_offsets.end(), split_tags.begin(),
+                      small_nodes.child_offsets.begin(),
+                      [] __device__(uint32_t co, uint32_t st) -> uint32_t {
+                          if (!st) {
+                              return (uint32_t)(~0);
+                          } else {
+                              return co - 1;
+                          }
+                      }
+
+    );
+
     SmallNodeArray small_nodes_next;
     small_nodes_next.node_loose_bounds.resize(num_nodes_next);
     small_nodes_next.prim_masks.resize(num_nodes_next);
     small_nodes_next.small_root_ids.resize(num_nodes_next);
-    run_kernel_1d(assign_children_small_nodes, 0, (cudaStream_t)(0), num_nodes_next, num_nodes_next,
-                  curr_small_root_ids_ptr, curr_prim_masks_ptr, curr_node_loose_bounds_ptr,
+    run_kernel_1d(assign_children_small_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes, curr_small_root_ids_ptr,
+                  curr_prim_masks_ptr, curr_node_loose_bounds_ptr, small_nodes.child_offsets.data().get(),
+                  small_roots.node_prim_count_psum.data().get(), //
                   small_roots.sah_split_candidates.data().get(), small_nodes.sah_splits.data().get(),
                   small_nodes_next.small_root_ids.data().get(), small_nodes_next.prim_masks.data().get(),
                   small_nodes_next.node_loose_bounds.data().get());

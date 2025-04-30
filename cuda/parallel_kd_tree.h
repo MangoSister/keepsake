@@ -88,6 +88,7 @@ struct SmallNodeArray
     thrust::device_vector<uint64_t> prim_masks;
     //
     thrust::device_vector<uint32_t> sah_splits;
+    thrust::device_vector<uint32_t> child_offsets;
 };
 
 // TODO: by default thrust is blocking. Check: thrust::cuda::par_nosync or other ways to control thrust
