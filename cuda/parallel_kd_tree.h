@@ -56,6 +56,9 @@ struct LargeNodeArray
 
     thrust::device_vector<AABB3> chunk_bounds;         // per-chunk
     thrust::device_vector<uint32_t> chunk_to_node_map; // per-chunk
+
+    //
+    thrust::device_vector<uint32_t> subtree_sizes;
 };
 
 struct SmallNodeChildInfo
@@ -89,10 +92,53 @@ struct SmallNodeArray
     //
     thrust::device_vector<uint32_t> sah_splits;
     thrust::device_vector<uint32_t> child_offsets;
+    //
+    thrust::device_vector<uint32_t> subtree_sizes;
 };
 
 // TODO: by default thrust is blocking. Check: thrust::cuda::par_nosync or other ways to control thrust
 // synchronization https://github.com/NVIDIA/thrust/pull/1568
+
+struct alignas(8) CompactKdTreeNode
+{
+    CUDA_HOST_DEVICE void init_empty_leaf()
+    {
+        flags = 3;
+        one_prim = 0;
+    }
+
+    CUDA_HOST_DEVICE void init_single_prim_leaf(uint32_t prim)
+    {
+        flags = 3 | (1 << 2);
+        one_prim = prim;
+    }
+
+    CUDA_HOST_DEVICE void init_multi_prim_leaf(uint32_t prim_id_offset, uint32_t n_prims)
+    {
+        // CUDA_ASSERT(n_prims > 1)
+        flags = 3 | (n_prims << 2);
+        prim_id_offset = prim_id_offset;
+    }
+
+    CUDA_HOST_DEVICE void init_interior(int axis, int above_child, float s)
+    {
+        split = s;
+        flags = axis | (above_child << 2);
+    }
+
+    CUDA_HOST_DEVICE float split_pos() const { return split; }
+    CUDA_HOST_DEVICE int n_primitives() const { return flags >> 2; }
+    CUDA_HOST_DEVICE int split_axis() const { return flags & 3; }
+    CUDA_HOST_DEVICE bool is_leaf() const { return (flags & 3) == 3; }
+    CUDA_HOST_DEVICE int above_child() const { return flags >> 2; }
+
+    union {
+        float split;        // Interior
+        int one_prim;       // Leaf
+        int prim_id_offset; // Leaf
+    };
+    uint32_t flags;
+};
 
 struct ParallelKdTree
 {
@@ -102,6 +148,13 @@ struct ParallelKdTree
                                    SmallRootArray &small_roots);
     void prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
     SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots);
+
+    void compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
+                 std::vector<SmallNodeArray> &lower_tree);
+
+    thrust::device_ptr<AABB3> total_bound;
+    thrust::device_vector<uint32_t> prim_ids;
+    thrust::device_vector<CompactKdTreeNode> nodes;
 };
 
 } // namespace ksc

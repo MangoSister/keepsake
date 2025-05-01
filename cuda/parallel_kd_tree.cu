@@ -345,7 +345,8 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
             break;
         }
     }
-    // TODO: final clean-up stage
+    // TODO: final compact/clean-up stage
+    compact(upper_tree, small_roots, lower_tree);
 }
 
 LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
@@ -773,6 +774,63 @@ SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, cons
                   small_nodes_next.node_loose_bounds.data().get());
 
     return small_nodes_next;
+}
+
+__global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes, const uint32_t *__restrict__ child_offsets,
+                                          const uint32_t *__restrict__ child_sizes, uint32_t *__restrict__ parent_sizes)
+{
+    uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (parent_node_id >= parent_num_nodes) {
+        return;
+    }
+    uint32_t ch = child_offsets[parent_node_id];
+    if (ch == (uint32_t)(~0)) {
+        parent_sizes[parent_node_id] = 1;
+    } else {
+        parent_sizes[parent_node_id] = 1 + child_sizes[2 * ch] + child_sizes[2 * ch + 1];
+    }
+}
+
+__global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const LargeNodeChildInfo *__restrict__ child_info,
+                                          const uint32_t *__restrict__ large_child_sizes,
+                                          const uint32_t *__restrict__ small_root_child_sizes,
+                                          uint32_t *__restrict__ parent_sizes)
+{
+    uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (parent_node_id >= parent_num_nodes) {
+        return;
+    }
+    LargeNodeChildInfo info = child_info[parent_node_id];
+    uint32_t size = 1;
+    for (int i = 0; i < 2; ++i) {
+        // In the bot level of upper tree, all children must be small roots.
+        if (info.children[i].type == LargeNodeChildType::Large) {
+            size += large_child_sizes[info.children[i].index];
+        } else {
+            size += small_root_child_sizes[info.children[i].index];
+        }
+    }
+    parent_sizes[parent_node_id] = size;
+}
+
+void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
+                             std::vector<SmallNodeArray> &lower_tree)
+{
+    SmallNodeArray &bot_level = lower_tree.back();
+    bot_level.subtree_sizes.resize(bot_level.node_loose_bounds.size(), 1u);
+    for (int l = (int)lower_tree.size() - 2; l >= 0; ++l) {
+        uint32_t parent_num_nodes = (uint32_t)lower_tree[l].node_loose_bounds.size();
+        run_kernel_1d(count_lower_subtree_sizes, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
+                      lower_tree[l].child_offsets.data().get(), lower_tree[l + 1].subtree_sizes.data().get(),
+                      lower_tree[l].subtree_sizes.data().get());
+    }
+    for (int l = (int)upper_tree.size() - 1; l >= 0; ++l) {
+        uint32_t parent_num_nodes = (uint32_t)upper_tree[l].node_loose_bounds.size();
+        run_kernel_1d(count_upper_subtree_sizes, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
+                      upper_tree[l].node_child_info.data().get(),
+                      (l < (int)upper_tree.size() - 1) ? upper_tree[l + 1].subtree_sizes.data().get() : nullptr,
+                      lower_tree[0].subtree_sizes.data().get(), upper_tree[l].subtree_sizes.data().get());
+    }
 }
 
 } // namespace ksc
