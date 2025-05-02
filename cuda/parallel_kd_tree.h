@@ -23,7 +23,7 @@ struct ParallelKdTreeBuildInput
 struct SplitPlane
 {
     uint32_t axis;
-    float t;
+    float pos;
 };
 
 enum LargeNodeChildType : uint32_t
@@ -101,23 +101,10 @@ struct SmallNodeArray
 
 struct alignas(8) CompactKdTreeNode
 {
-    CUDA_HOST_DEVICE void init_empty_leaf()
+    CUDA_HOST_DEVICE void init_leaf(uint32_t n_prims)
     {
-        flags = 3;
-        one_prim = 0;
-    }
-
-    CUDA_HOST_DEVICE void init_single_prim_leaf(uint32_t prim)
-    {
-        flags = 3 | (1 << 2);
-        one_prim = prim;
-    }
-
-    CUDA_HOST_DEVICE void init_multi_prim_leaf(uint32_t prim_id_offset, uint32_t n_prims)
-    {
-        // CUDA_ASSERT(n_prims > 1)
+        //
         flags = 3 | (n_prims << 2);
-        prim_id_offset = prim_id_offset;
     }
 
     CUDA_HOST_DEVICE void init_interior(int axis, int above_child, float s)
@@ -133,9 +120,8 @@ struct alignas(8) CompactKdTreeNode
     CUDA_HOST_DEVICE int above_child() const { return flags >> 2; }
 
     union {
-        float split;        // Interior
-        int one_prim;       // Leaf
-        int prim_id_offset; // Leaf
+        float split;    // Interior
+        int first_prim; // Leaf
     };
     uint32_t flags;
 };
@@ -154,7 +140,7 @@ struct ParallelKdTree
 
     thrust::device_ptr<AABB3> total_bound;
     thrust::device_vector<uint32_t> prim_ids;
-    thrust::device_vector<CompactKdTreeNode> nodes;
+    thrust::device_vector<uint32_t> nodes_storage;
 };
 
 } // namespace ksc

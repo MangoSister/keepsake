@@ -157,9 +157,8 @@ __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ 
     uint32_t axis = valid_bound.largest_axis();
 
     float split_pos = 0.5f * (valid_bound.min[axis] + valid_bound.max[axis]);
-    float t_split = (split_pos - loose_bound.min[axis]) / loose_ext[axis];
     child_info[node_id].split.axis = axis;
-    child_info[node_id].split.t = t_split;
+    child_info[node_id].split.pos = split_pos;
 
     next_node_loose_bounds[node_id * 2] = loose_bound;
     next_node_loose_bounds[node_id * 2].max[axis] = split_pos;
@@ -189,8 +188,8 @@ __global__ void partition_prims_count(uint32_t num_prims, const AABB3 *__restric
 
     uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return chunk_id >= node_chunk_count_psum[i]; });
     SplitPlane split = child_info[node_id].split;
-    AABB3 node_loose_bound = node_loose_bounds[node_id];
-    float split_pos = _lerp(node_loose_bound.min[split.axis], node_loose_bound.max[split.axis], split.t);
+    // AABB3 node_loose_bound = node_loose_bounds[node_id];
+    float split_pos = split.pos;
 
     AABB3 b = prim_bounds[prim_id];
     uint32_t next_node_id_lc = node_id * 2;
@@ -262,8 +261,8 @@ partition_prims_assign(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds
 
     uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return chunk_id >= node_chunk_count_psum[i]; });
     SplitPlane split = child_info[node_id].split;
-    AABB3 node_loose_bound = node_loose_bounds[node_id];
-    float split_pos = _lerp(node_loose_bound.min[split.axis], node_loose_bound.max[split.axis], split.t);
+    // AABB3 node_loose_bound = node_loose_bounds[node_id];
+    float split_pos = split.pos;
 
     AABB3 b = prim_bounds[prim_id];
 
@@ -776,7 +775,8 @@ SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, cons
     return small_nodes_next;
 }
 
-__global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes, const uint32_t *__restrict__ child_offsets,
+__global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes, const uint64_t *__restrict__ parent_prim_masks,
+                                          const uint32_t *__restrict__ child_offsets,
                                           const uint32_t *__restrict__ child_sizes, uint32_t *__restrict__ parent_sizes)
 {
     uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
@@ -785,7 +785,10 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes, const uint3
     }
     uint32_t ch = child_offsets[parent_node_id];
     if (ch == (uint32_t)(~0)) {
-        parent_sizes[parent_node_id] = 1;
+        uint64_t prim_mask = parent_prim_masks[parent_node_id];
+        // First primitive is stored inside the node.
+        parent_sizes[parent_node_id] = sizeof(CompactKdTreeNode) / sizeof(uint32_t) + //
+                                       (uint32_t)cuda::std::max((int)__popcll(prim_mask) - 1, 0);
     } else {
         parent_sizes[parent_node_id] = 1 + child_sizes[2 * ch] + child_sizes[2 * ch + 1];
     }
@@ -793,7 +796,7 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes, const uint3
 
 __global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const LargeNodeChildInfo *__restrict__ child_info,
                                           const uint32_t *__restrict__ large_child_sizes,
-                                          const uint32_t *__restrict__ small_root_child_sizes,
+                                          const uint32_t *__restrict__ small_root_sizes,
                                           uint32_t *__restrict__ parent_sizes)
 {
     uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
@@ -807,29 +810,153 @@ __global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const Large
         if (info.children[i].type == LargeNodeChildType::Large) {
             size += large_child_sizes[info.children[i].index];
         } else {
-            size += small_root_child_sizes[info.children[i].index];
+            size += small_root_sizes[info.children[i].index];
         }
     }
     parent_sizes[parent_node_id] = size;
 }
 
+__global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChildInfo *__restrict__ child_info,
+                                   const uint32_t *__restrict__ node_addrs, uint32_t *__restrict__ child_node_addrs,
+                                   uint32_t *__restrict__ small_root_addrs,
+                                   uint32_t *__restrict__ compact_nodes_storage)
+{
+    uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (parent_node_id >= parent_num_nodes) {
+        return;
+    }
+    uint32_t parent_addr = node_addrs[parent_node_id];
+    LargeNodeChildInfo info = child_info[parent_node_id];
+    uint32_t left_size = 0;
+
+    LargeNodeChildRef left = info.children[0];
+    if (left.type == LargeNodeChildType::Large) {
+        left_size = child_node_addrs[left.index];
+        child_node_addrs[left.index] = parent_addr + 1;
+    } else {
+        left_size = small_root_addrs[left.index];
+        small_root_addrs[left.index] = parent_addr + 1;
+    }
+
+    uint32_t right_addr = parent_addr + 1 + left_size;
+    LargeNodeChildRef right = info.children[1];
+    if (right.type == LargeNodeChildType::Large) {
+        child_node_addrs[right.index] = right_addr;
+    } else {
+        small_root_addrs[right.index] = right_addr;
+    }
+
+    CompactKdTreeNode &compact_parent = *reinterpret_cast<CompactKdTreeNode *>(compact_nodes_storage + parent_addr);
+
+    // uint32_t prim_count = parent_node_prim_count_psum[parent_node_id + 1] -
+    // parent_node_prim_count_psum[parent_node_id];
+    //  Large nodes are all interior (?)
+    //  TODO: actually we need a way to prevent infinite split in degenerated cases.
+    compact_parent.init_interior(info.split.axis, right_addr, info.split.pos);
+}
+
+__global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__restrict__ parent_small_root_ids,
+                                   const uint64_t *__restrict__ parent_prim_masks,
+                                   const uint32_t *__restrict__ parent_sah_splits,
+                                   const uint32_t *__restrict__ child_offsets,
+                                   const uint32_t *__restrict__ parent_addrs,
+                                   const uint32_t *__restrict__ small_root_prim_ids,
+                                   const uint32_t *__restrict__ small_root_node_prim_count_psum,
+                                   const SAHSplitCandidate *__restrict__ sah_split_candidates,
+                                   uint32_t *__restrict__ child_addrs, uint32_t *__restrict__ compact_nodes_storage)
+{
+    uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
+    if (parent_node_id >= parent_num_nodes) {
+        return;
+    }
+    uint32_t parent_addr = parent_addrs[parent_node_id];
+    CompactKdTreeNode &compact_parent = *reinterpret_cast<CompactKdTreeNode *>(compact_nodes_storage + parent_addr);
+
+    uint32_t ch = child_offsets[parent_node_id];
+    if (ch == (uint32_t)(~0)) {
+        // Skip duplicate bookkeeping in the first small stage iteration.
+        uint32_t small_root = parent_small_root_ids ? parent_small_root_ids[parent_node_id] : parent_node_id;
+        uint64_t prim_mask;
+        uint32_t n_prims;
+        if (parent_prim_masks) {
+            prim_mask = parent_prim_masks[parent_node_id];
+            n_prims = __popcll(prim_mask);
+        } else {
+            // For first iteration (small roots), just fill mask with (least significant) n_prims bits.
+            n_prims =
+                small_root_node_prim_count_psum[parent_node_id + 1] - small_root_node_prim_count_psum[parent_node_id];
+            if (n_prims == LARGE_NODE_THRESHOLD) {
+                prim_mask = (uint64_t)(~0llu);
+            } else {
+                prim_mask = ((uint64_t)1llu << (uint64_t)n_prims) - 1llu;
+            }
+        }
+        compact_parent.init_leaf(n_prims);
+        for (uint32_t i = 0; i < LARGE_NODE_THRESHOLD; ++i) {
+            if ((prim_mask >> i) & 1) {
+                uint32_t offset = (small_root_node_prim_count_psum[small_root] + i);
+                uint32_t prim = small_root_prim_ids[offset];
+                if (i == 0) {
+                    compact_parent.first_prim = prim;
+                } else {
+                    *(compact_nodes_storage + parent_addr + sizeof(CompactKdTreeNode) + (i - 1)) = prim;
+                }
+            }
+        }
+    } else {
+        uint32_t left_size = child_addrs[2 * ch];
+        child_addrs[2 * ch] = parent_addr + 1;
+        uint32_t right_addr = parent_addr + 1 + left_size;
+        child_addrs[2 * ch + 1] = right_addr;
+
+        uint32_t split_idx = parent_sah_splits[parent_node_id];
+        SAHSplitCandidate split = sah_split_candidates[split_idx];
+
+        compact_parent.init_interior(split.split_axis, right_addr, split.split_pos);
+    }
+}
+
 void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
                              std::vector<SmallNodeArray> &lower_tree)
 {
-    SmallNodeArray &bot_level = lower_tree.back();
-    bot_level.subtree_sizes.resize(bot_level.node_loose_bounds.size(), 1u);
-    for (int l = (int)lower_tree.size() - 2; l >= 0; ++l) {
+    for (int l = (int)lower_tree.size() - 1; l >= 0; ++l) {
         uint32_t parent_num_nodes = (uint32_t)lower_tree[l].node_loose_bounds.size();
+        lower_tree[l].subtree_sizes.resize(parent_num_nodes);
         run_kernel_1d(count_lower_subtree_sizes, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
-                      lower_tree[l].child_offsets.data().get(), lower_tree[l + 1].subtree_sizes.data().get(),
-                      lower_tree[l].subtree_sizes.data().get());
+                      lower_tree[l].prim_masks.data().get(), lower_tree[l].child_offsets.data().get(),
+                      lower_tree[l + 1].subtree_sizes.data().get(), lower_tree[l].subtree_sizes.data().get());
     }
     for (int l = (int)upper_tree.size() - 1; l >= 0; ++l) {
         uint32_t parent_num_nodes = (uint32_t)upper_tree[l].node_loose_bounds.size();
+        upper_tree[l].subtree_sizes.resize(parent_num_nodes);
         run_kernel_1d(count_upper_subtree_sizes, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
                       upper_tree[l].node_child_info.data().get(),
                       (l < (int)upper_tree.size() - 1) ? upper_tree[l + 1].subtree_sizes.data().get() : nullptr,
                       lower_tree[0].subtree_sizes.data().get(), upper_tree[l].subtree_sizes.data().get());
+    }
+
+    uint32_t total_storage = 0;
+    thrust::copy_n(upper_tree[0].subtree_sizes.begin(), 1, &total_storage);
+    constexpr uint32_t root_address = 0;
+    thrust::fill_n(upper_tree[0].subtree_sizes.begin(), 1, root_address);
+
+    nodes_storage.resize(total_storage);
+    for (int l = 0; l < (int)upper_tree.size(); ++l) {
+        uint32_t parent_num_nodes = (uint32_t)upper_tree[l].node_loose_bounds.size();
+        run_kernel_1d(compact_upper_tree, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
+                      upper_tree[l].node_child_info.data().get(), upper_tree[l].subtree_sizes.data().get(),
+                      (l < (int)upper_tree.size() - 1) ? upper_tree[l + 1].subtree_sizes.data().get() : nullptr,
+                      lower_tree[0].subtree_sizes.data().get(), nodes_storage.data().get());
+    }
+    for (int l = 0; l < (int)lower_tree.size(); ++l) {
+        uint32_t parent_num_nodes = (uint32_t)lower_tree[l].node_loose_bounds.size();
+        run_kernel_1d(compact_lower_tree, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
+                      lower_tree[l].small_root_ids.data().get(), lower_tree[l].prim_masks.data().get(),
+                      lower_tree[l].sah_splits.data().get(), lower_tree[l].child_offsets.data().get(),
+                      lower_tree[l].subtree_sizes.data().get(), small_roots.prim_ids.data().get(),
+                      small_roots.node_prim_count_psum.data().get(), small_roots.sah_split_candidates.data().get(),
+                      (l < (int)lower_tree.size() - 1) ? lower_tree[l + 1].subtree_sizes.data().get() : nullptr,
+                      nodes_storage.data().get());
     }
 }
 
