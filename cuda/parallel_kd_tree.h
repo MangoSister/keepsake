@@ -99,7 +99,7 @@ struct SmallNodeArray
 // TODO: by default thrust is blocking. Check: thrust::cuda::par_nosync or other ways to control thrust
 // synchronization https://github.com/NVIDIA/thrust/pull/1568
 
-struct alignas(8) CompactKdTreeNode
+struct CompactKdTreeNode
 {
     CUDA_HOST_DEVICE void init_leaf(uint32_t n_prims)
     {
@@ -125,6 +125,8 @@ struct alignas(8) CompactKdTreeNode
     };
     uint32_t flags;
 };
+static_assert(sizeof(CompactKdTreeNode) == 8);
+static_assert(alignof(CompactKdTreeNode) == 4);
 CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof(uint32_t);
 
 struct ParallelKdTree
