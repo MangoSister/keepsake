@@ -125,6 +125,7 @@ struct alignas(8) CompactKdTreeNode
     };
     uint32_t flags;
 };
+CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof(uint32_t);
 
 struct ParallelKdTree
 {

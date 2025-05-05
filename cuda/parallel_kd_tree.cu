@@ -396,7 +396,7 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     thrust::reduce_by_key(large_nodes.chunk_to_node_map.begin(), large_nodes.chunk_to_node_map.end(),
                           large_nodes.chunk_bounds.begin(), segmented_reduce_output_keys.begin(),
                           large_nodes.node_tight_bounds.begin(), cuda::std::equal_to<uint32_t>{}, join_aabb{});
-    if (num_nodes == 1) {
+    if (large_nodes.node_loose_bounds.empty()) {
         // Initialize: same as tight bound.
         large_nodes.node_loose_bounds = large_nodes.node_tight_bounds;
     }
@@ -504,8 +504,8 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     }
     {
         uint32_t old_size = small_roots.node_loose_bounds.size();
-        small_roots.node_loose_bounds.resize(old_size + next_node_loose_bounds.size());
-        thrust::copy(next_node_loose_bounds.begin(), next_node_loose_bounds.end(),
+        small_roots.node_loose_bounds.resize(old_size + next_node_loose_bound_small.size());
+        thrust::copy(next_node_loose_bound_small.begin(), next_node_loose_bound_small.end(),
                      small_roots.node_loose_bounds.begin() + old_size);
     }
 
@@ -828,12 +828,11 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes, const uint6
     if (ch == (uint32_t)(~0)) {
         uint64_t prim_mask = parent_prim_masks[parent_node_id];
         // First primitive is stored inside the node.
-        uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof(uint32_t);
         uint32_t node_prim_size_u32 = (uint32_t)cuda::std::max((int)__popcll(prim_mask) - 1, 0);
         parent_sizes[parent_node_id] = node_header_size_u32 + node_prim_size_u32;
     } else {
         // printf("wtf\n");
-        parent_sizes[parent_node_id] = 1 + child_sizes[2 * ch] + child_sizes[2 * ch + 1];
+        parent_sizes[parent_node_id] = node_header_size_u32 + child_sizes[2 * ch] + child_sizes[2 * ch + 1];
     }
 }
 
@@ -847,7 +846,7 @@ __global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const Large
         return;
     }
     LargeNodeChildInfo info = child_info[parent_node_id];
-    uint32_t size = 1;
+    uint32_t size = node_header_size_u32;
     for (int i = 0; i < 2; ++i) {
         // In the bot level of upper tree, all children must be small roots.
         if (info.children[i].type == LargeNodeChildType::Large) {
@@ -869,19 +868,20 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChi
         return;
     }
     uint32_t parent_addr = node_addrs[parent_node_id];
+    CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
     LargeNodeChildInfo info = child_info[parent_node_id];
     uint32_t left_size = 0;
 
     LargeNodeChildRef left = info.children[0];
     if (left.type == LargeNodeChildType::Large) {
         left_size = child_node_addrs[left.index];
-        child_node_addrs[left.index] = parent_addr + 1;
+        child_node_addrs[left.index] = parent_addr + node_header_size_u32;
     } else {
         left_size = small_root_addrs[left.index];
-        small_root_addrs[left.index] = parent_addr + 1;
+        small_root_addrs[left.index] = parent_addr + node_header_size_u32;
     }
 
-    uint32_t right_addr = parent_addr + 1 + left_size;
+    uint32_t right_addr = parent_addr + node_header_size_u32 + left_size;
     LargeNodeChildRef right = info.children[1];
     if (right.type == LargeNodeChildType::Large) {
         child_node_addrs[right.index] = right_addr;
@@ -913,6 +913,7 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
         return;
     }
     uint32_t parent_addr = parent_addrs[parent_node_id];
+    CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
     CompactKdTreeNode &compact_parent = *reinterpret_cast<CompactKdTreeNode *>(compact_nodes_storage + parent_addr);
 
     uint32_t ch = child_offsets[parent_node_id];
@@ -942,14 +943,14 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
                 if (i == 0) {
                     compact_parent.first_prim = prim;
                 } else {
-                    *(compact_nodes_storage + parent_addr + sizeof(CompactKdTreeNode) + (i - 1)) = prim;
+                    *(compact_nodes_storage + parent_addr + node_header_size_u32 + (i - 1)) = prim;
                 }
             }
         }
     } else {
         uint32_t left_size = child_addrs[2 * ch];
-        child_addrs[2 * ch] = parent_addr + 1;
-        uint32_t right_addr = parent_addr + 1 + left_size;
+        child_addrs[2 * ch] = parent_addr + node_header_size_u32;
+        uint32_t right_addr = parent_addr + node_header_size_u32 + left_size;
         child_addrs[2 * ch + 1] = right_addr;
 
         uint32_t split_idx = parent_sah_splits[parent_node_id];
@@ -1000,9 +1001,16 @@ void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const Smal
                       upper_tree[l].node_child_info.data().get(), upper_tree[l].subtree_sizes.data().get(),
                       (l < (int)upper_tree.size() - 1) ? upper_tree[l + 1].subtree_sizes.data().get() : nullptr,
                       lower_tree[0].subtree_sizes.data().get(), nodes_storage.data().get());
+        cuda_check(cudaDeviceSynchronize());
+        cuda_check(cudaGetLastError());
     }
     for (int l = 0; l < (int)lower_tree.size(); ++l) {
-        uint32_t parent_num_nodes = (uint32_t)lower_tree[l].node_loose_bounds.size();
+        uint32_t parent_num_nodes;
+        if (l > 0) {
+            parent_num_nodes = (uint32_t)lower_tree[l].node_loose_bounds.size();
+        } else {
+            parent_num_nodes = small_roots.node_prim_count_psum.size() - 1;
+        }
         run_kernel_1d(compact_lower_tree, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
                       lower_tree[l].small_root_ids.data().get(), lower_tree[l].prim_masks.data().get(),
                       lower_tree[l].sah_splits.data().get(), lower_tree[l].child_offsets.data().get(),
@@ -1010,6 +1018,8 @@ void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const Smal
                       small_roots.node_prim_count_psum.data().get(), small_roots.sah_split_candidates.data().get(),
                       (l < (int)lower_tree.size() - 1) ? lower_tree[l + 1].subtree_sizes.data().get() : nullptr,
                       nodes_storage.data().get());
+        cuda_check(cudaDeviceSynchronize());
+        cuda_check(cudaGetLastError());
     }
 }
 
