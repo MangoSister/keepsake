@@ -82,6 +82,7 @@ struct SmallRootArray
     thrust::device_vector<uint32_t> node_prim_count_psum; // per-node
     thrust::device_vector<AABB3> node_loose_bounds;
     thrust::device_vector<uint8_t> bad_flags;
+    thrust::device_vector<uint8_t> depths;
     thrust::device_vector<SAHSplitCandidate> sah_split_candidates; // per-node
 };
 
@@ -135,10 +136,10 @@ struct ParallelKdTree
 {
     void build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
-    LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
+    LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes, uint8_t depth,
                                    SmallRootArray &small_roots);
     void prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
-    SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots);
+    SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots, uint8_t depth);
 
     void compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
                  std::vector<SmallNodeArray> &lower_tree);

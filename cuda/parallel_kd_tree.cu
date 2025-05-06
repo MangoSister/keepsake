@@ -22,6 +22,7 @@ CONSTEXPR_VAL uint32_t CHUNK_SIZE = 256;
 CONSTEXPR_VAL uint32_t LARGE_NODE_THRESHOLD = 64;
 CONSTEXPR_VAL float EMPTY_SPACE_RATIO = 0.25f;
 CONSTEXPR_VAL uint8_t BAD_SPLIT_TRYS = 3;
+CONSTEXPR_VAL uint8_t MAX_DEPTH = 64;
 
 __global__ void count_node_chunks(uint32_t num_nodes, const uint32_t *__restrict__ node_prim_count_psum,
                                   uint32_t *__restrict__ node_chunk_count)
@@ -358,27 +359,31 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
 {
     std::vector<LargeNodeArray> upper_tree{init_build(input)};
     SmallRootArray small_roots;
+    uint8_t depth = 0;
     // Large node stage.
     while (true) {
         LargeNodeArray &curr = upper_tree.back();
-        LargeNodeArray next = large_node_step(input, curr, small_roots);
+        LargeNodeArray next = large_node_step(input, curr, depth, small_roots);
         if (!next.node_loose_bounds.empty()) {
             upper_tree.push_back(std::move(next));
         } else {
             break;
         }
+        ++depth;
     }
     // Small node stage.
     prepare_small_roots(input, small_roots);
     std::vector<SmallNodeArray> lower_tree{SmallNodeArray{}};
+    depth = 0;
     while (true) {
         SmallNodeArray &curr = lower_tree.back();
-        SmallNodeArray next = small_node_step(curr, small_roots);
+        SmallNodeArray next = small_node_step(curr, small_roots, depth);
         if (!next.node_loose_bounds.empty()) {
             lower_tree.push_back(std::move(next));
         } else {
             break;
         }
+        ++depth;
     }
     // Final compact stage.
     compact(upper_tree, small_roots, lower_tree);
@@ -400,7 +405,7 @@ LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
 }
 
 LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
-                                               SmallRootArray &small_roots)
+                                               uint8_t depth, SmallRootArray &small_roots)
 {
     uint32_t num_nodes = large_nodes.node_prim_count_psum.size() - 1;
     uint32_t num_prims = (uint32_t)input.bounds.size();
@@ -563,6 +568,12 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
         thrust::copy(next_node_bad_flags_small.begin(), next_node_bad_flags_small.end(),
                      small_roots.bad_flags.begin() + old_size);
     }
+    {
+        uint32_t old_size = small_roots.depths.size();
+        // Same depth for all new small nodes this batch.
+        small_roots.depths.resize(old_size + next_node_bad_flags_small.size());
+        thrust::fill_n(small_roots.depths.begin() + old_size, next_node_bad_flags_small.size(), depth);
+    }
 
     // Need to add a global offset and append
     uint32_t global_small_node_prim_count = 0;
@@ -668,8 +679,9 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
                                               const uint64_t *__restrict__ prim_masks,
                                               const AABB3 *__restrict__ node_loose_bounds,
                                               const uint8_t *__restrict__ small_root_bad_flags,
+                                              const uint8_t *__restrict__ small_root_depths,
                                               const uint32_t *__restrict__ small_root_node_prim_count_psum,
-                                              const SAHSplitCandidate *__restrict__ sah_split_candidates,
+                                              const SAHSplitCandidate *__restrict__ sah_split_candidates, uint8_t depth,
                                               uint32_t *__restrict__ sah_splits, uint32_t *__restrict__ split_tags)
 {
     uint32_t node_id = threadIdx.x + blockIdx.x * blockDim.x;
@@ -684,6 +696,12 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
         return;
     }
     uint32_t small_root = small_root_ids ? small_root_ids[node_id] : node_id;
+    if (small_root_depths[small_root] + depth == MAX_DEPTH) {
+        sah_splits[node_id] = (uint32_t)(~0);
+        split_tags[node_id] = 0;
+        return;
+    }
+
     uint64_t prim_mask;
     uint32_t n_prims;
     if (prim_masks) {
@@ -819,7 +837,8 @@ __global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *
     }
 }
 
-SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots)
+SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots,
+                                               uint8_t depth)
 {
     uint32_t num_nodes;
     const uint32_t *curr_small_root_ids_ptr;
@@ -847,7 +866,8 @@ SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, cons
     run_kernel_1d(compute_sah_split_small_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes, curr_small_root_ids_ptr,
                   curr_prim_masks_ptr, curr_node_loose_bounds_ptr,
                   curr_bad_flags_ptr, //
-                  small_roots.node_prim_count_psum.data().get(), small_roots.sah_split_candidates.data().get(),
+                  small_roots.depths.data().get(), small_roots.node_prim_count_psum.data().get(),
+                  small_roots.sah_split_candidates.data().get(), depth, //
                   small_nodes.sah_splits.data().get(), split_tags.data().get());
 
     small_nodes.child_offsets = split_tags;
