@@ -141,8 +141,9 @@ struct ParallelKdTree
     void compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
                  std::vector<SmallNodeArray> &lower_tree);
 
+    AABB3 get_total_bound() const;
+
     thrust::device_ptr<AABB3> total_bound;
-    thrust::device_vector<uint32_t> prim_ids;
     thrust::device_vector<uint32_t> nodes_storage;
 };
 

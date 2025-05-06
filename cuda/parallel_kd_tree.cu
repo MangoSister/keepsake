@@ -1021,4 +1021,11 @@ void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const Smal
     }
 }
 
+AABB3 ParallelKdTree::get_total_bound() const
+{
+    AABB3 b;
+    thrust::copy_n(total_bound, 1, &b);
+    return b;
+}
+
 } // namespace ksc
