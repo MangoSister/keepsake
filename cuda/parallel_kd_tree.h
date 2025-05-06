@@ -53,6 +53,7 @@ struct LargeNodeArray
     thrust::device_vector<uint32_t> node_chunk_count_psum;     // per-node
     thrust::device_vector<AABB3> node_tight_bounds;            // per-node
     thrust::device_vector<LargeNodeChildInfo> node_child_info; // per-node
+    thrust::device_vector<uint8_t> bad_flags;                  // per-node
 
     thrust::device_vector<AABB3> chunk_bounds;         // per-chunk
     thrust::device_vector<uint32_t> chunk_to_node_map; // per-chunk
@@ -80,6 +81,7 @@ struct SmallRootArray
     thrust::device_vector<uint32_t> prim_ids;             // per-prim but sorted based on nodes. can have duplicates
     thrust::device_vector<uint32_t> node_prim_count_psum; // per-node
     thrust::device_vector<AABB3> node_loose_bounds;
+    thrust::device_vector<uint8_t> bad_flags;
     thrust::device_vector<SAHSplitCandidate> sah_split_candidates; // per-node
 };
 
