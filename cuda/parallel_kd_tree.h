@@ -132,17 +132,28 @@ static_assert(sizeof(CompactKdTreeNode) == 8);
 static_assert(alignof(CompactKdTreeNode) == 4);
 CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof(uint32_t);
 
+struct BuildStats
+{
+    size_t compact_strorage_bytes;
+    uint32_t max_depth;
+    uint32_t n_nodes;
+    uint32_t n_leaves;
+    uint32_t n_prim_refs;
+};
+
 struct ParallelKdTree
 {
-    void build(const ParallelKdTreeBuildInput &input);
+    void build(const ParallelKdTreeBuildInput &input, BuildStats *stats = nullptr);
     LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes, uint8_t depth,
                                    SmallRootArray &small_roots);
     void prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
-    SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots, uint8_t depth);
+    SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots, uint8_t depth,
+                                   thrust::device_ptr<uint32_t> max_depth);
 
     void compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
-                 std::vector<SmallNodeArray> &lower_tree);
+                 std::vector<SmallNodeArray> &lower_tree, thrust::device_ptr<uint32_t> n_leaves,
+                 thrust::device_ptr<uint32_t> prim_ref_storage);
 
     AABB3 get_total_bound() const;
 

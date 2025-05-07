@@ -2,6 +2,8 @@
 #include "device_util.cuh"
 #include "parallel_kd_tree.h"
 
+#include <thrust/device_free.h>
+#include <thrust/device_new.h>
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 #include <thrust/host_vector.h>
@@ -355,7 +357,7 @@ partition_prims_assign(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds
     // }
 }
 
-void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
+void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, BuildStats *stats)
 {
     std::vector<LargeNodeArray> upper_tree{init_build(input)};
     SmallRootArray small_roots;
@@ -375,9 +377,15 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
     prepare_small_roots(input, small_roots);
     std::vector<SmallNodeArray> lower_tree{SmallNodeArray{}};
     depth = 0;
+
+    thrust::device_ptr<uint32_t> max_depth;
+    if (stats) {
+        max_depth = thrust::device_new<uint32_t>();
+        thrust::fill_n(max_depth, 1, 0);
+    }
     while (true) {
         SmallNodeArray &curr = lower_tree.back();
-        SmallNodeArray next = small_node_step(curr, small_roots, depth);
+        SmallNodeArray next = small_node_step(curr, small_roots, depth, max_depth);
         if (!next.node_loose_bounds.empty()) {
             lower_tree.push_back(std::move(next));
         } else {
@@ -385,8 +393,31 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
         }
         ++depth;
     }
+    thrust::device_ptr<uint32_t> n_leaves;
+    thrust::device_ptr<uint32_t> prim_ref_storage;
+    if (stats) {
+        n_leaves = thrust::device_new<uint32_t>();
+        thrust::fill_n(n_leaves, 1, 0);
+        prim_ref_storage = thrust::device_new<uint32_t>();
+        thrust::fill_n(prim_ref_storage, 1, 0);
+    }
     // Final compact stage.
-    compact(upper_tree, small_roots, lower_tree);
+    compact(upper_tree, small_roots, lower_tree, n_leaves, prim_ref_storage);
+
+    if (stats) {
+        stats->compact_strorage_bytes = nodes_storage.size() * sizeof(uint32_t);
+        thrust::copy_n(max_depth, 1, &stats->max_depth);
+        uint32_t prim_ref_storage_cpu;
+        thrust::copy_n(prim_ref_storage, 1, &prim_ref_storage_cpu);
+        thrust::copy_n(n_leaves, 1, &stats->n_leaves);
+        stats->n_nodes =
+            (stats->compact_strorage_bytes - prim_ref_storage_cpu * sizeof(uint32_t)) / sizeof(CompactKdTreeNode);
+        stats->n_prim_refs = stats->n_leaves + prim_ref_storage_cpu;
+        thrust::device_free(max_depth);
+        thrust::device_free(prim_ref_storage);
+    }
+
+    return;
 }
 
 LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
@@ -682,23 +713,25 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
                                               const uint8_t *__restrict__ small_root_depths,
                                               const uint32_t *__restrict__ small_root_node_prim_count_psum,
                                               const SAHSplitCandidate *__restrict__ sah_split_candidates, uint8_t depth,
-                                              uint32_t *__restrict__ sah_splits, uint32_t *__restrict__ split_tags)
+                                              uint32_t *__restrict__ sah_splits, uint32_t *__restrict__ split_tags,
+                                              //
+                                              uint32_t *__restrict__ max_depth)
 {
     uint32_t node_id = threadIdx.x + blockIdx.x * blockDim.x;
     if (node_id >= num_nodes) {
         return;
     }
+    uint32_t small_root = small_root_ids ? small_root_ids[node_id] : node_id;
+    uint32_t curr_depth = small_root_depths[small_root] + depth;
+    // Check depth
     // Skip duplicate bookkeeping in the first small stage iteration.
     uint8_t bad_flag = small_root_bad_flags ? small_root_bad_flags[node_id] : false;
-    if (bad_flag) {
+    if (bad_flag || curr_depth == MAX_DEPTH) {
         sah_splits[node_id] = (uint32_t)(~0);
         split_tags[node_id] = 0;
-        return;
-    }
-    uint32_t small_root = small_root_ids ? small_root_ids[node_id] : node_id;
-    if (small_root_depths[small_root] + depth == MAX_DEPTH) {
-        sah_splits[node_id] = (uint32_t)(~0);
-        split_tags[node_id] = 0;
+        if (max_depth) {
+            atomicMax(max_depth, curr_depth);
+        }
         return;
     }
 
@@ -723,6 +756,9 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
         // printf("Leq than leaf threshold %d\n", n_prims);
         sah_splits[node_id] = (uint32_t)(~0);
         split_tags[node_id] = 0;
+        if (max_depth) {
+            atomicMax(max_depth, curr_depth);
+        }
         return;
     }
 
@@ -772,6 +808,9 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
 
     sah_splits[node_id] = best_split;
     split_tags[node_id] = (best_split == (uint32_t)(~0)) ? 0 : 1;
+    if (max_depth) {
+        atomicMax(max_depth, curr_depth);
+    }
 
     // DEBUG
     // if (split_tags[node_id]) {
@@ -838,7 +877,7 @@ __global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *
 }
 
 SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots,
-                                               uint8_t depth)
+                                               uint8_t depth, thrust::device_ptr<uint32_t> max_depth)
 {
     uint32_t num_nodes;
     const uint32_t *curr_small_root_ids_ptr;
@@ -868,7 +907,7 @@ SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, cons
                   curr_bad_flags_ptr, //
                   small_roots.depths.data().get(), small_roots.node_prim_count_psum.data().get(),
                   small_roots.sah_split_candidates.data().get(), depth, //
-                  small_nodes.sah_splits.data().get(), split_tags.data().get());
+                  small_nodes.sah_splits.data().get(), split_tags.data().get(), max_depth.get());
 
     small_nodes.child_offsets = split_tags;
     thrust::inclusive_scan(small_nodes.child_offsets.begin(), small_nodes.child_offsets.end(),
@@ -911,7 +950,9 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes,
                                           const uint32_t *__restrict__ small_root_node_prim_count_psum,
                                           const uint64_t *__restrict__ parent_prim_masks,
                                           const uint32_t *__restrict__ child_offsets,
-                                          const uint32_t *__restrict__ child_sizes, uint32_t *__restrict__ parent_sizes)
+                                          const uint32_t *__restrict__ child_sizes, uint32_t *__restrict__ parent_sizes,
+                                          //
+                                          uint32_t *__restrict__ n_leaves, uint32_t *__restrict__ prim_ref_storage)
 {
     uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
     if (parent_node_id >= parent_num_nodes) {
@@ -932,6 +973,13 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes,
         }
 
         parent_sizes[parent_node_id] = node_header_size_u32 + node_prim_size_u32;
+        if (n_leaves) {
+            atomicAdd(n_leaves, 1);
+        }
+        if (prim_ref_storage) {
+            atomicAdd(prim_ref_storage, node_prim_size_u32);
+        }
+
     } else {
         // printf("wtf\n");
         parent_sizes[parent_node_id] = node_header_size_u32 + child_sizes[2 * ch] + child_sizes[2 * ch + 1];
@@ -1061,7 +1109,8 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
 }
 
 void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
-                             std::vector<SmallNodeArray> &lower_tree)
+                             std::vector<SmallNodeArray> &lower_tree, thrust::device_ptr<uint32_t> n_leaves,
+                             thrust::device_ptr<uint32_t> prim_ref_storage)
 {
     for (int l = (int)lower_tree.size() - 1; l >= 0; --l) {
         uint32_t parent_num_nodes;
@@ -1079,7 +1128,7 @@ void ParallelKdTree::compact(std::vector<LargeNodeArray> &upper_tree, const Smal
                       small_roots.node_prim_count_psum.data().get(), curr_prim_masks_ptr,
                       lower_tree[l].child_offsets.data().get(),
                       (l < (int)lower_tree.size() - 1) ? lower_tree[l + 1].subtree_sizes.data().get() : nullptr,
-                      lower_tree[l].subtree_sizes.data().get());
+                      lower_tree[l].subtree_sizes.data().get(), n_leaves.get(), prim_ref_storage.get());
         // cuda_check(cudaDeviceSynchronize());
         // cuda_check(cudaGetLastError());
     }
