@@ -230,7 +230,7 @@ __global__ void mark_small_nodes(uint32_t parent_num_nodes,
     }
 
     uint32_t left_node_id = parent_node_id * 2;
-    uint32_t right_node_id = left_node_id + 1;
+    uint32_t right_node_id = parent_node_id * 2 + 1;
 
     float sah0 = parent_node_prim_count[parent_node_id + 1] - parent_node_prim_count[parent_node_id];
     float area = parent_loose_bounds[parent_node_id].surface_area();
@@ -246,15 +246,17 @@ __global__ void mark_small_nodes(uint32_t parent_num_nodes,
     } else {
         bad_flags[left_node_id] = bad_flags[right_node_id] = parent_bad_flags[parent_node_id] + 1;
     }
+    printf("%u, %u, %u\n", left_node_id, (uint32_t)bad_flags[left_node_id], next_node_prim_count[left_node_id]);
+    printf("%u, %u, %u\n", right_node_id, (uint32_t)bad_flags[right_node_id], next_node_prim_count[right_node_id]);
 
-    if (next_node_prim_count[left_node_id] <= LARGE_NODE_THRESHOLD || bad_flags[left_node_id] == BAD_SPLIT_TRYS) {
+    if (bad_flags[left_node_id] == BAD_SPLIT_TRYS || next_node_prim_count[left_node_id] <= LARGE_NODE_THRESHOLD) {
         small_flags[left_node_id] = 1;
         small_flags_invert[left_node_id] = 0;
     } else {
         small_flags[left_node_id] = 0;
         small_flags_invert[left_node_id] = 1;
     }
-    if (next_node_prim_count[right_node_id] <= LARGE_NODE_THRESHOLD || bad_flags[right_node_id] == BAD_SPLIT_TRYS) {
+    if (bad_flags[right_node_id] == BAD_SPLIT_TRYS || next_node_prim_count[right_node_id] <= LARGE_NODE_THRESHOLD) {
         small_flags[right_node_id] = 1;
         small_flags_invert[right_node_id] = 0;
     } else {
@@ -432,6 +434,9 @@ LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
     thrust::fill_n(large_nodes.node_prim_count_psum.begin(), 1, num_prims);
     thrust::exclusive_scan(large_nodes.node_prim_count_psum.begin(), large_nodes.node_prim_count_psum.end(),
                            large_nodes.node_prim_count_psum.begin()); // support in-place prefix sum.
+
+    large_nodes.bad_flags.resize(1, (uint8_t)0);
+
     return large_nodes;
 }
 
@@ -508,6 +513,11 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
                   next_node_prim_count_psum.data().get(), next_node_loose_bounds.data().get(),
                   //
                   small_flags.data().get(), small_flags_invert.data().get(), next_node_bad_flags.data().get());
+    {
+        thrust::host_vector<uint8_t> h = next_node_bad_flags;
+        std::vector<uint8_t> v(h.begin(), h.end());
+        int z = 0;
+    }
     thrust::device_vector<uint32_t> small_flags_copy = small_flags;
     thrust::device_vector<uint32_t> small_flags_invert_copy = small_flags_invert;
 
