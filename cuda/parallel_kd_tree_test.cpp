@@ -39,6 +39,8 @@ void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int
     for (uint32_t i = 0; i < num_prims; ++i) {
         bounds[i] = bounds[0];
     }
+    printf("(%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)\n", bounds[0].min.x, bounds[0].min.y, bounds[0].min.z,
+           bounds[0].max.x, bounds[0].max.y, bounds[0].max.z);
 
     constexpr uint32_t CHUNK_SIZE = 256;
     uint32_t num_chunks = (bounds.size() + (CHUNK_SIZE - 1)) / CHUNK_SIZE;

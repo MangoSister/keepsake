@@ -84,7 +84,7 @@ struct fix_small_flag
 // Grid size: (num_prims, 1, 1)
 // Block size: (CHUNK_SIZE, 1, 1)
 // Each chunk is one block.
-__global__ void compute_chunk_bounds(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds,
+__global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__restrict__ prim_bounds,
                                      const uint32_t *__restrict__ prim_ids, uint32_t num_nodes,
                                      const uint32_t *__restrict__ node_prim_count_psum,
                                      const uint32_t *__restrict__ node_chunk_count_psum,
@@ -93,7 +93,6 @@ __global__ void compute_chunk_bounds(uint32_t num_prims, const AABB3 *__restrict
     // CUDA_ASSERT(blockDim.x == CHUNK_SIZE);
     //
     uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
-
     uint32_t chunk_id = blockIdx.x;
 
     // Which node am i in? prefix sum node count + binary search
@@ -106,8 +105,10 @@ __global__ void compute_chunk_bounds(uint32_t num_prims, const AABB3 *__restrict
     }
 
     AABB3 b;
-    if (gid < num_prims) {
-        uint32_t prim_id = prim_ids[gid];
+    if (threadIdx.x < num_valid) {
+        uint32_t ref_id =
+            node_prim_count_psum[node_id] + (blockIdx.x - node_chunk_count_psum[node_id]) * CHUNK_SIZE + threadIdx.x;
+        uint32_t prim_id = prim_ids[ref_id];
         b = prim_bounds[prim_id];
     }
 
@@ -131,6 +132,9 @@ __global__ void compute_chunk_bounds(uint32_t num_prims, const AABB3 *__restrict
 
     // The return value is undefined in threads other than thread0.
     if (threadIdx.x == 0) {
+        printf("%u (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)\n",            //
+               node_id, b_reduced.min.x, b_reduced.min.y, b_reduced.min.z, //
+               b_reduced.max.x, b_reduced.max.y, b_reduced.max.z);
         chunk_bounds[chunk_id] = b_reduced;
         chunk_to_node_map[chunk_id] = node_id;
         // printf("%f\n", chunk_bounds[chunk_id].max.x);
@@ -163,6 +167,13 @@ __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ 
     float split_pos = 0.5f * (valid_bound.min[axis] + valid_bound.max[axis]);
     child_info[node_id].split.axis = axis;
     child_info[node_id].split.pos = split_pos;
+    printf(
+        "L (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f), T (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f) axis %u, pos %.3f\n", //
+        loose_bound.min.x, loose_bound.min.y, loose_bound.min.z,                                                      //
+        loose_bound.max.x, loose_bound.max.y, loose_bound.max.z,                                                      //
+        tight_bound.min.x, tight_bound.min.y, tight_bound.min.z,                                                      //
+        tight_bound.max.x, tight_bound.max.y, tight_bound.max.z,                                                      //
+        axis, split_pos);
 
     next_node_loose_bounds[node_id * 2] = loose_bound;
     next_node_loose_bounds[node_id * 2].max[axis] = split_pos;
@@ -457,13 +468,14 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     thrust::copy_n(large_nodes.node_chunk_count_psum.begin() + num_nodes, 1, &num_chunks);
     large_nodes.chunk_bounds.resize(num_chunks);
     large_nodes.chunk_to_node_map.resize(num_chunks);
-    run_kernel_1d<CHUNK_SIZE>(compute_chunk_bounds, 0, (cudaStream_t)(0), num_prims, num_prims,
+    uint32_t num_refs_chunked = num_chunks * CHUNK_SIZE;
+    run_kernel_1d<CHUNK_SIZE>(compute_chunk_bounds, 0, (cudaStream_t)(0), num_refs_chunked, num_refs_chunked,
                               input.bounds.data().get(), large_nodes.prim_ids.data().get(), num_nodes,
                               large_nodes.node_prim_count_psum.data().get(),
                               large_nodes.node_chunk_count_psum.data().get(), large_nodes.chunk_bounds.data().get(),
                               large_nodes.chunk_to_node_map.data().get());
-    // cuda_check(cudaDeviceSynchronize());
-    // cuda_check(cudaGetLastError());
+    cuda_check(cudaDeviceSynchronize());
+    cuda_check(cudaGetLastError());
 
     // Perform segmented reduction on per-chunk reduction result to compute per-node tight bounding box
     large_nodes.node_tight_bounds.resize(num_nodes);
@@ -487,8 +499,8 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     run_kernel_1d(split_large_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes,
                   large_nodes.node_loose_bounds.data().get(), large_nodes.node_tight_bounds.data().get(),
                   large_nodes.node_child_info.data().get(), next_node_loose_bounds.data().get());
-    // cuda_check(cudaDeviceSynchronize());
-    // cuda_check(cudaGetLastError());
+    cuda_check(cudaDeviceSynchronize());
+    cuda_check(cudaGetLastError());
 
     // Allocate one more to automatically get the total count from prefix sum.
     thrust::device_vector<uint32_t> next_node_prim_count_psum(num_nodes_next + 1, 0);
