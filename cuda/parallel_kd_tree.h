@@ -132,10 +132,12 @@ static_assert(sizeof(CompactKdTreeNode) == 8);
 static_assert(alignof(CompactKdTreeNode) == 4);
 CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof(uint32_t);
 
-struct BuildStats
+struct ParallelKdTreeBuildStats
 {
     size_t compact_strorage_bytes;
     uint32_t max_depth;
+    uint32_t upper_max_depth;
+    uint32_t lower_max_depth;
     uint32_t n_nodes;
     uint32_t n_leaves;
     uint32_t n_prim_refs;
@@ -143,10 +145,10 @@ struct BuildStats
 
 struct ParallelKdTree
 {
-    void build(const ParallelKdTreeBuildInput &input, BuildStats *stats = nullptr);
+    void build(const ParallelKdTreeBuildInput &input, ParallelKdTreeBuildStats *stats = nullptr);
     LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes, uint8_t depth,
-                                   SmallRootArray &small_roots);
+                                   SmallRootArray &small_roots, bool record_depth);
     void prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
     SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots, uint8_t depth,
                                    thrust::device_ptr<uint32_t> max_depth);

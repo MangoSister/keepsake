@@ -92,7 +92,7 @@ __global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__r
 {
     // CUDA_ASSERT(blockDim.x == CHUNK_SIZE);
     //
-    uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
+    // uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t chunk_id = blockIdx.x;
 
     // Which node am i in? prefix sum node count + binary search
@@ -107,7 +107,7 @@ __global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__r
     AABB3 b;
     if (threadIdx.x < num_valid) {
         uint32_t ref_id =
-            node_prim_count_psum[node_id] + (blockIdx.x - node_chunk_count_psum[node_id]) * CHUNK_SIZE + threadIdx.x;
+            node_prim_count_psum[node_id] + (chunk_id - node_chunk_count_psum[node_id]) * CHUNK_SIZE + threadIdx.x;
         uint32_t prim_id = prim_ids[ref_id];
         b = prim_bounds[prim_id];
     }
@@ -132,9 +132,9 @@ __global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__r
 
     // The return value is undefined in threads other than thread0.
     if (threadIdx.x == 0) {
-        printf("%u (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)\n",            //
-               node_id, b_reduced.min.x, b_reduced.min.y, b_reduced.min.z, //
-               b_reduced.max.x, b_reduced.max.y, b_reduced.max.z);
+        // printf("%u (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f)\n",            //
+        //        node_id, b_reduced.min.x, b_reduced.min.y, b_reduced.min.z, //
+        //        b_reduced.max.x, b_reduced.max.y, b_reduced.max.z);
         chunk_bounds[chunk_id] = b_reduced;
         chunk_to_node_map[chunk_id] = node_id;
         // printf("%f\n", chunk_bounds[chunk_id].max.x);
@@ -167,13 +167,12 @@ __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ 
     float split_pos = 0.5f * (valid_bound.min[axis] + valid_bound.max[axis]);
     child_info[node_id].split.axis = axis;
     child_info[node_id].split.pos = split_pos;
-    printf(
-        "L (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f), T (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f) axis %u, pos %.3f\n", //
-        loose_bound.min.x, loose_bound.min.y, loose_bound.min.z,                                                      //
-        loose_bound.max.x, loose_bound.max.y, loose_bound.max.z,                                                      //
-        tight_bound.min.x, tight_bound.min.y, tight_bound.min.z,                                                      //
-        tight_bound.max.x, tight_bound.max.y, tight_bound.max.z,                                                      //
-        axis, split_pos);
+    // printf(
+    //     "L (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f), T (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f) axis %u, pos %.3f\n",
+    //     // loose_bound.min.x, loose_bound.min.y, loose_bound.min.z, // loose_bound.max.x, loose_bound.max.y,
+    //     loose_bound.max.z,                                                      // tight_bound.min.x,
+    //     tight_bound.min.y, tight_bound.min.z,                                                      //
+    //     tight_bound.max.x, tight_bound.max.y, tight_bound.max.z, // axis, split_pos);
 
     next_node_loose_bounds[node_id * 2] = loose_bound;
     next_node_loose_bounds[node_id * 2].max[axis] = split_pos;
@@ -187,21 +186,38 @@ struct join_aabb : public thrust::binary_function<AABB3, AABB3, AABB3>
     CUDA_HOST_DEVICE AABB3 operator()(AABB3 b0, AABB3 b1) { return join(b0, b1); }
 };
 
-__global__ void partition_prims_count(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds,
+__global__ void partition_prims_count(uint32_t num_refs_chunked, const AABB3 *__restrict__ prim_bounds,
                                       const uint32_t *__restrict__ prim_ids, uint32_t num_nodes,
+                                      const uint32_t *__restrict__ node_prim_count_psum,
                                       const uint32_t *__restrict__ node_chunk_count_psum,
                                       const AABB3 *__restrict__ node_loose_bounds,
                                       const LargeNodeChildInfo *__restrict__ child_info,
                                       uint32_t *__restrict__ next_node_prim_count)
 {
-    uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (gid >= num_prims) {
-        return;
-    }
-    uint32_t prim_id = prim_ids[gid];
+    // uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t chunk_id = blockIdx.x;
 
+    // if (gid >= num_prims) {
+    // return;
+    //}
+
     uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return chunk_id >= node_chunk_count_psum[i]; });
+    uint32_t num_valid = CHUNK_SIZE;
+    // Am I in the last chunk of a node?
+    if (chunk_id + 1 == node_chunk_count_psum[node_id + 1]) {
+        uint32_t node_prim_count = node_prim_count_psum[node_id + 1] - node_prim_count_psum[node_id];
+        num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+    }
+    if (threadIdx.x >= num_valid) {
+        return;
+    }
+
+    uint32_t ref_id =
+        node_prim_count_psum[node_id] + (chunk_id - node_chunk_count_psum[node_id]) * CHUNK_SIZE + threadIdx.x;
+    uint32_t prim_id = prim_ids[ref_id];
+
+    // uint32_t prim_id = prim_ids[gid];
+
     SplitPlane split = child_info[node_id].split;
     // AABB3 node_loose_bound = node_loose_bounds[node_id];
     float split_pos = split.pos;
@@ -257,8 +273,8 @@ __global__ void mark_small_nodes(uint32_t parent_num_nodes,
     } else {
         bad_flags[left_node_id] = bad_flags[right_node_id] = parent_bad_flags[parent_node_id] + 1;
     }
-    printf("%u, %u, %u\n", left_node_id, (uint32_t)bad_flags[left_node_id], next_node_prim_count[left_node_id]);
-    printf("%u, %u, %u\n", right_node_id, (uint32_t)bad_flags[right_node_id], next_node_prim_count[right_node_id]);
+    // printf("%u, %u, %u\n", left_node_id, (uint32_t)bad_flags[left_node_id], next_node_prim_count[left_node_id]);
+    // printf("%u, %u, %u\n", right_node_id, (uint32_t)bad_flags[right_node_id], next_node_prim_count[right_node_id]);
 
     if (bad_flags[left_node_id] == BAD_SPLIT_TRYS || next_node_prim_count[left_node_id] <= LARGE_NODE_THRESHOLD) {
         small_flags[left_node_id] = 1;
@@ -297,21 +313,36 @@ __global__ void store_child_refs(uint32_t num_nodes, const uint32_t *__restrict_
 }
 
 __global__ void
-partition_prims_assign(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds, const uint32_t *__restrict__ prim_ids,
-                       uint32_t num_nodes, const uint32_t *__restrict__ node_chunk_count_psum,
-                       const AABB3 *__restrict__ node_loose_bounds, const LargeNodeChildInfo *__restrict__ child_info,
-                       const uint32_t *__restrict__ small_flags, const uint32_t *__restrict__ small_flags_invert,
-                       uint32_t *__restrict__ next_prim_ids_small, uint32_t *__restrict__ next_prim_ids_large,
-                       uint32_t *__restrict__ assign_offsets_small, uint32_t *__restrict__ assign_offsets_large)
+partition_prims_assign(uint32_t num_refs_chunked, const AABB3 *__restrict__ prim_bounds,
+                       const uint32_t *__restrict__ prim_ids, uint32_t num_nodes,
+                       const uint32_t *__restrict__ node_prim_count_psum,
+                       const uint32_t *__restrict__ node_chunk_count_psum, const AABB3 *__restrict__ node_loose_bounds,
+                       const LargeNodeChildInfo *__restrict__ child_info, const uint32_t *__restrict__ small_flags,
+                       const uint32_t *__restrict__ small_flags_invert, uint32_t *__restrict__ next_prim_ids_small,
+                       uint32_t *__restrict__ next_prim_ids_large, uint32_t *__restrict__ assign_offsets_small,
+                       uint32_t *__restrict__ assign_offsets_large)
 {
-    uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (gid >= num_prims) {
-        return;
-    }
-    uint32_t prim_id = prim_ids[gid];
+    // uint32_t gid = threadIdx.x + blockIdx.x * blockDim.x;
     uint32_t chunk_id = blockIdx.x;
+    // if (gid >= num_prims) {
+    // return;
+    //}
 
     uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return chunk_id >= node_chunk_count_psum[i]; });
+    uint32_t num_valid = CHUNK_SIZE;
+    // Am I in the last chunk of a node?
+    if (chunk_id + 1 == node_chunk_count_psum[node_id + 1]) {
+        uint32_t node_prim_count = node_prim_count_psum[node_id + 1] - node_prim_count_psum[node_id];
+        num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+    }
+    if (threadIdx.x >= num_valid) {
+        return;
+    }
+
+    uint32_t ref_id =
+        node_prim_count_psum[node_id] + (chunk_id - node_chunk_count_psum[node_id]) * CHUNK_SIZE + threadIdx.x;
+    uint32_t prim_id = prim_ids[ref_id];
+
     SplitPlane split = child_info[node_id].split;
     // AABB3 node_loose_bound = node_loose_bounds[node_id];
     float split_pos = split.pos;
@@ -370,41 +401,42 @@ partition_prims_assign(uint32_t num_prims, const AABB3 *__restrict__ prim_bounds
     // }
 }
 
-void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, BuildStats *stats)
+void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, ParallelKdTreeBuildStats *stats)
 {
     std::vector<LargeNodeArray> upper_tree{init_build(input)};
     SmallRootArray small_roots;
-    uint8_t depth = 0;
+
     // Large node stage.
-    while (true) {
+    bool record_depth = (stats != nullptr);
+    uint8_t upper_depth = 0;
+    for (;; ++upper_depth) {
+        ASSERT(upper_depth <= MAX_DEPTH);
         LargeNodeArray &curr = upper_tree.back();
-        LargeNodeArray next = large_node_step(input, curr, depth, small_roots);
+        LargeNodeArray next = large_node_step(input, curr, upper_depth, small_roots, record_depth);
         if (!next.node_loose_bounds.empty()) {
             upper_tree.push_back(std::move(next));
         } else {
             break;
         }
-        ++depth;
     }
     // Small node stage.
     prepare_small_roots(input, small_roots);
     std::vector<SmallNodeArray> lower_tree{SmallNodeArray{}};
-    depth = 0;
 
     thrust::device_ptr<uint32_t> max_depth;
     if (stats) {
         max_depth = thrust::device_new<uint32_t>();
         thrust::fill_n(max_depth, 1, 0);
     }
-    while (true) {
+    uint8_t lower_depth = 0;
+    for (;; ++lower_depth) {
         SmallNodeArray &curr = lower_tree.back();
-        SmallNodeArray next = small_node_step(curr, small_roots, depth, max_depth);
+        SmallNodeArray next = small_node_step(curr, small_roots, lower_depth, max_depth);
         if (!next.node_loose_bounds.empty()) {
             lower_tree.push_back(std::move(next));
         } else {
             break;
         }
-        ++depth;
     }
     thrust::device_ptr<uint32_t> n_leaves;
     thrust::device_ptr<uint32_t> prim_ref_storage;
@@ -420,6 +452,8 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, BuildStats *st
     if (stats) {
         stats->compact_strorage_bytes = nodes_storage.size() * sizeof(uint32_t);
         thrust::copy_n(max_depth, 1, &stats->max_depth);
+        stats->upper_max_depth = upper_depth + 1;
+        stats->lower_max_depth = lower_depth;
         uint32_t prim_ref_storage_cpu;
         thrust::copy_n(prim_ref_storage, 1, &prim_ref_storage_cpu);
         thrust::copy_n(n_leaves, 1, &stats->n_leaves);
@@ -452,7 +486,7 @@ LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
 }
 
 LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
-                                               uint8_t depth, SmallRootArray &small_roots)
+                                               uint8_t depth, SmallRootArray &small_roots, bool record_depth)
 {
     uint32_t num_nodes = large_nodes.node_prim_count_psum.size() - 1;
     uint32_t num_prims = (uint32_t)input.bounds.size();
@@ -474,8 +508,8 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
                               large_nodes.node_prim_count_psum.data().get(),
                               large_nodes.node_chunk_count_psum.data().get(), large_nodes.chunk_bounds.data().get(),
                               large_nodes.chunk_to_node_map.data().get());
-    cuda_check(cudaDeviceSynchronize());
-    cuda_check(cudaGetLastError());
+    // cuda_check(cudaDeviceSynchronize());
+    // cuda_check(cudaGetLastError());
 
     // Perform segmented reduction on per-chunk reduction result to compute per-node tight bounding box
     large_nodes.node_tight_bounds.resize(num_nodes);
@@ -499,17 +533,17 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     run_kernel_1d(split_large_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes,
                   large_nodes.node_loose_bounds.data().get(), large_nodes.node_tight_bounds.data().get(),
                   large_nodes.node_child_info.data().get(), next_node_loose_bounds.data().get());
-    cuda_check(cudaDeviceSynchronize());
-    cuda_check(cudaGetLastError());
+    // cuda_check(cudaDeviceSynchronize());
+    // cuda_check(cudaGetLastError());
 
     // Allocate one more to automatically get the total count from prefix sum.
     thrust::device_vector<uint32_t> next_node_prim_count_psum(num_nodes_next + 1, 0);
 
-    run_kernel_1d<CHUNK_SIZE>(partition_prims_count, 0, (cudaStream_t)(0), num_prims, num_prims,
-                              input.bounds.data().get(), large_nodes.prim_ids.data().get(), num_nodes,
-                              large_nodes.node_chunk_count_psum.data().get(),
-                              large_nodes.node_loose_bounds.data().get(), large_nodes.node_child_info.data().get(),
-                              next_node_prim_count_psum.data().get());
+    run_kernel_1d<CHUNK_SIZE>(
+        partition_prims_count, 0, (cudaStream_t)(0), num_refs_chunked, num_refs_chunked, input.bounds.data().get(),
+        large_nodes.prim_ids.data().get(), num_nodes, large_nodes.node_prim_count_psum.data().get(),
+        large_nodes.node_chunk_count_psum.data().get(), large_nodes.node_loose_bounds.data().get(),
+        large_nodes.node_child_info.data().get(), next_node_prim_count_psum.data().get());
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
 
@@ -589,13 +623,13 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     thrust::device_vector<uint32_t> assign_offsets_small = next_node_prim_count_psum_small;
     thrust::device_vector<uint32_t> assign_offsets_large = next_node_prim_count_psum_large;
     // Partition prim ids while accounting for large/small separation
-    run_kernel_1d<CHUNK_SIZE>(partition_prims_assign, 0, (cudaStream_t)(0), num_prims, num_prims,
-                              input.bounds.data().get(), large_nodes.prim_ids.data().get(), num_nodes,
-                              large_nodes.node_chunk_count_psum.data().get(),
-                              large_nodes.node_loose_bounds.data().get(), large_nodes.node_child_info.data().get(),
-                              small_flags.data().get(), small_flags_invert.data().get(),          //
-                              next_prim_ids_small.data().get(), next_prim_ids_large.data().get(), //
-                              assign_offsets_small.data().get(), assign_offsets_large.data().get());
+    run_kernel_1d<CHUNK_SIZE>(
+        partition_prims_assign, 0, (cudaStream_t)(0), num_prims, num_prims, input.bounds.data().get(),
+        large_nodes.prim_ids.data().get(), num_nodes, large_nodes.node_prim_count_psum.data().get(),
+        large_nodes.node_chunk_count_psum.data().get(), large_nodes.node_loose_bounds.data().get(),
+        large_nodes.node_child_info.data().get(), small_flags.data().get(), small_flags_invert.data().get(), //
+        next_prim_ids_small.data().get(), next_prim_ids_large.data().get(),                                  //
+        assign_offsets_small.data().get(), assign_offsets_large.data().get());
 
     LargeNodeArray next_large;
     next_large.prim_ids = std::move(next_prim_ids_large);
@@ -621,11 +655,11 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
         thrust::copy(next_node_bad_flags_small.begin(), next_node_bad_flags_small.end(),
                      small_roots.bad_flags.begin() + old_size);
     }
-    {
+    if (record_depth) {
         uint32_t old_size = small_roots.depths.size();
         // Same depth for all new small nodes this batch.
         small_roots.depths.resize(old_size + next_node_bad_flags_small.size());
-        thrust::fill_n(small_roots.depths.begin() + old_size, next_node_bad_flags_small.size(), depth);
+        thrust::fill_n(small_roots.depths.begin() + old_size, next_node_bad_flags_small.size(), depth + 1);
     }
 
     // Need to add a global offset and append

@@ -1,5 +1,7 @@
 
 #include "../config.h"
+#include "../file_util.h"
+#include "../log_util.h"
 #include "parallel_kd_tree.h"
 #include "rng.cuh"
 #include <thrust/host_vector.h>
@@ -20,6 +22,16 @@ namespace ks
 // ret = find_interval((uint32_t)arr.size(), [&](uint32_t i) { return gid >= arr[i]; });
 // gid = 999;
 // ret = find_interval((uint32_t)arr.size(), [&](uint32_t i) { return gid >= arr[i]; });
+
+std::string to_string(const ksc::ParallelKdTreeBuildStats &stats)
+{
+    return string_format("compact storage: %llu bytes, "
+                         "max depth: %u, upper max depth: %u, lower max depth: %u, "
+                         "nodes: %u, leaf nodes: %u, "
+                         "primitive references: %u.",
+                         stats.compact_strorage_bytes, stats.max_depth, stats.upper_max_depth, stats.lower_max_depth,
+                         stats.n_nodes, stats.n_leaves, stats.n_prim_refs);
+}
 
 void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int task_id)
 {
@@ -59,8 +71,9 @@ void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int
 
     ksc::ParallelKdTreeBuildInput build_input{.bounds = device_bounds};
     ksc::ParallelKdTree tree;
-    ksc::BuildStats stats;
+    ksc::ParallelKdTreeBuildStats stats;
     tree.build(build_input, &stats);
+    get_default_logger().info("Parallel kd-tree build stats:\n{}", to_string(stats));
 
     // thrust::host_vector<ksc::AABB3> parallel_chunk_bounds = out.large_nodes.chunk_bounds;
     // thrust::host_vector<ksc::AABB3> parallel_node_tight_bounds = out.large_nodes.node_tight_bounds;
