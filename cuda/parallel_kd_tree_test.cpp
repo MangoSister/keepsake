@@ -25,12 +25,19 @@ namespace ks
 
 std::string to_string(const ksc::ParallelKdTreeBuildStats &stats)
 {
-    return string_format("compact storage: %llu bytes, "
-                         "max depth: %u, upper max depth: %u, lower max depth: %u, "
-                         "nodes: %u, leaf nodes: %u, "
-                         "primitive references: %u.",
+    uint32_t n_interior = stats.n_nodes - stats.n_leaves;
+    float avg_prim_per_leaf = (float)(stats.n_prim_refs) / (float)(stats.n_leaves);
+    return string_format("{\n"
+                         "    [compact storage]: %llu (bytes),\n"
+                         "    [max depth]: %u <= %u (upper) + %u (lower),\n"
+                         "    [nodes]: %u = %u (interior) + %u (leaves),\n"
+                         "    [small roots]: %u,\n"
+                         "    [primitive refs]: %u,\n"
+                         "    [avg prim/leaf]: %.1f\n"
+                         "}",
                          stats.compact_strorage_bytes, stats.max_depth, stats.upper_max_depth, stats.lower_max_depth,
-                         stats.n_nodes, stats.n_leaves, stats.n_prim_refs);
+                         stats.n_nodes, n_interior, stats.n_leaves, stats.n_small_roots, stats.n_prim_refs,
+                         avg_prim_per_leaf);
 }
 
 void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int task_id)

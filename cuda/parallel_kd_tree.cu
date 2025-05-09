@@ -459,6 +459,7 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, ParallelKdTree
         thrust::copy_n(n_leaves, 1, &stats->n_leaves);
         stats->n_nodes =
             (stats->compact_strorage_bytes - prim_ref_storage_cpu * sizeof(uint32_t)) / sizeof(CompactKdTreeNode);
+        stats->n_small_roots = (uint32_t)small_roots.node_loose_bounds.size();
         stats->n_prim_refs = stats->n_leaves + prim_ref_storage_cpu;
         thrust::device_free(max_depth);
         thrust::device_free(prim_ref_storage);

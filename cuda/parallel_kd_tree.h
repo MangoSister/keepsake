@@ -137,8 +137,9 @@ struct ParallelKdTreeBuildStats
     size_t compact_strorage_bytes;
     uint32_t max_depth;
     uint32_t upper_max_depth;
-    uint32_t lower_max_depth;
+    uint32_t lower_max_depth;    
     uint32_t n_nodes;
+    uint32_t n_small_roots;
     uint32_t n_leaves;
     uint32_t n_prim_refs;
 };
