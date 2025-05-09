@@ -23,23 +23,6 @@ namespace ks
 // gid = 999;
 // ret = find_interval((uint32_t)arr.size(), [&](uint32_t i) { return gid >= arr[i]; });
 
-std::string to_string(const ksc::ParallelKdTreeBuildStats &stats)
-{
-    uint32_t n_interior = stats.n_nodes - stats.n_leaves;
-    float avg_prim_per_leaf = (float)(stats.n_prim_refs) / (float)(stats.n_leaves);
-    return string_format("{\n"
-                         "    [compact storage]: %llu (bytes),\n"
-                         "    [max depth]: %u <= %u (upper) + %u (lower),\n"
-                         "    [nodes]: %u = %u (interior) + %u (leaves),\n"
-                         "    [small roots]: %u,\n"
-                         "    [primitive refs]: %u,\n"
-                         "    [avg prim/leaf]: %.1f\n"
-                         "}",
-                         stats.compact_strorage_bytes, stats.max_depth, stats.upper_max_depth, stats.lower_max_depth,
-                         stats.n_nodes, n_interior, stats.n_leaves, stats.n_small_roots, stats.n_prim_refs,
-                         avg_prim_per_leaf);
-}
-
 void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int task_id)
 {
     // compare cpu serial to cuda parallel results
@@ -80,7 +63,7 @@ void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int
     ksc::ParallelKdTree tree;
     ksc::ParallelKdTreeBuildStats stats;
     tree.build(build_input, &stats);
-    get_default_logger().info("Parallel kd-tree build stats:\n{}", to_string(stats));
+    get_default_logger().info("Parallel kd-tree build stats:\n{}", stats.to_string());
 
     // thrust::host_vector<ksc::AABB3> parallel_chunk_bounds = out.large_nodes.chunk_bounds;
     // thrust::host_vector<ksc::AABB3> parallel_node_tight_bounds = out.large_nodes.node_tight_bounds;

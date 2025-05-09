@@ -9,6 +9,7 @@
 // Wu, Zhefeng, Fukai Zhao, and Xinguo Liu. "SAH KD-tree construction on GPU." HPG 2011.
 
 #include "aabb.cuh"
+#include "basic.cuh"
 #include "vecmath.cuh"
 #include <thrust/device_vector.h>
 
@@ -134,10 +135,13 @@ CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof
 
 struct ParallelKdTreeBuildStats
 {
+#ifdef CPP_CODE_ONLY
+    std::string to_string() const;
+#endif
     size_t compact_strorage_bytes;
     uint32_t max_depth;
     uint32_t upper_max_depth;
-    uint32_t lower_max_depth;    
+    uint32_t lower_max_depth;
     uint32_t n_nodes;
     uint32_t n_small_roots;
     uint32_t n_leaves;
