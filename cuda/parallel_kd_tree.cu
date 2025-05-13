@@ -154,12 +154,21 @@ __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ 
     AABB3 loose_bound = node_loose_bounds[node_id];
     vec3 loose_ext = loose_bound.extents();
     AABB3 tight_bound = node_tight_bounds[node_id];
-    vec3 tight_ext = tight_bound.extents();
-    AABB3 valid_bound = loose_bound;
+
+    // vec3 tight_ext = tight_bound.extents();
+    // AABB3 valid_bound = loose_bound;
+    AABB3 isect_bound = intersect(loose_bound, tight_bound);
+    AABB3 valid_bound;
     for (uint32_t d = 0; d < 3; ++d) {
-        if (tight_ext[d] / loose_ext[d] < 1.0f - EMPTY_SPACE_RATIO) {
-            valid_bound.min[d] = tight_bound.min[d];
-            valid_bound.max[d] = tight_bound.max[d];
+        if ((isect_bound.min[d] - loose_bound.min[d]) > EMPTY_SPACE_RATIO * loose_ext[d]) {
+            valid_bound.min[d] = isect_bound.min[d];
+        } else {
+            valid_bound.min[d] = loose_bound.min[d];
+        }
+        if ((loose_bound.max[d] - isect_bound.max[d]) > EMPTY_SPACE_RATIO * loose_ext[d]) {
+            valid_bound.max[d] = isect_bound.max[d];
+        } else {
+            valid_bound.max[d] = loose_bound.max[d];
         }
     }
     uint32_t axis = valid_bound.largest_axis();
@@ -239,7 +248,7 @@ __global__ void partition_prims_count(uint32_t num_refs_chunked, const AABB3 *__
     }
 }
 
-__global__ void mark_small_nodes(uint32_t parent_num_nodes,
+__global__ void mark_small_nodes(float traversal_cost, uint32_t parent_num_nodes,
                                  //
                                  const uint32_t *__restrict__ parent_node_prim_count,
                                  const AABB3 *__restrict__ parent_loose_bounds,
@@ -265,9 +274,8 @@ __global__ void mark_small_nodes(uint32_t parent_num_nodes,
     float area_left = next_loose_bounds[left_node_id].surface_area();
     uint32_t n_right = next_node_prim_count[right_node_id];
     float area_right = next_loose_bounds[right_node_id].surface_area();
-    constexpr float cost_ts = 0.2f;
     // int isect_cost = 5, int traversal_cost = 1
-    float sah = (n_left * area_left + n_right * area_right) / area + cost_ts;
+    float sah = (n_left * area_left + n_right * area_right) / area + traversal_cost;
     if (sah < sah0) {
         bad_flags[left_node_id] = bad_flags[right_node_id] = 0;
     } else {
@@ -401,18 +409,17 @@ partition_prims_assign(uint32_t num_refs_chunked, const AABB3 *__restrict__ prim
     // }
 }
 
-void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, ParallelKdTreeBuildStats *stats)
+void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
 {
     std::vector<LargeNodeArray> upper_tree{init_build(input)};
     SmallRootArray small_roots;
 
     // Large node stage.
-    bool record_depth = (stats != nullptr);
     uint8_t upper_depth = 0;
     for (;; ++upper_depth) {
         ASSERT(upper_depth <= MAX_DEPTH);
         LargeNodeArray &curr = upper_tree.back();
-        LargeNodeArray next = large_node_step(input, curr, upper_depth, small_roots, record_depth);
+        LargeNodeArray next = large_node_step(input, curr, upper_depth, small_roots);
         if (!next.node_loose_bounds.empty()) {
             upper_tree.push_back(std::move(next));
         } else {
@@ -424,14 +431,14 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, ParallelKdTree
     std::vector<SmallNodeArray> lower_tree{SmallNodeArray{}};
 
     thrust::device_ptr<uint32_t> max_depth;
-    if (stats) {
+    if (input.stats) {
         max_depth = thrust::device_new<uint32_t>();
         thrust::fill_n(max_depth, 1, 0);
     }
     uint8_t lower_depth = 0;
     for (;; ++lower_depth) {
         SmallNodeArray &curr = lower_tree.back();
-        SmallNodeArray next = small_node_step(curr, small_roots, lower_depth, max_depth);
+        SmallNodeArray next = small_node_step(input, curr, small_roots, lower_depth, max_depth);
         if (!next.node_loose_bounds.empty()) {
             lower_tree.push_back(std::move(next));
         } else {
@@ -440,7 +447,7 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, ParallelKdTree
     }
     thrust::device_ptr<uint32_t> n_leaves;
     thrust::device_ptr<uint32_t> prim_ref_storage;
-    if (stats) {
+    if (input.stats) {
         n_leaves = thrust::device_new<uint32_t>();
         thrust::fill_n(n_leaves, 1, 0);
         prim_ref_storage = thrust::device_new<uint32_t>();
@@ -449,18 +456,18 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input, ParallelKdTree
     // Final compact stage.
     compact(upper_tree, small_roots, lower_tree, n_leaves, prim_ref_storage);
 
-    if (stats) {
-        stats->compact_strorage_bytes = nodes_storage.size() * sizeof(uint32_t);
-        thrust::copy_n(max_depth, 1, &stats->max_depth);
-        stats->upper_max_depth = upper_depth + 1;
-        stats->lower_max_depth = lower_depth;
+    if (input.stats) {
+        input.stats->compact_strorage_bytes = nodes_storage.size() * sizeof(uint32_t);
+        thrust::copy_n(max_depth, 1, &input.stats->max_depth);
+        input.stats->upper_max_depth = upper_depth + 1;
+        input.stats->lower_max_depth = lower_depth;
         uint32_t prim_ref_storage_cpu;
         thrust::copy_n(prim_ref_storage, 1, &prim_ref_storage_cpu);
-        thrust::copy_n(n_leaves, 1, &stats->n_leaves);
-        stats->n_nodes =
-            (stats->compact_strorage_bytes - prim_ref_storage_cpu * sizeof(uint32_t)) / sizeof(CompactKdTreeNode);
-        stats->n_small_roots = (uint32_t)small_roots.node_loose_bounds.size();
-        stats->n_prim_refs = stats->n_leaves + prim_ref_storage_cpu;
+        thrust::copy_n(n_leaves, 1, &input.stats->n_leaves);
+        input.stats->n_nodes =
+            (input.stats->compact_strorage_bytes - prim_ref_storage_cpu * sizeof(uint32_t)) / sizeof(CompactKdTreeNode);
+        input.stats->n_small_roots = (uint32_t)small_roots.node_loose_bounds.size();
+        input.stats->n_prim_refs = input.stats->n_leaves + prim_ref_storage_cpu;
         thrust::device_free(max_depth);
         thrust::device_free(prim_ref_storage);
     }
@@ -487,8 +494,9 @@ LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
 }
 
 LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
-                                               uint8_t depth, SmallRootArray &small_roots, bool record_depth)
+                                               uint8_t depth, SmallRootArray &small_roots)
 {
+    bool record_depth = (input.stats != nullptr);
     uint32_t num_nodes = large_nodes.node_prim_count_psum.size() - 1;
     uint32_t num_prims = (uint32_t)input.bounds.size();
     thrust::copy_n(large_nodes.node_prim_count_psum.rbegin(), 1, &num_prims);
@@ -509,8 +517,6 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
                               large_nodes.node_prim_count_psum.data().get(),
                               large_nodes.node_chunk_count_psum.data().get(), large_nodes.chunk_bounds.data().get(),
                               large_nodes.chunk_to_node_map.data().get());
-    // cuda_check(cudaDeviceSynchronize());
-    // cuda_check(cudaGetLastError());
 
     // Perform segmented reduction on per-chunk reduction result to compute per-node tight bounding box
     large_nodes.node_tight_bounds.resize(num_nodes);
@@ -553,18 +559,14 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     thrust::device_vector<uint32_t> small_flags(num_nodes_next);
     thrust::device_vector<uint32_t> small_flags_invert(num_nodes_next);
     thrust::device_vector<uint8_t> next_node_bad_flags(num_nodes_next);
-    run_kernel_1d(mark_small_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes,
+    run_kernel_1d(mark_small_nodes, 0, (cudaStream_t)(0), num_nodes, input.traversal_cost, num_nodes,
                   large_nodes.node_prim_count_psum.data().get(), large_nodes.node_loose_bounds.data().get(),
                   large_nodes.bad_flags.data().get(),
                   //
                   next_node_prim_count_psum.data().get(), next_node_loose_bounds.data().get(),
                   //
                   small_flags.data().get(), small_flags_invert.data().get(), next_node_bad_flags.data().get());
-    {
-        thrust::host_vector<uint8_t> h = next_node_bad_flags;
-        std::vector<uint8_t> v(h.begin(), h.end());
-        int z = 0;
-    }
+
     thrust::device_vector<uint32_t> small_flags_copy = small_flags;
     thrust::device_vector<uint32_t> small_flags_invert_copy = small_flags_invert;
 
@@ -763,7 +765,8 @@ void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, 
 }
 
 // One node per thread
-__global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t *__restrict__ small_root_ids,
+__global__ void compute_sah_split_small_nodes(uint32_t max_leaf_prims, float traversal_cost, uint32_t num_nodes,
+                                              const uint32_t *__restrict__ small_root_ids,
                                               const uint64_t *__restrict__ prim_masks,
                                               const AABB3 *__restrict__ node_loose_bounds,
                                               const uint8_t *__restrict__ small_root_bad_flags,
@@ -807,7 +810,6 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
         }
     }
 
-    constexpr uint32_t max_leaf_prims = 4;
     if (n_prims <= max_leaf_prims) {
         // DEBUG
         // printf("Leq than leaf threshold %d\n", n_prims);
@@ -850,9 +852,8 @@ __global__ void compute_sah_split_small_nodes(uint32_t num_nodes, const uint32_t
                 b_right.min[s.split_axis] = s.split_pos;
                 float area_right = b_right.surface_area();
                 // Compute SAH
-                constexpr float cost_ts = 0.2f;
                 // int isect_cost = 5, int traversal_cost = 1
-                float sah = (n_left * area_left + n_right * area_right) / area + cost_ts;
+                float sah = (n_left * area_left + n_right * area_right) / area + traversal_cost;
                 if (sah < min_sah) {
                     min_sah = sah;
                     best_split = split_idx;
@@ -933,8 +934,9 @@ __global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *
     }
 }
 
-SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots,
-                                               uint8_t depth, thrust::device_ptr<uint32_t> max_depth)
+SmallNodeArray ParallelKdTree::small_node_step(const ParallelKdTreeBuildInput &input, SmallNodeArray &small_nodes,
+                                               const SmallRootArray &small_roots, uint8_t depth,
+                                               thrust::device_ptr<uint32_t> max_depth)
 {
     uint32_t num_nodes;
     const uint32_t *curr_small_root_ids_ptr;
@@ -959,8 +961,9 @@ SmallNodeArray ParallelKdTree::small_node_step(SmallNodeArray &small_nodes, cons
 
     thrust::device_vector<uint32_t> split_tags(num_nodes);
     small_nodes.sah_splits.resize(num_nodes);
-    run_kernel_1d(compute_sah_split_small_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes, curr_small_root_ids_ptr,
-                  curr_prim_masks_ptr, curr_node_loose_bounds_ptr,
+    run_kernel_1d(compute_sah_split_small_nodes, 0, (cudaStream_t)(0), num_nodes, input.max_leaf_prims,
+                  input.traversal_cost, num_nodes, curr_small_root_ids_ptr, curr_prim_masks_ptr,
+                  curr_node_loose_bounds_ptr,
                   curr_bad_flags_ptr, //
                   small_roots.depths.data().get(), small_roots.node_prim_count_psum.data().get(),
                   small_roots.sah_split_candidates.data().get(), depth, //
@@ -1074,7 +1077,7 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChi
         return;
     }
     uint32_t parent_addr = node_addrs[parent_node_id];
-    CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
+    // CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
     LargeNodeChildInfo info = child_info[parent_node_id];
     uint32_t left_size = 0;
 

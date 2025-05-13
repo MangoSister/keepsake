@@ -16,11 +16,6 @@
 namespace ksc
 {
 
-struct ParallelKdTreeBuildInput
-{
-    const thrust::device_vector<AABB3> &bounds;
-};
-
 struct SplitPlane
 {
     uint32_t axis;
@@ -148,14 +143,26 @@ struct ParallelKdTreeBuildStats
     uint32_t n_prim_refs;
 };
 
+struct ParallelKdTreeBuildInput
+{
+    const thrust::device_vector<AABB3> &bounds;
+
+    //
+    uint32_t max_leaf_prims;
+    // Intersect cost is fixed to 1.
+    float traversal_cost = 0.2f;
+    ParallelKdTreeBuildStats *stats = nullptr;
+};
+
 struct ParallelKdTree
 {
-    void build(const ParallelKdTreeBuildInput &input, ParallelKdTreeBuildStats *stats = nullptr);
+    void build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
     LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes, uint8_t depth,
-                                   SmallRootArray &small_roots, bool record_depth);
+                                   SmallRootArray &small_roots);
     void prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
-    SmallNodeArray small_node_step(SmallNodeArray &small_nodes, const SmallRootArray &small_roots, uint8_t depth,
+    SmallNodeArray small_node_step(const ParallelKdTreeBuildInput &input, SmallNodeArray &small_nodes,
+                                   const SmallRootArray &small_roots, uint8_t depth,
                                    thrust::device_ptr<uint32_t> max_depth);
 
     void compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
