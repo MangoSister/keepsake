@@ -10,6 +10,7 @@
 
 #include "aabb.cuh"
 #include "basic.cuh"
+#include "memory_low_level.h"
 #include "vecmath.cuh"
 #include <thrust/device_vector.h>
 
@@ -145,10 +146,10 @@ struct ParallelKdTreeBuildStats
 
 struct ParallelKdTreeBuildInput
 {
-    const thrust::device_vector<AABB3> &bounds;
+    uint32_t num_prims;
+    CudaShareableLowLevelMemory prim_bounds_storage;
 
-    //
-    uint32_t max_leaf_prims;
+    uint32_t max_leaf_prims = 4;
     // Intersect cost is fixed to 1.
     float traversal_cost = 0.2f;
     ParallelKdTreeBuildStats *stats = nullptr;
@@ -165,14 +166,16 @@ struct ParallelKdTree
                                    const SmallRootArray &small_roots, uint8_t depth,
                                    thrust::device_ptr<uint32_t> max_depth);
 
-    void compact(std::vector<LargeNodeArray> &upper_tree, const SmallRootArray &small_roots,
-                 std::vector<SmallNodeArray> &lower_tree, thrust::device_ptr<uint32_t> n_leaves,
-                 thrust::device_ptr<uint32_t> prim_ref_storage);
+    void compact(const ParallelKdTreeBuildInput &input, std::vector<LargeNodeArray> &upper_tree,
+                 const SmallRootArray &small_roots, std::vector<SmallNodeArray> &lower_tree,
+                 thrust::device_ptr<uint32_t> n_leaves, thrust::device_ptr<uint32_t> prim_ref_storage);
 
-    AABB3 get_total_bound() const;
+    AABB3 get_total_bound() const; // Blocking.
 
-    thrust::device_ptr<AABB3> total_bound;
-    thrust::device_vector<uint32_t> nodes_storage;
+    // TODO: interop memory
+    // thrust::device_vector<uint32_t> nodes_storage;
+    CudaShareableLowLevelMemory total_bound;
+    CudaShareableLowLevelMemory nodes_storage;
 };
 
 } // namespace ksc

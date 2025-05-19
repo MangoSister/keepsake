@@ -59,12 +59,12 @@ void parallel_kd_tree_test(const ConfigArgs &args, const fs::path &task_dir, int
     thrust::device_vector<ksc::AABB3> device_bounds;
     device_bounds = bounds;
 
-    ksc::ParallelKdTreeBuildInput build_input{.bounds = device_bounds};
-    ksc::ParallelKdTree tree;
-    ksc::ParallelKdTreeBuildStats stats;
-    build_input.stats = &stats;
-    tree.build(build_input);
-    get_default_logger().info("Parallel kd-tree build stats:\n{}", stats.to_string());
+    // ksc::ParallelKdTreeBuildInput build_input{.bounds = device_bounds};
+    // ksc::ParallelKdTree tree;
+    // ksc::ParallelKdTreeBuildStats stats;
+    // build_input.stats = &stats;
+    // tree.build(build_input);
+    // get_default_logger().info("Parallel kd-tree build stats:\n{}", stats.to_string());
 
     // thrust::host_vector<ksc::AABB3> parallel_chunk_bounds = out.large_nodes.chunk_bounds;
     // thrust::host_vector<ksc::AABB3> parallel_node_tight_bounds = out.large_nodes.node_tight_bounds;

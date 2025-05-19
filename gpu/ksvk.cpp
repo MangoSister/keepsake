@@ -337,7 +337,7 @@ Buffer Allocator::create_buffer(const VkBufferCreateInfo &info_, VmaMemoryUsage 
     }
 
     if (data) {
-        ASSERT(upload_cb);
+        ASSERT(upload_cb, "Must be in a staging session (with a upload_cb)!");
 
         Buffer staging = create_staging_buffer(info.size, data, info.size);
         VkBufferCopy region;
@@ -381,7 +381,7 @@ Buffer Allocator::create_buffer_with_alignment(const VkBufferCreateInfo &info_, 
     }
 
     if (data) {
-        ASSERT(upload_cb);
+        ASSERT(upload_cb, "Must be in a staging session (with a upload_cb)!");
 
         Buffer staging = create_staging_buffer(info.size, data, info.size);
         VkBufferCopy region;
@@ -406,7 +406,7 @@ TexelBuffer Allocator::create_texel_buffer(const VkBufferCreateInfo &info, VkBuf
     vk_check(vmaCreateBuffer(vma, &info, &allocCI, &tb.buffer, &tb.allocation, nullptr));
 
     if (data) {
-        ASSERT(upload_cb);
+        ASSERT(upload_cb, "Must be in a staging session (with a upload_cb)!");
 
         Buffer staging = create_staging_buffer(info.size, data, info.size);
         VkBufferCopy region;
@@ -560,7 +560,7 @@ void Allocator::begin_staging_session()
 
 void Allocator::end_staging_session()
 {
-    ASSERT(upload_cb);
+    ASSERT(upload_cb, "Must be in a staging session (with a upload_cb)!");
     vk_check(vkEndCommandBuffer(upload_cb));
 
     VkSubmitInfo submitInfo{};
@@ -612,7 +612,7 @@ Image Allocator::create_and_transit_image(const VkImageCreateInfo &info, VmaMemo
 {
     Image image = create_image(info, usage, flags);
 
-    ASSERT(upload_cb);
+    ASSERT(upload_cb, "Must be in a staging session (with a upload_cb)!");
 
     VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.oldLayout = info.initialLayout;
@@ -640,7 +640,7 @@ Image Allocator::create_and_upload_image(const VkImageCreateInfo &info_, VmaMemo
                                          MipmapOption mipmap_option, bool cube_map)
 {
 
-    ASSERT(upload_cb);
+    ASSERT(upload_cb, "Must be in a staging session (with a upload_cb)!");
 
     VkImageCreateInfo info = info_;
     info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
