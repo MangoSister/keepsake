@@ -101,7 +101,9 @@ __global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__r
     // Am I in the last chunk of a node?
     if (chunk_id + 1 == node_chunk_count_psum[node_id + 1]) {
         uint32_t node_prim_count = node_prim_count_psum[node_id + 1] - node_prim_count_psum[node_id];
-        num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+        if (node_prim_count % CHUNK_SIZE != 0) {
+            num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+        }
     }
 
     AABB3 b;
@@ -137,7 +139,13 @@ __global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__r
         //        b_reduced.max.x, b_reduced.max.y, b_reduced.max.z);
         chunk_bounds[chunk_id] = b_reduced;
         chunk_to_node_map[chunk_id] = node_id;
-        // printf("%f\n", chunk_bounds[chunk_id].max.x);
+        // if (b_reduced.is_empty()) {
+        //     uint32_t node_prim_count = node_prim_count_psum[node_id + 1] - node_prim_count_psum[node_id];
+        //     printf("WTF %u, %u, %u, %u, %u\n", chunk_id, node_chunk_count_psum[node_id],
+        //            node_chunk_count_psum[node_id + 1], node_prim_count, num_valid);
+        //     CUDA_ASSERT(false);
+        // }
+        //  printf("%f\n", chunk_bounds[chunk_id].max.x);
     }
 }
 
@@ -176,6 +184,17 @@ __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ 
     float split_pos = 0.5f * (valid_bound.min[axis] + valid_bound.max[axis]);
     child_info[node_id].split.axis = axis;
     child_info[node_id].split.pos = split_pos;
+    // if (isnan(split_pos)) {
+    //     printf("(%f, %f, %f, %f, %f, %f), (%f, %f, %f, %f, %f, %f), (%f, %f, %f, %f, %f, %f)\n", //
+    //            valid_bound.min.x, valid_bound.min.y, valid_bound.min.z,                          //
+    //            valid_bound.max.x, valid_bound.max.y, valid_bound.max.z,                          //
+    //            loose_bound.min.x, loose_bound.min.y, loose_bound.min.z,                          //
+    //            loose_bound.max.x, loose_bound.max.y, loose_bound.max.z,                          //
+    //            tight_bound.min.x, tight_bound.min.y, tight_bound.min.z,                          //
+    //            tight_bound.max.x, tight_bound.max.y, tight_bound.max.z);
+    //     CUDA_ASSERT(false);
+    // }
+
     // printf(
     //     "L (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f), T (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f) axis %u, pos %.3f\n",
     //     // loose_bound.min.x, loose_bound.min.y, loose_bound.min.z, // loose_bound.max.x, loose_bound.max.y,
@@ -215,7 +234,9 @@ __global__ void partition_prims_count(uint32_t num_refs_chunked, const AABB3 *__
     // Am I in the last chunk of a node?
     if (chunk_id + 1 == node_chunk_count_psum[node_id + 1]) {
         uint32_t node_prim_count = node_prim_count_psum[node_id + 1] - node_prim_count_psum[node_id];
-        num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+        if (node_prim_count % CHUNK_SIZE != 0) {
+            num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+        }
     }
     if (threadIdx.x >= num_valid) {
         return;
@@ -341,7 +362,9 @@ partition_prims_assign(uint32_t num_refs_chunked, const AABB3 *__restrict__ prim
     // Am I in the last chunk of a node?
     if (chunk_id + 1 == node_chunk_count_psum[node_id + 1]) {
         uint32_t node_prim_count = node_prim_count_psum[node_id + 1] - node_prim_count_psum[node_id];
-        num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+        if (node_prim_count % CHUNK_SIZE != 0) {
+            num_valid = node_prim_count - (node_prim_count / CHUNK_SIZE) * CHUNK_SIZE;
+        }
     }
     if (threadIdx.x >= num_valid) {
         return;
@@ -557,8 +580,84 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
         large_nodes.prim_ids.data().get(), num_nodes, large_nodes.node_prim_count_psum.data().get(),
         large_nodes.node_chunk_count_psum.data().get(), large_nodes.node_loose_bounds.data().get(),
         large_nodes.node_child_info.data().get(), next_node_prim_count_psum.data().get());
-    // cuda_check(cudaDeviceSynchronize());
-    // cuda_check(cudaGetLastError());
+    // if (depth == 7) {
+    //     cuda_check(cudaDeviceSynchronize());
+    //     cuda_check(cudaGetLastError());
+    //     printf("num_refs_chunked: %u\n", num_refs_chunked);
+    //     //{
+    //     //    thrust::host_vector<uint32_t> h = large_nodes.prim_ids;
+    //     //    std::vector<uint32_t> v(h.begin(), h.end());
+    //     //    for (int j = 0; j < 100; ++j) {
+    //     //        printf("%u ", v[j]);
+    //     //        if ((j + 1) % 10 == 0) {
+    //     //            printf("\n");
+    //     //        }
+    //     //    }
+    //     //    printf("\n");
+    //     //}
+    //     {
+    //         thrust::host_vector<uint32_t> h = large_nodes.node_prim_count_psum;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         for (int j = 0; j < v.size(); ++j) {
+    //             printf("%u ", v[j]);
+    //             if ((j + 1) % 10 == 0) {
+    //                 printf("\n");
+    //             }
+    //         }
+    //         printf("\n");
+    //     }
+    //     {
+    //         thrust::host_vector<AABB3> h = large_nodes.chunk_bounds;
+    //         std::vector<AABB3> v(h.begin(), h.end());
+    //         for (int j = 0; j < v.size(); ++j) {
+    //             printf("(%f, %f, %f, %f, %f, %f)\n", v[j].min.x, v[j].min.y, v[j].min.z, v[j].max.x, v[j].max.y,
+    //                    v[j].max.z);
+    //         }
+    //         printf("\n");
+    //     }
+    //     {
+    //         thrust::host_vector<uint32_t> h = large_nodes.node_chunk_count_psum;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         for (int j = 0; j < v.size(); ++j) {
+    //             printf("%u ", v[j]);
+    //             if ((j + 1) % 10 == 0) {
+    //                 printf("\n");
+    //             }
+    //         }
+    //         printf("\n");
+    //     }
+    //     {
+    //         thrust::host_vector<AABB3> h = large_nodes.node_loose_bounds;
+    //         std::vector<AABB3> v(h.begin(), h.end());
+    //         for (int j = 0; j < v.size(); ++j) {
+    //             printf("(%f, %f, %f, %f, %f, %f)\n", v[j].min.x, v[j].min.y, v[j].min.z, v[j].max.x, v[j].max.y,
+    //                    v[j].max.z);
+    //         }
+    //         printf("\n");
+    //     }
+    //     {
+    //         thrust::host_vector<LargeNodeChildInfo> h = large_nodes.node_child_info;
+    //         std::vector<LargeNodeChildInfo> v(h.begin(), h.end());
+    //         for (int j = 0; j < v.size(); ++j) {
+    //             printf("%u, %f, %u, %u, %u, %u\n", v[j].split.axis, v[j].split.pos, v[j].children[0].index,
+    //                    (uint32_t)v[j].children[0].type, v[j].children[1].index, (uint32_t)v[j].children[1].type);
+    //         }
+    //         printf("\n");
+    //     }
+    //     {
+    //         thrust::host_vector<uint32_t> h = next_node_prim_count_psum;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         for (int j = 0; j < v.size(); ++j) {
+    //             printf("%u ", v[j]);
+    //             if ((j + 1) % 10 == 0) {
+    //                 printf("\n");
+    //             }
+    //         }
+    //         printf("\n");
+    //     }
+    // }
+    //  cuda_check(cudaDeviceSynchronize());
+    //  cuda_check(cudaGetLastError());
 
     // TODO: DEBUG next level large/small split logic below
 
@@ -584,6 +683,9 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     uint32_t num_large_nodes_next = num_nodes_next - num_small_nodes_next;
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
+
+    // printf("[%u] %u = %u (small) + %u (large)\n", (uint32_t)(depth), num_nodes_next, num_small_nodes_next,
+    // num_large_nodes_next);
 
     thrust::transform(small_flags.begin(), small_flags.end(), small_flags_copy.begin(), small_flags.begin(),
                       fix_small_flag{});
@@ -633,7 +735,7 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     thrust::device_vector<uint32_t> assign_offsets_large = next_node_prim_count_psum_large;
     // Partition prim ids while accounting for large/small separation
     run_kernel_1d<CHUNK_SIZE>(
-        partition_prims_assign, 0, (cudaStream_t)(0), num_prims, num_prims, prim_bounds_ptr,
+        partition_prims_assign, 0, (cudaStream_t)(0), num_refs_chunked, num_refs_chunked, prim_bounds_ptr,
         large_nodes.prim_ids.data().get(), num_nodes, large_nodes.node_prim_count_psum.data().get(),
         large_nodes.node_chunk_count_psum.data().get(), large_nodes.node_loose_bounds.data().get(),
         large_nodes.node_child_info.data().get(), small_flags.data().get(), small_flags_invert.data().get(), //
