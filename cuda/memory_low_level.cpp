@@ -55,7 +55,8 @@ void set_default_security_descriptor(CUmemAllocationProp *prop)
 #endif
 }
 
-CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
+CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t requested_size,
+                                                        CUmemAllocationGranularity_flags granularity_flags, int device)
 {
     // `ipc_handle_type_flag` specifies the platform specific handle type this sample
     // uses for importing and exporting memory allocation. On Linux this sample
@@ -85,9 +86,9 @@ CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
 
     // Get the recommended granularity for m_cudaDevice.
     size_t granularity = 0;
-    cu_check(cuMemGetAllocationGranularity(&granularity, &alloc_prop, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
+    cu_check(cuMemGetAllocationGranularity(&granularity, &alloc_prop, granularity_flags));
 
-    size_t size_rounded = (((size + granularity - 1) / granularity) * granularity);
+    size_t size_rounded = (((requested_size + granularity - 1) / granularity) * granularity);
 
     // Reserve the required contiguous VA space for the allocations
     CUdeviceptr dptr = 0;
@@ -124,7 +125,10 @@ CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device)
     // Read-Write access to the range.
     cu_check(cuMemSetAccess(dptr, size_rounded, &access_descriptor, 1));
 
-    return CudaShareableLowLevelMemory{.dptr = dptr, .shareable_handle = shareable_handle, .size = size_rounded};
+    return CudaShareableLowLevelMemory{.dptr = dptr,
+                                       .shareable_handle = shareable_handle,
+                                       .requested_size = requested_size,
+                                       .allocated_size = size_rounded};
 }
 
 void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
@@ -133,7 +137,7 @@ void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
         return;
     }
 
-    cu_check(cuMemUnmap(m.dptr, m.size));
+    cu_check(cuMemUnmap(m.dptr, m.allocated_size));
 
 #if defined(__linux__)
     close(m.shareable_handle);
@@ -142,7 +146,7 @@ void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m)
 #endif
 
     // Free the virtual address region.
-    cu_check(cuMemAddressFree(m.dptr, m.size));
+    cu_check(cuMemAddressFree(m.dptr, m.allocated_size));
 }
 
 } // namespace ksc

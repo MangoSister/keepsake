@@ -14,10 +14,14 @@ struct CudaShareableLowLevelMemory
 {
     CUdeviceptr dptr{};
     ShareableHandle shareable_handle{};
-    size_t size = 0;
+    size_t requested_size = 0;
+    size_t allocated_size = 0;
 };
 
-CudaShareableLowLevelMemory cuda_alloc_device_low_level(size_t size, int device = 0);
+CudaShareableLowLevelMemory
+cuda_alloc_device_low_level(size_t requested_size,
+                            CUmemAllocationGranularity_flags granularity_flags = CU_MEM_ALLOC_GRANULARITY_MINIMUM,
+                            int device = 0);
 void cuda_free_device_low_level(const CudaShareableLowLevelMemory &m);
 
 } // namespace ksc

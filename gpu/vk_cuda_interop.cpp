@@ -39,7 +39,7 @@ CudaBackedVkBuffer::CudaBackedVkBuffer(const ksc::CudaShareableLowLevelMemory &c
     VkBufferCreateInfo cuda_buffer_info{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = &cuda_buffer_ext_info,
-        .size = cuda.size,
+        .size = cuda.allocated_size,
         .usage = cuda_mmap_buffer_usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
