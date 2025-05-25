@@ -17,6 +17,8 @@
 // #include <cooperative_groups.h>
 // namespace cg = cooperative_groups;
 
+// #include "../md5.h"
+
 namespace ksc
 {
 
@@ -482,7 +484,7 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
     compact(input, upper_tree, small_roots, lower_tree, n_leaves, prim_ref_storage);
 
     if (input.stats) {
-        input.stats->compact_strorage_bytes = nodes_storage.size;
+        input.stats->compact_strorage_bytes = nodes_storage.requested_size;
         thrust::copy_n(max_depth, 1, &input.stats->max_depth);
         input.stats->upper_max_depth = upper_depth + 1;
         input.stats->lower_max_depth = lower_depth;
@@ -684,8 +686,8 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
 
-    // printf("[%u] %u = %u (small) + %u (large)\n", (uint32_t)(depth), num_nodes_next, num_small_nodes_next,
-    // num_large_nodes_next);
+    printf("[%u] %u = %u (small) + %u (large)\n", (uint32_t)(depth), num_nodes_next, num_small_nodes_next,
+           num_large_nodes_next);
 
     thrust::transform(small_flags.begin(), small_flags.end(), small_flags_copy.begin(), small_flags.begin(),
                       fix_small_flag{});
@@ -808,12 +810,17 @@ __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num
     uint32_t node_id = find_interval(num_nodes + 1, [&](uint32_t i) { return (gid / 6) >= node_prim_count_psum[i]; });
     if (node_bad_flags[node_id] == BAD_SPLIT_TRYS) {
         // Skip bad nodes
+        // DEBUG
+        sah_split_candidates[gid].left_mask = 0;
+        sah_split_candidates[gid].right_mask = 0;
+        sah_split_candidates[gid].split_axis = 0;
+        sah_split_candidates[gid].split_pos = nanf("");
         return;
     }
 
     uint32_t cand_prim_id = prim_ids[gid / 6];
-    uint32_t axis = (gid % 6) / 2;
     AABB3 cand_bound = prim_bounds[cand_prim_id];
+    uint32_t axis = (gid % 6) / 2;
     float split_pos = cand_bound[gid % 2][axis];
 
     uint64_t left_mask = 0;
@@ -821,9 +828,11 @@ __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num
     for (uint32_t i = node_prim_count_psum[node_id]; i < node_prim_count_psum[node_id + 1]; ++i) {
         // There should be <= LARGE_NODE_THRESHOLD (64) prims
         uint32_t bit = i - node_prim_count_psum[node_id];
+        CUDA_ASSERT(bit < LARGE_NODE_THRESHOLD);
         uint32_t prim_id = prim_ids[i];
         AABB3 b = prim_bounds[prim_id];
-        // We can have primitives on both sides
+        // We can have primitives on both sides,
+        // but make sure each is not crossing both sides when using one of its own side as the splitting plane.
         if (b.min[axis] < split_pos) {
             left_mask |= (uint64_t)(1llu << (uint64_t)bit);
         }
@@ -866,10 +875,35 @@ void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, 
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
     //{
+    //    thrust::host_vector<uint32_t> h = small_roots.prim_ids;
+    //    std::vector<uint32_t> v(h.begin(), h.end());
+    //    std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
+    //    printf("prim_ids: %s\n", md5.c_str());
+    //}
+    //{
+    //    thrust::host_vector<uint32_t> h = small_roots.node_prim_count_psum;
+    //    std::vector<uint32_t> v(h.begin(), h.end());
+    //    for (int j = 0; j < v.size() - 1; ++j) {
+    //        if (v[j + 1] - v[j] > 64) {
+    //            int wtf = 0;
+    //        }
+    //    }
+    //    std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
+    //    printf("node_prim_count_psum: %s\n", md5.c_str());
+    //}
+    //{
+    //    thrust::host_vector<uint8_t> h = small_roots.bad_flags;
+    //    std::vector<uint8_t> v(h.begin(), h.end());
+    //    std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint8_t) * v.size()).finalize().toString();
+    //    printf("bad_flags: %s\n", md5.c_str());
+    //}
+    //{
     //    thrust::host_vector<SAHSplitCandidate> h = small_roots.sah_split_candidates;
     //    std::vector<SAHSplitCandidate> v(h.begin(), h.end());
-    //    SAHSplitCandidate a = v[0];
-    //    SAHSplitCandidate b = v.back();
+    //    std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(SAHSplitCandidate) *
+    //    v.size()).finalize().toString(); printf("sah_split_candidates: %s\n", md5.c_str());
+
+    //    int debug = 0;
     //}
 }
 
@@ -894,7 +928,8 @@ __global__ void compute_sah_split_small_nodes(uint32_t max_leaf_prims, float tra
     uint32_t curr_depth = small_root_depths[small_root] + depth;
     // Check depth
     // Skip duplicate bookkeeping in the first small stage iteration.
-    uint8_t bad_flag = small_root_bad_flags ? small_root_bad_flags[node_id] : false;
+    //     if (node_bad_flags[node_id] == BAD_SPLIT_TRYS) {
+    bool bad_flag = small_root_bad_flags ? (small_root_bad_flags[node_id] == BAD_SPLIT_TRYS) : false;
     if (bad_flag || curr_depth == MAX_DEPTH) {
         sah_splits[node_id] = (uint32_t)(~0);
         split_tags[node_id] = 0;
@@ -918,6 +953,7 @@ __global__ void compute_sah_split_small_nodes(uint32_t max_leaf_prims, float tra
             prim_mask = ((uint64_t)1llu << (uint64_t)n_prims) - 1llu;
         }
     }
+    CUDA_ASSERT(n_prims <= LARGE_NODE_THRESHOLD);
 
     if (n_prims <= max_leaf_prims) {
         // DEBUG
@@ -931,6 +967,7 @@ __global__ void compute_sah_split_small_nodes(uint32_t max_leaf_prims, float tra
     }
 
     AABB3 bound = node_loose_bounds[node_id];
+    CUDA_ASSERT(!bound.is_empty());
     float area = bound.surface_area();
     float min_sah = (float)n_prims;
     uint32_t best_split = (uint32_t)(~0);
@@ -948,26 +985,32 @@ __global__ void compute_sah_split_small_nodes(uint32_t max_leaf_prims, float tra
 
                 CUDA_ASSERT((prim_mask & (s.left_mask | s.right_mask)) == prim_mask);
 
-                uint64_t left = prim_mask & s.left_mask;
-                uint64_t right = prim_mask & s.right_mask;
-                // Count the number of bits that are set to 1 in a 64-bit integer.
-                int n_left = __popcll(left);
-                int n_right = __popcll(right);
-                // Calculate split nodes area
-                AABB3 b_left = bound;
-                b_left.max[s.split_axis] = s.split_pos;
-                float area_left = b_left.surface_area();
-                AABB3 b_right = bound;
-                b_right.min[s.split_axis] = s.split_pos;
-                float area_right = b_right.surface_area();
-                // Compute SAH
-                // int isect_cost = 5, int traversal_cost = 1
-                float sah = (n_left * area_left + n_right * area_right) / area + traversal_cost;
-                if (sah < min_sah) {
-                    min_sah = sah;
-                    best_split = split_idx;
-                    // best_n_left = n_left;
-                    // best_n_right = n_right;
+                // CUDA_ASSERT(s.split_pos > bound.min[s.split_axis] && s.split_pos < bound.max[s.split_axis]);
+                //  TODO: IMPROVE ME!!!
+                if (s.split_pos > bound.min[s.split_axis] && s.split_pos < bound.max[s.split_axis]) {
+                    uint64_t left = prim_mask & s.left_mask;
+                    uint64_t right = prim_mask & s.right_mask;
+                    // Count the number of bits that are set to 1 in a 64-bit integer.
+                    int n_left = __popcll(left);
+                    int n_right = __popcll(right);
+                    // Calculate split nodes area
+                    AABB3 b_left = bound;
+                    b_left.max[s.split_axis] = s.split_pos;
+                    CUDA_ASSERT(!b_left.is_empty());
+                    float area_left = b_left.surface_area();
+                    AABB3 b_right = bound;
+                    b_right.min[s.split_axis] = s.split_pos;
+                    CUDA_ASSERT(!b_right.is_empty());
+                    float area_right = b_right.surface_area();
+                    // Compute SAH
+                    // int isect_cost = 5, int traversal_cost = 1
+                    float sah = (n_left * area_left + n_right * area_right) / area + traversal_cost;
+                    CUDA_ASSERT(!isnan(sah) && !isnan(min_sah) && sah > 0.0f && min_sah > 0.0f);
+                    if (sah < min_sah) {
+                        min_sah = sah;
+                        best_split = split_idx;
+                    } // It is possible to get multiple equally best splits (which can be a source of indeterministic
+                      // build results when paired with parallel execution).
                 }
             }
         }
@@ -1015,6 +1058,7 @@ __global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *
         // For first iteration (small roots), just fill mask with (least significant) n_prims bits.
         uint32_t n_prims =
             small_root_node_prim_count_psum[parent_node_id + 1] - small_root_node_prim_count_psum[parent_node_id];
+        CUDA_ASSERT(n_prims <= LARGE_NODE_THRESHOLD);
         if (n_prims == LARGE_NODE_THRESHOLD) {
             parent_prim_mask = (uint64_t)(~0llu);
         } else {
@@ -1033,6 +1077,9 @@ __global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *
         child_prim_masks[child_node_id] = child_prim_mask;
         child_small_root_ids[child_node_id] =
             parent_small_root_ids ? parent_small_root_ids[parent_node_id] : parent_node_id;
+
+        CUDA_ASSERT(s.split_pos > parent_bound.min[s.split_axis] && s.split_pos < parent_bound.max[s.split_axis]);
+
         AABB3 child_bound = parent_bound;
         if (left) {
             child_bound.max[s.split_axis] = s.split_pos;
@@ -1082,10 +1129,67 @@ SmallNodeArray ParallelKdTree::small_node_step(const ParallelKdTreeBuildInput &i
     thrust::inclusive_scan(small_nodes.child_offsets.begin(), small_nodes.child_offsets.end(),
                            small_nodes.child_offsets.begin());
 
+    // if (depth == 4) {
+    //     cuda_check(cudaDeviceSynchronize());
+    //     cuda_check(cudaGetLastError());
+    //     {
+    //         thrust::host_vector<uint32_t> h = small_nodes.small_root_ids;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
+    //         printf("small_root_ids: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<uint64_t> h = small_nodes.prim_masks;
+    //         std::vector<uint64_t> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint64_t) * v.size()).finalize().toString();
+    //         printf("prim_masks: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<AABB3> h = small_nodes.node_loose_bounds;
+    //         std::vector<AABB3> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(AABB3) * v.size()).finalize().toString();
+    //         printf("node_loose_bounds: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<uint8_t> h = small_roots.depths;
+    //         std::vector<uint8_t> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint8_t) * v.size()).finalize().toString();
+    //         printf("small_root_depths: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<uint32_t> h = small_roots.node_prim_count_psum;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
+    //         printf("small_root_node_prim_count_psum: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<SAHSplitCandidate> h = small_roots.sah_split_candidates;
+    //         std::vector<SAHSplitCandidate> v(h.begin(), h.end());
+    //         std::string md5 =
+    //             Chocobo1::MD5().addData(v.data(), sizeof(SAHSplitCandidate) * v.size()).finalize().toString();
+    //         printf("sah_split_candidates: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<uint32_t> h = small_nodes.sah_splits;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
+    //         printf("sah_splits: %s\n", md5.c_str());
+    //     }
+    //     {
+    //         thrust::host_vector<uint32_t> h = small_nodes.child_offsets;
+    //         std::vector<uint32_t> v(h.begin(), h.end());
+    //         std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
+    //         printf("child_offsets: %s\n", md5.c_str());
+    //     }
+    //     int debug = 0;
+    // }
+
     // Copy this before the transform below.
     uint32_t num_nodes_next = 0;
     thrust::copy_n(small_nodes.child_offsets.rbegin(), 1, &num_nodes_next);
     num_nodes_next *= 2;
+
+    printf("[%u] %u\n", (uint32_t)depth, num_nodes_next);
 
     thrust::transform(small_nodes.child_offsets.begin(), small_nodes.child_offsets.end(), split_tags.begin(),
                       small_nodes.child_offsets.begin(), [] __device__(uint32_t co, uint32_t st) -> uint32_t {
@@ -1178,22 +1282,22 @@ __global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const Large
 }
 
 __global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChildInfo *__restrict__ child_info,
-                                   const uint32_t *__restrict__ node_addrs, uint32_t *__restrict__ child_node_addrs,
+                                   const uint32_t *__restrict__ parent_addrs, uint32_t *__restrict__ child_addrs,
                                    uint32_t *__restrict__ small_root_addrs, uint32_t *compact_nodes_storage)
 {
     uint32_t parent_node_id = threadIdx.x + blockIdx.x * blockDim.x;
     if (parent_node_id >= parent_num_nodes) {
         return;
     }
-    uint32_t parent_addr = node_addrs[parent_node_id];
+    uint32_t parent_addr = parent_addrs[parent_node_id];
     // CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
     LargeNodeChildInfo info = child_info[parent_node_id];
     uint32_t left_size = 0;
 
     LargeNodeChildRef left = info.children[0];
     if (left.type == LargeNodeChildType::Large) {
-        left_size = child_node_addrs[left.index];
-        child_node_addrs[left.index] = parent_addr + node_header_size_u32;
+        left_size = child_addrs[left.index];
+        child_addrs[left.index] = parent_addr + node_header_size_u32;
     } else {
         left_size = small_root_addrs[left.index];
         small_root_addrs[left.index] = parent_addr + node_header_size_u32;
@@ -1202,7 +1306,7 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChi
     uint32_t right_addr = parent_addr + node_header_size_u32 + left_size;
     LargeNodeChildRef right = info.children[1];
     if (right.type == LargeNodeChildType::Large) {
-        child_node_addrs[right.index] = right_addr;
+        child_addrs[right.index] = right_addr;
     } else {
         small_root_addrs[right.index] = right_addr;
     }
@@ -1214,6 +1318,7 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChi
     //  Large nodes are all interior (?)
     //  TODO: actually we need a way to prevent infinite split in degenerated cases.
     compact_parent.init_interior(info.split.axis, right_addr, info.split.pos);
+    CUDA_ASSERT(compact_parent.above_child() > parent_addr);
 }
 
 __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__restrict__ parent_small_root_ids,
@@ -1237,28 +1342,31 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
 
     uint32_t ch = child_offsets[parent_node_id];
     if (ch == (uint32_t)(~0)) {
-        // Skip duplicate bookkeeping in the first small stage iteration.
-        uint32_t small_root = parent_small_root_ids ? parent_small_root_ids[parent_node_id] : parent_node_id;
-        uint64_t prim_mask;
-        uint32_t n_prims;
         if (parent_prim_masks) {
-            prim_mask = parent_prim_masks[parent_node_id];
-            n_prims = __popcll(prim_mask);
-        } else {
-            // For first iteration (small roots), just fill mask with (least significant) n_prims bits.
-            n_prims =
-                small_root_node_prim_count_psum[parent_node_id + 1] - small_root_node_prim_count_psum[parent_node_id];
-            if (n_prims == LARGE_NODE_THRESHOLD) {
-                prim_mask = (uint64_t)(~0llu);
-            } else {
-                prim_mask = ((uint64_t)1llu << (uint64_t)n_prims) - 1llu;
+            uint32_t small_root = parent_small_root_ids[parent_node_id];
+            uint64_t prim_mask = parent_prim_masks[parent_node_id];
+            uint32_t n_prims = __popcll(prim_mask);
+            compact_parent.init_leaf(n_prims);
+            for (uint32_t i = 0, count = 1; i < LARGE_NODE_THRESHOLD; ++i) {
+                if ((prim_mask >> i) & 1) { // WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIT
+                    uint32_t offset = (small_root_node_prim_count_psum[small_root] + i);
+                    uint32_t prim = small_root_prim_ids[offset];
+                    if (i == 0) {
+                        compact_parent.first_prim = prim;
+                    } else {
+                        *(compact_nodes_storage + parent_addr + node_header_size_u32 + (count - 1)) = prim;
+                        ++count;
+                    }
+                }
             }
-        }
-        compact_parent.init_leaf(n_prims);
-        for (uint32_t i = 0; i < LARGE_NODE_THRESHOLD; ++i) {
-            if ((prim_mask >> i) & 1) {
-                uint32_t offset = (small_root_node_prim_count_psum[small_root] + i);
-                uint32_t prim = small_root_prim_ids[offset];
+        } else {
+            // For first iteration (small roots), there can be more than LARGE_NODE_THRESHOLD per node (bad nodes).
+            uint32_t prim_ref_start = small_root_node_prim_count_psum[parent_node_id];
+            uint32_t n_prims = small_root_node_prim_count_psum[parent_node_id + 1] - prim_ref_start;
+            // CUDA_ASSERT(n_prims <= LARGE_NODE_THRESHOLD);
+            compact_parent.init_leaf(n_prims);
+            for (uint32_t i = 0; i < n_prims; ++i) {
+                uint32_t prim = small_root_prim_ids[prim_ref_start + i];
                 if (i == 0) {
                     compact_parent.first_prim = prim;
                 } else {
@@ -1274,6 +1382,7 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
         uint32_t split_idx = parent_sah_splits[parent_node_id];
         SAHSplitCandidate split = sah_split_candidates[split_idx];
         compact_parent.init_interior(split.split_axis, right_addr, split.split_pos);
+        CUDA_ASSERT(compact_parent.above_child() > parent_addr);
     }
 }
 
@@ -1298,8 +1407,6 @@ void ParallelKdTree::compact(const ParallelKdTreeBuildInput &input, std::vector<
                       lower_tree[l].child_offsets.data().get(),
                       (l < (int)lower_tree.size() - 1) ? lower_tree[l + 1].subtree_sizes.data().get() : nullptr,
                       lower_tree[l].subtree_sizes.data().get(), n_leaves.get(), prim_ref_storage.get());
-        // cuda_check(cudaDeviceSynchronize());
-        // cuda_check(cudaGetLastError());
     }
     for (int l = (int)upper_tree.size() - 1; l >= 0; --l) {
         uint32_t parent_num_nodes = (uint32_t)upper_tree[l].node_loose_bounds.size();
@@ -1328,6 +1435,14 @@ void ParallelKdTree::compact(const ParallelKdTreeBuildInput &input, std::vector<
                       lower_tree[0].subtree_sizes.data().get(), node_storage_ptr_u32);
         // cuda_check(cudaDeviceSynchronize());
         // cuda_check(cudaGetLastError());
+    }
+    // DEBUG
+    {
+        thrust::host_vector<uint32_t> h2 = lower_tree[0].subtree_sizes;
+        std::vector<uint32_t> v2(h2.begin(), h2.end());
+        // std::string md5 = Chocobo1::MD5().addData(v2.data(), sizeof(uint32_t) * v2.size()).finalize().toString();
+        // printf("small root addr: %s\n", md5.c_str());
+        int debug = 0;
     }
     for (int l = 0; l < (int)lower_tree.size(); ++l) {
         uint32_t parent_num_nodes;

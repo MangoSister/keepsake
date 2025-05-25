@@ -6,7 +6,8 @@ namespace ksc
 
 std::string ParallelKdTreeBuildStats::to_string() const
 {
-    uint32_t n_interior = n_nodes - n_leaves;
+    // Full binary tree.
+    uint32_t n_interior = n_leaves - 1;
     float avg_prim_per_leaf = (float)(n_prim_refs) / (float)(n_leaves);
     return ks::string_format("{\n"
                              "    [compact storage]: %llu (bytes),\n"

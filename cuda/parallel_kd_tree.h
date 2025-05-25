@@ -107,21 +107,21 @@ struct CompactKdTreeNode
         flags = 3 | (n_prims << 2);
     }
 
-    CUDA_HOST_DEVICE void init_interior(int axis, int above_child, float s)
+    CUDA_HOST_DEVICE void init_interior(uint32_t axis, uint32_t above_child, float s)
     {
         split = s;
         flags = axis | (above_child << 2);
     }
 
     CUDA_HOST_DEVICE float split_pos() const { return split; }
-    CUDA_HOST_DEVICE int n_primitives() const { return flags >> 2; }
-    CUDA_HOST_DEVICE int split_axis() const { return flags & 3; }
+    CUDA_HOST_DEVICE uint32_t n_primitives() const { return flags >> 2; }
+    CUDA_HOST_DEVICE uint32_t split_axis() const { return flags & 3; }
     CUDA_HOST_DEVICE bool is_leaf() const { return (flags & 3) == 3; }
-    CUDA_HOST_DEVICE int above_child() const { return flags >> 2; }
+    CUDA_HOST_DEVICE uint32_t above_child() const { return flags >> 2; }
 
     union {
         float split;    // Interior
-        int first_prim; // Leaf
+        uint32_t first_prim; // Leaf
     };
     uint32_t flags;
 };
