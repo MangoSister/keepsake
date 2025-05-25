@@ -825,9 +825,8 @@ __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num
 
     uint64_t left_mask = 0;
     uint64_t right_mask = 0;
-    for (uint32_t i = node_prim_count_psum[node_id]; i < node_prim_count_psum[node_id + 1]; ++i) {
+    for (uint32_t i = node_prim_count_psum[node_id], bit = 0; i < node_prim_count_psum[node_id + 1]; ++i, ++bit) {
         // There should be <= LARGE_NODE_THRESHOLD (64) prims
-        uint32_t bit = i - node_prim_count_psum[node_id];
         CUDA_ASSERT(bit < LARGE_NODE_THRESHOLD);
         uint32_t prim_id = prim_ids[i];
         AABB3 b = prim_bounds[prim_id];
@@ -976,9 +975,9 @@ __global__ void compute_sah_split_small_nodes(uint32_t max_leaf_prims, float tra
     // DEBUG
     // int best_n_left = 0;
     // int best_n_right = 0;
-    for (uint32_t i = 0; i < LARGE_NODE_THRESHOLD; ++i) {
-        if ((prim_mask >> i) & 1) {
-            uint32_t offset = (small_root_node_prim_count_psum[small_root] + i) * 6;
+    for (uint32_t bit = 0; bit < LARGE_NODE_THRESHOLD; ++bit) {
+        if ((prim_mask >> bit) & 1) {
+            uint32_t offset = (small_root_node_prim_count_psum[small_root] + bit) * 6;
             for (uint32_t j = 0; j < 6; ++j) {
                 uint32_t split_idx = offset + j;
                 const SAHSplitCandidate &s = sah_split_candidates[split_idx];
@@ -1238,6 +1237,7 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes,
             uint64_t prim_mask = parent_prim_masks[parent_node_id];
             // First primitive is stored inside the node.
             node_prim_size_u32 = (uint32_t)cuda::std::max((int)__popcll(prim_mask) - 1, 0);
+            // node_prim_size_u32 = LARGE_NODE_THRESHOLD;
         } else {
             // Small root, may have bad nodes.
             uint32_t n_prims =
@@ -1345,20 +1345,25 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
         if (parent_prim_masks) {
             uint32_t small_root = parent_small_root_ids[parent_node_id];
             uint64_t prim_mask = parent_prim_masks[parent_node_id];
+            // prim_mask = 0xFFFFFFFFFFFFFFFF;
+
             uint32_t n_prims = __popcll(prim_mask);
             compact_parent.init_leaf(n_prims);
-            for (uint32_t i = 0, count = 1; i < LARGE_NODE_THRESHOLD; ++i) {
-                if ((prim_mask >> i) & 1) { // WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIT
-                    uint32_t offset = (small_root_node_prim_count_psum[small_root] + i);
+            uint32_t count = 0; // NOTE: need a separate count to track the number of set bits!
+            for (uint32_t bit = 0; bit < LARGE_NODE_THRESHOLD; ++bit) {
+                if ((prim_mask >> bit) & 1) { // WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIT
+                    uint32_t offset = (small_root_node_prim_count_psum[small_root] + bit);
                     uint32_t prim = small_root_prim_ids[offset];
-                    if (i == 0) {
+                    if (count == 0) {
                         compact_parent.first_prim = prim;
+                        ++count;
                     } else {
                         *(compact_nodes_storage + parent_addr + node_header_size_u32 + (count - 1)) = prim;
                         ++count;
                     }
                 }
             }
+            CUDA_ASSERT(count == n_prims);
         } else {
             // For first iteration (small roots), there can be more than LARGE_NODE_THRESHOLD per node (bad nodes).
             uint32_t prim_ref_start = small_root_node_prim_count_psum[parent_node_id];
