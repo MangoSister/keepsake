@@ -686,8 +686,8 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
 
-    printf("[%u] %u = %u (small) + %u (large)\n", (uint32_t)(depth), num_nodes_next, num_small_nodes_next,
-           num_large_nodes_next);
+    // printf("[%u] %u = %u (small) + %u (large)\n", (uint32_t)(depth), num_nodes_next, num_small_nodes_next,
+    //        num_large_nodes_next);
 
     thrust::transform(small_flags.begin(), small_flags.end(), small_flags_copy.begin(), small_flags.begin(),
                       fix_small_flag{});
@@ -1188,7 +1188,7 @@ SmallNodeArray ParallelKdTree::small_node_step(const ParallelKdTreeBuildInput &i
     thrust::copy_n(small_nodes.child_offsets.rbegin(), 1, &num_nodes_next);
     num_nodes_next *= 2;
 
-    printf("[%u] %u\n", (uint32_t)depth, num_nodes_next);
+    // printf("[%u] %u\n", (uint32_t)depth, num_nodes_next);
 
     thrust::transform(small_nodes.child_offsets.begin(), small_nodes.child_offsets.end(), split_tags.begin(),
                       small_nodes.child_offsets.begin(), [] __device__(uint32_t co, uint32_t st) -> uint32_t {
