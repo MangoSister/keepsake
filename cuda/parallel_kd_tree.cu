@@ -24,7 +24,7 @@ namespace ksc
 
 CONSTEXPR_VAL uint32_t CHUNK_SIZE = 256;
 CONSTEXPR_VAL uint32_t LARGE_NODE_THRESHOLD = 64;
-CONSTEXPR_VAL float EMPTY_SPACE_RATIO = 0.25f;
+CONSTEXPR_VAL float EMPTY_SPACE_RATIO = 0.125f;
 CONSTEXPR_VAL uint8_t BAD_SPLIT_TRYS = 3;
 CONSTEXPR_VAL uint8_t MAX_DEPTH = 64;
 
@@ -152,7 +152,7 @@ __global__ void compute_chunk_bounds(uint32_t num_refs_chunked, const AABB3 *__r
 }
 
 __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ node_loose_bounds,
-                                  const AABB3 *__restrict__ node_tight_bounds,
+                                  const AABB3 *__restrict__ node_tight_bounds, AABB3 *__restrict__ non_empty_bounds,
                                   LargeNodeChildInfo *__restrict__ child_info,
                                   AABB3 *__restrict__ next_node_loose_bounds)
 {
@@ -162,53 +162,43 @@ __global__ void split_large_nodes(uint32_t num_nodes, const AABB3 *__restrict__ 
     }
 
     AABB3 loose_bound = node_loose_bounds[node_id];
-    vec3 loose_ext = loose_bound.extents();
     AABB3 tight_bound = node_tight_bounds[node_id];
 
-    // vec3 tight_ext = tight_bound.extents();
-    // AABB3 valid_bound = loose_bound;
-    AABB3 isect_bound = intersect(loose_bound, tight_bound);
-    AABB3 valid_bound;
-    for (uint32_t d = 0; d < 3; ++d) {
-        if ((isect_bound.min[d] - loose_bound.min[d]) > EMPTY_SPACE_RATIO * loose_ext[d]) {
-            valid_bound.min[d] = isect_bound.min[d];
+    // Empty space cuting off
+    AABB3 non_empty_bound;
+    float largest_ext = 0.0f;
+    uint32_t split_axis = 0;
+    for (uint32_t axis = 0; axis < 3; ++axis) {
+        float parent_ratio_thr = EMPTY_SPACE_RATIO * (loose_bound.max[axis] - loose_bound.min[axis]);
+        if ((tight_bound.min[axis] - loose_bound.min[axis]) > parent_ratio_thr) {
+            non_empty_bound.min[axis] = tight_bound.min[axis];
         } else {
-            valid_bound.min[d] = loose_bound.min[d];
+            non_empty_bound.min[axis] = loose_bound.min[axis];
         }
-        if ((loose_bound.max[d] - isect_bound.max[d]) > EMPTY_SPACE_RATIO * loose_ext[d]) {
-            valid_bound.max[d] = isect_bound.max[d];
+        if ((loose_bound.max[axis] - tight_bound.max[axis]) > parent_ratio_thr) {
+            non_empty_bound.max[axis] = tight_bound.max[axis];
         } else {
-            valid_bound.max[d] = loose_bound.max[d];
+            non_empty_bound.max[axis] = loose_bound.max[axis];
+        }
+        //
+        float e = non_empty_bound.max[axis] - non_empty_bound.min[axis];
+        if (e > largest_ext) {
+            largest_ext = e;
+            split_axis = axis;
         }
     }
-    uint32_t axis = valid_bound.largest_axis();
+    non_empty_bounds[node_id] = non_empty_bound;
 
-    float split_pos = 0.5f * (valid_bound.min[axis] + valid_bound.max[axis]);
-    child_info[node_id].split.axis = axis;
+    // Median split
+    float split_pos = 0.5f * (non_empty_bound.min[split_axis] + non_empty_bound.max[split_axis]);
+    child_info[node_id].split.axis = split_axis;
     child_info[node_id].split.pos = split_pos;
-    // if (isnan(split_pos)) {
-    //     printf("(%f, %f, %f, %f, %f, %f), (%f, %f, %f, %f, %f, %f), (%f, %f, %f, %f, %f, %f)\n", //
-    //            valid_bound.min.x, valid_bound.min.y, valid_bound.min.z,                          //
-    //            valid_bound.max.x, valid_bound.max.y, valid_bound.max.z,                          //
-    //            loose_bound.min.x, loose_bound.min.y, loose_bound.min.z,                          //
-    //            loose_bound.max.x, loose_bound.max.y, loose_bound.max.z,                          //
-    //            tight_bound.min.x, tight_bound.min.y, tight_bound.min.z,                          //
-    //            tight_bound.max.x, tight_bound.max.y, tight_bound.max.z);
-    //     CUDA_ASSERT(false);
-    // }
 
-    // printf(
-    //     "L (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f), T (%.3f, %.3f, %.3f) -> (%.3f, %.3f, %.3f) axis %u, pos %.3f\n",
-    //     // loose_bound.min.x, loose_bound.min.y, loose_bound.min.z, // loose_bound.max.x, loose_bound.max.y,
-    //     loose_bound.max.z,                                                      // tight_bound.min.x,
-    //     tight_bound.min.y, tight_bound.min.z,                                                      //
-    //     tight_bound.max.x, tight_bound.max.y, tight_bound.max.z, // axis, split_pos);
+    next_node_loose_bounds[node_id * 2] = non_empty_bound;
+    next_node_loose_bounds[node_id * 2].max[split_axis] = split_pos;
 
-    next_node_loose_bounds[node_id * 2] = loose_bound;
-    next_node_loose_bounds[node_id * 2].max[axis] = split_pos;
-
-    next_node_loose_bounds[node_id * 2 + 1] = loose_bound;
-    next_node_loose_bounds[node_id * 2 + 1].min[axis] = split_pos;
+    next_node_loose_bounds[node_id * 2 + 1] = non_empty_bound;
+    next_node_loose_bounds[node_id * 2 + 1].min[split_axis] = split_pos;
 }
 
 struct join_aabb : public thrust::binary_function<AABB3, AABB3, AABB3>
@@ -563,14 +553,15 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
     }
 
     large_nodes.node_child_info.resize(num_nodes);
+    large_nodes.non_empty_bounds.resize(num_nodes);
 
     uint32_t num_nodes_next = num_nodes * 2;
     thrust::device_vector<AABB3> next_node_loose_bounds(num_nodes_next);
 
-    // thrust::device_vector<SplitPlane> split_planes(num_nodes);
     run_kernel_1d(split_large_nodes, 0, (cudaStream_t)(0), num_nodes, num_nodes,
                   large_nodes.node_loose_bounds.data().get(), large_nodes.node_tight_bounds.data().get(),
-                  large_nodes.node_child_info.data().get(), next_node_loose_bounds.data().get());
+                  large_nodes.non_empty_bounds.data().get(), large_nodes.node_child_info.data().get(),
+                  next_node_loose_bounds.data().get());
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
 
@@ -1259,7 +1250,9 @@ __global__ void count_lower_subtree_sizes(uint32_t parent_num_nodes,
     }
 }
 
-__global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const LargeNodeChildInfo *__restrict__ child_info,
+__global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const AABB3 *__restrict__ node_loose_bounds,
+                                          const AABB3 *__restrict__ non_empty_bounds,
+                                          const LargeNodeChildInfo *__restrict__ child_info,
                                           const uint32_t *__restrict__ large_child_sizes,
                                           const uint32_t *__restrict__ small_root_sizes,
                                           uint32_t *__restrict__ parent_sizes)
@@ -1268,8 +1261,21 @@ __global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const Large
     if (parent_node_id >= parent_num_nodes) {
         return;
     }
+    AABB3 loose_bound = node_loose_bounds[parent_node_id];
+    AABB3 non_empty_bound = non_empty_bounds[parent_node_id];
+    uint32_t empty_space_cuts = 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (non_empty_bound.min[axis] != loose_bound.min[axis]) {
+            ++empty_space_cuts;
+        }
+        if (non_empty_bound.max[axis] != loose_bound.max[axis]) {
+            ++empty_space_cuts;
+        }
+    }
+    uint32_t empty_space_treelet_size = (2 * empty_space_cuts) * node_header_size_u32;
+
     LargeNodeChildInfo info = child_info[parent_node_id];
-    uint32_t size = node_header_size_u32;
+    uint32_t size = node_header_size_u32 + empty_space_treelet_size;
     for (int i = 0; i < 2; ++i) {
         // In the bot level of upper tree, all children must be small roots.
         if (info.children[i].type == LargeNodeChildType::Large) {
@@ -1281,7 +1287,9 @@ __global__ void count_upper_subtree_sizes(uint32_t parent_num_nodes, const Large
     parent_sizes[parent_node_id] = size;
 }
 
-__global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChildInfo *__restrict__ child_info,
+__global__ void compact_upper_tree(uint32_t parent_num_nodes, const AABB3 *__restrict__ node_loose_bounds,
+                                   const AABB3 *__restrict__ non_empty_bounds,
+                                   const LargeNodeChildInfo *__restrict__ child_info,
                                    const uint32_t *__restrict__ parent_addrs, uint32_t *__restrict__ child_addrs,
                                    uint32_t *__restrict__ small_root_addrs, uint32_t *compact_nodes_storage)
 {
@@ -1289,36 +1297,81 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const LargeNodeChi
     if (parent_node_id >= parent_num_nodes) {
         return;
     }
-    uint32_t parent_addr = parent_addrs[parent_node_id];
-    // CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
+
     LargeNodeChildInfo info = child_info[parent_node_id];
-    uint32_t left_size = 0;
-
-    LargeNodeChildRef left = info.children[0];
-    if (left.type == LargeNodeChildType::Large) {
-        left_size = child_addrs[left.index];
-        child_addrs[left.index] = parent_addr + node_header_size_u32;
+    uint32_t bulk_left_size = 0;
+    if (info.children[0].type == LargeNodeChildType::Large) {
+        bulk_left_size = child_addrs[info.children[0].index];
     } else {
-        left_size = small_root_addrs[left.index];
-        small_root_addrs[left.index] = parent_addr + node_header_size_u32;
+        bulk_left_size = small_root_addrs[info.children[0].index];
+    }
+    uint32_t bulk_right_size = 0;
+    if (info.children[1].type == LargeNodeChildType::Large) {
+        bulk_right_size = child_addrs[info.children[1].index];
+    } else {
+        bulk_right_size = small_root_addrs[info.children[1].index];
+    }
+    uint32_t bulk_size = bulk_left_size + bulk_right_size;
+
+    //
+    AABB3 loose_bound = node_loose_bounds[parent_node_id];
+    AABB3 non_empty_bound = non_empty_bounds[parent_node_id];
+
+    uint32_t empty_space_cuts = 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (non_empty_bound.min[axis] != loose_bound.min[axis]) {
+            ++empty_space_cuts;
+        }
+        if (non_empty_bound.max[axis] != loose_bound.max[axis]) {
+            ++empty_space_cuts;
+        }
     }
 
-    uint32_t right_addr = parent_addr + node_header_size_u32 + left_size;
-    LargeNodeChildRef right = info.children[1];
-    if (right.type == LargeNodeChildType::Large) {
-        child_addrs[right.index] = right_addr;
+    uint32_t addr = parent_addrs[parent_node_id];
+    for (int axis = 0; axis < 3; ++axis) {
+        if (non_empty_bound.min[axis] != loose_bound.min[axis]) {
+            CompactKdTreeNode *node = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[addr]);
+            node->init_interior(axis, addr + (2 * node_header_size_u32), non_empty_bound.min[axis]);
+            uint32_t left_addr = addr + node_header_size_u32;
+            CompactKdTreeNode *left = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[left_addr]);
+            left->init_leaf(0);
+            // go to right
+            addr += 2 * node_header_size_u32;
+        }
+        if (non_empty_bound.max[axis] != loose_bound.max[axis]) {
+            CompactKdTreeNode *node = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[addr]);
+            node->init_interior(axis, addr + (2 * node_header_size_u32) + bulk_size, non_empty_bound.max[axis]);
+            uint32_t right_addr = addr + (2 * node_header_size_u32) + bulk_size;
+            CompactKdTreeNode *right = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[right_addr]);
+            right->init_leaf(0);
+            // go to left
+            addr += node_header_size_u32;
+        }
+    }
+    //
+
+    uint32_t bulk_left_addr = addr + node_header_size_u32;
+    if (info.children[0].type == LargeNodeChildType::Large) {
+        child_addrs[info.children[0].index] = bulk_left_addr;
     } else {
-        small_root_addrs[right.index] = right_addr;
+        small_root_addrs[info.children[0].index] = bulk_left_addr;
     }
 
-    CompactKdTreeNode &compact_parent = *reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[parent_addr]);
+    uint32_t bulk_right_addr = addr + node_header_size_u32 + bulk_left_size;
+    if (info.children[1].type == LargeNodeChildType::Large) {
+        child_addrs[info.children[1].index] = bulk_right_addr;
+    } else {
+        small_root_addrs[info.children[1].index] = bulk_right_addr;
+    }
+
+    CompactKdTreeNode &bulk_parent = *reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[addr]);
 
     // uint32_t prim_count = parent_node_prim_count_psum[parent_node_id + 1] -
     // parent_node_prim_count_psum[parent_node_id];
     //  Large nodes are all interior (?)
     //  TODO: actually we need a way to prevent infinite split in degenerated cases.
-    compact_parent.init_interior(info.split.axis, right_addr, info.split.pos);
-    CUDA_ASSERT(compact_parent.above_child() > parent_addr);
+    bulk_parent.init_interior(info.split.axis, bulk_right_addr, info.split.pos);
+    CUDA_ASSERT(bulk_parent.above_child() > addr);
 }
 
 __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__restrict__ parent_small_root_ids,
@@ -1417,6 +1470,7 @@ void ParallelKdTree::compact(const ParallelKdTreeBuildInput &input, std::vector<
         uint32_t parent_num_nodes = (uint32_t)upper_tree[l].node_loose_bounds.size();
         upper_tree[l].subtree_sizes.resize(parent_num_nodes);
         run_kernel_1d(count_upper_subtree_sizes, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
+                      upper_tree[l].node_loose_bounds.data().get(), upper_tree[l].non_empty_bounds.data().get(),
                       upper_tree[l].node_child_info.data().get(),
                       (l < (int)upper_tree.size() - 1) ? upper_tree[l + 1].subtree_sizes.data().get() : nullptr,
                       lower_tree[0].subtree_sizes.data().get(), upper_tree[l].subtree_sizes.data().get());
@@ -1435,6 +1489,7 @@ void ParallelKdTree::compact(const ParallelKdTreeBuildInput &input, std::vector<
     for (int l = 0; l < (int)upper_tree.size(); ++l) {
         uint32_t parent_num_nodes = (uint32_t)upper_tree[l].node_loose_bounds.size();
         run_kernel_1d(compact_upper_tree, 0, (cudaStream_t)(0), parent_num_nodes, parent_num_nodes,
+                      upper_tree[l].node_loose_bounds.data().get(), upper_tree[l].non_empty_bounds.data().get(),
                       upper_tree[l].node_child_info.data().get(), upper_tree[l].subtree_sizes.data().get(),
                       (l < (int)upper_tree.size() - 1) ? upper_tree[l + 1].subtree_sizes.data().get() : nullptr,
                       lower_tree[0].subtree_sizes.data().get(), node_storage_ptr_u32);

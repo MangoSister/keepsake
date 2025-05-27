@@ -50,6 +50,7 @@ struct LargeNodeArray
     thrust::device_vector<uint32_t> node_chunk_count_psum;     // per-node
     thrust::device_vector<AABB3> node_tight_bounds;            // per-node
     thrust::device_vector<LargeNodeChildInfo> node_child_info; // per-node
+    thrust::device_vector<AABB3> non_empty_bounds;             // per-node
     thrust::device_vector<uint8_t> bad_flags;                  // per-node
 
     thrust::device_vector<AABB3> chunk_bounds;         // per-chunk
@@ -120,7 +121,7 @@ struct CompactKdTreeNode
     CUDA_HOST_DEVICE uint32_t above_child() const { return flags >> 2; }
 
     union {
-        float split;    // Interior
+        float split;         // Interior
         uint32_t first_prim; // Leaf
     };
     uint32_t flags;
