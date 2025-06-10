@@ -191,6 +191,12 @@ vk::ContextArgs get_default_context_args(bool validation, bool swapchain)
         };
     ctx_args.device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
 
+    ctx_args.add_device_feature<VkPhysicalDeviceRayQueryFeaturesKHR>() = VkPhysicalDeviceRayQueryFeaturesKHR{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+        .rayQuery = VK_TRUE,
+    };
+    ctx_args.device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+
     ctx_args.device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
 
     return ctx_args;
