@@ -179,7 +179,7 @@ EqualAreaSkyLight::EqualAreaSkyLight(const fs::path &path, quat to_world, float 
     pmf = AliasTable(lum);
 }
 
-color3 EqualAreaSkyLight::power(const AABB3 &scene_bound) const
+color3 EqualAreaSkyLight::unit_power() const
 {
     std::array<std::atomic<float>, 3> sum{0.0f, 0.0f, 0.0f};
 
@@ -194,6 +194,12 @@ color3 EqualAreaSkyLight::power(const AABB3 &scene_bound) const
 
     color3 Phi(sum[0], sum[1], sum[2]);
     Phi *= (4 * pi) / sqr(res);
+    return Phi;
+}
+
+color3 EqualAreaSkyLight::power(const AABB3 &scene_bound) const
+{
+    color3 Phi = unit_power();
     float scene_radius = 0.5f * scene_bound.extents().norm();
     Phi *= pi * sqr(scene_radius);
     return Phi;

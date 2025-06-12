@@ -3066,8 +3066,6 @@ void GfxApp::update_base()
 
     update_imgui();
 
-    ImGui::End();
-
     update();
 }
 

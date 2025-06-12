@@ -3,22 +3,6 @@
 namespace ks
 {
 
-enum LightFlagBits : uint32_t
-{
-    Directional = (1 << 0),
-    Point = (1 << 1),
-    Sky = (1 << 2),
-};
-using LightFlag = uint32_t;
-
-struct LightHeader
-{
-    vec3 field1;
-    LightFlag flag;
-    vec3 field2;
-    int ext;
-};
-
 inline LightHeader make_skylight_header(const EqualAreaSkyLight &l, uint32_t tex_idx)
 {
     LightHeader h;
@@ -47,11 +31,6 @@ inline LightHeader make_pointlight_header(const PointLight &l)
     return h;
 }
 
-struct LightSystemUniforms
-{
-    uint32_t num_skylights;
-};
-
 enum class LightSystemGlobalBindings : uint32_t
 {
     Uniforms = 0,
@@ -59,27 +38,31 @@ enum class LightSystemGlobalBindings : uint32_t
     PMF = 2,
 };
 
-GPULightSystem::GPULightSystem(const AABB3 &scene_bound, LightPointers light_ptrs_, const vk::Context &ctx)
-    : light_ptrs(std::move(light_ptrs_)), device(ctx.device)
+GPULightSystem::GPULightSystem(LightPointers light_ptrs_, const vk::Context &ctx, uint32_t max_frames_in_flight)
+    : light_ptrs(std::move(light_ptrs_)), device(ctx.device), allocator(ctx.allocator)
 {
-    std::vector<const EqualAreaSkyLight *> skylights;
-    std::vector<const Light *> other_lights;
+    // TODO: for now we assume that all skylights are at the beginning.
+    uniforms.num_skylights = 0;
     for (uint32_t i = 0; i < (uint32_t)light_ptrs.lights.size(); ++i) {
         const EqualAreaSkyLight *sky = dynamic_cast<const EqualAreaSkyLight *>(light_ptrs.lights[i]);
         if (sky) {
-            skylights.push_back(sky);
+            ++uniforms.num_skylights;
         } else {
-            other_lights.push_back(light_ptrs.lights[i]);
+            break;
         }
     }
 
-    std::vector<LightHeader> headers(light_ptrs.lights.size());
-    std::vector<float> powers(light_ptrs.lights.size());
+    headers.resize(light_ptrs.lights.size());
+    skylights_unit_powers.resize(uniforms.num_skylights);
+    skylight_texture_indices.resize(uniforms.num_skylights);
     uint32_t tex_count = 0;
     for (uint32_t i = 0; i < (uint32_t)light_ptrs.lights.size(); ++i) {
-        if (i < skylights.size()) {
-            headers[i] = make_skylight_header(*skylights[i], tex_count);
-            powers[i] = skylights[i]->power(scene_bound).mean();
+        if (i < uniforms.num_skylights) {
+            skylight_texture_indices[i] = tex_count;
+            const EqualAreaSkyLight *sky = dynamic_cast<const EqualAreaSkyLight *>(light_ptrs.lights[i]);
+            skylights_unit_powers[i] = sky->unit_power().mean();
+
+            headers[i] = make_skylight_header(*sky, tex_count);
 
             ctx.allocator->stage_session([&](vk::Allocator &self) {
                 per_light_pmf_buf.emplace_back(ctx.allocator,
@@ -87,15 +70,14 @@ GPULightSystem::GPULightSystem(const AABB3 &scene_bound, LightPointers light_ptr
                                                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                                                    .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                                },
-                                               VMA_MEMORY_USAGE_AUTO, (VmaAllocationCreateFlags)(0),
-                                               skylights[i]->pmf.bins);
+                                               VMA_MEMORY_USAGE_AUTO, (VmaAllocationCreateFlags)(0), sky->pmf.bins);
             });
 
             VkImageCreateInfo image_ci{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .imageType = VkImageType::VK_IMAGE_TYPE_2D,
                 .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-                .extent = VkExtent3D(skylights[i]->res, skylights[i]->res, 1),
+                .extent = VkExtent3D(sky->res, sky->res, 1),
                 .mipLevels = 1,
                 .arrayLayers = 1,
                 .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -109,10 +91,10 @@ GPULightSystem::GPULightSystem(const AABB3 &scene_bound, LightPointers light_ptr
                     image_ci, VMA_MEMORY_USAGE_AUTO, VmaAllocationCreateFlags(0),
                     [&](std::byte *dest) {
                         short *fp16_ptr = reinterpret_cast<short *>(dest);
-                        uint32_t n_texels = sqr(skylights[i]->res);
+                        uint32_t n_texels = sqr(sky->res);
                         for (uint32_t t = 0; t < n_texels; ++t) {
                             for (uint32_t c = 0; c < 3; ++c) {
-                                *(fp16_ptr++) = convert_float_to_half(skylights[i]->texels[t][c]);
+                                *(fp16_ptr++) = convert_float_to_half(sky->texels[t][c]);
                             }
                             *(fp16_ptr++) = convert_float_to_half(1.0f);
                         }
@@ -134,44 +116,33 @@ GPULightSystem::GPULightSystem(const AABB3 &scene_bound, LightPointers light_ptr
 
             ++tex_count;
         } else {
-            int idx = i - (uint32_t)skylights.size();
             if (const DirectionalLight *l = dynamic_cast<const DirectionalLight *>(light_ptrs.lights[i]); l) {
                 headers[i] = make_dirlight_header(*l);
             } else if (const PointLight *l = dynamic_cast<const PointLight *>(light_ptrs.lights[i]); l) {
                 headers[i] = make_pointlight_header(*l);
             }
-            powers[i] = other_lights[idx]->power(scene_bound).mean();
         }
     }
-    AliasTable pmf(powers);
 
-    LightSystemUniforms uniforms;
-    uniforms.num_skylights = (uint32_t)skylights.size();
+    uniforms_buf.resize(max_frames_in_flight);
+    headers_buf.resize(max_frames_in_flight);
+    pmf_buf.resize(max_frames_in_flight);
+    for (uint32_t i = 0; i < max_frames_in_flight; ++i) {
+        uniforms_buf[i] = vk::AutoRelease<vk::FrequentUploadBuffer>(
+            ctx.allocator, VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                              .size = sizeof(LightSystemUniforms),
+                                              .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT});
 
-    ctx.allocator->stage_session([&](vk::Allocator &self) {
-        uniforms_buf = vk::AutoRelease<vk::Buffer>(ctx.allocator,
-                                                   VkBufferCreateInfo{
-                                                       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                                                       .size = sizeof(LightSystemUniforms),
-                                                       .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                                   },
-                                                   VMA_MEMORY_USAGE_AUTO, (VmaAllocationCreateFlags)(0),
-                                                   reinterpret_cast<const std::byte *>(&uniforms));
+        headers_buf[i] = vk::AutoRelease<vk::FrequentUploadBuffer>(
+            ctx.allocator, VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                              .size = sizeof(LightHeader) * light_ptrs.lights.size(),
+                                              .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT});
 
-        headers_buf = vk::AutoRelease<vk::Buffer>(ctx.allocator,
-                                                  VkBufferCreateInfo{
-                                                      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                                                      .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                                  },
-                                                  VMA_MEMORY_USAGE_AUTO, (VmaAllocationCreateFlags)(0), headers);
-
-        pmf_buf = vk::AutoRelease<vk::Buffer>(ctx.allocator,
-                                              VkBufferCreateInfo{
-                                                  .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                                                  .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                              },
-                                              VMA_MEMORY_USAGE_AUTO, (VmaAllocationCreateFlags)(0), pmf.bins);
-    });
+        pmf_buf[i] = vk::AutoRelease<vk::FrequentUploadBuffer>(
+            ctx.allocator, VkBufferCreateInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                              .size = sizeof(AliasTable::Bin) * light_ptrs.lights.size(),
+                                              .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT});
+    }
 
     {
         VkSamplerCreateInfo sampler_ci{
@@ -207,19 +178,9 @@ GPULightSystem::GPULightSystem(const AABB3 &scene_bound, LightPointers light_ptr
                                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                                    .descriptorCount = 1,
                                    .stageFlags = lighting_stages});
-        global_param_block_meta = vk::ParameterBlockMeta(ctx.device, 1, std::move(helper));
-        global_param_block = global_param_block_meta.allocate_block();
-
-        vk::ParameterWriteArray write_array;
-        global_param_block.write_buffer(
-            "uniforms", VkDescriptorBufferInfo{.buffer = uniforms_buf->buffer, .offset = 0, .range = VK_WHOLE_SIZE},
-            write_array);
-        global_param_block.write_buffer(
-            "headers", VkDescriptorBufferInfo{.buffer = headers_buf->buffer, .offset = 0, .range = VK_WHOLE_SIZE},
-            write_array);
-        global_param_block.write_buffer(
-            "pmf", VkDescriptorBufferInfo{.buffer = pmf_buf->buffer, .offset = 0, .range = VK_WHOLE_SIZE}, write_array);
-        vkUpdateDescriptorSets(device, write_array.writes.size(), write_array.writes.data(), 0, nullptr);
+        global_param_block_meta = vk::ParameterBlockMeta(ctx.device, max_frames_in_flight, std::move(helper));
+        global_param_block.resize(max_frames_in_flight);
+        global_param_block_meta.allocate_blocks(max_frames_in_flight, global_param_block);
     }
 
     {
@@ -288,6 +249,71 @@ GPULightSystem ::~GPULightSystem()
 {
     //
     vkDestroySampler(device, equal_area_sampler, nullptr);
+}
+
+void GPULightSystem::update(const AABB3 &scene_bound)
+{
+    uint32_t n_skylights = uniforms.num_skylights;
+
+    std::vector<float> powers(light_ptrs.lights.size());
+    float scene_radius = 0.5f * scene_bound.extents().norm();
+    for (uint32_t i = 0; i < (uint32_t)light_ptrs.lights.size(); ++i) {
+        if (i < n_skylights) {
+            headers[i] = make_skylight_header(*dynamic_cast<const EqualAreaSkyLight *>(light_ptrs.lights[i]),
+                                              skylight_texture_indices[i]);
+
+            powers[i] = skylights_unit_powers[i] * pi * sqr(scene_radius);
+        } else {
+            if (const DirectionalLight *l = dynamic_cast<const DirectionalLight *>(light_ptrs.lights[i]); l) {
+                headers[i] = make_dirlight_header(*l);
+            } else if (const PointLight *l = dynamic_cast<const PointLight *>(light_ptrs.lights[i]); l) {
+                headers[i] = make_pointlight_header(*l);
+            }
+            powers[i] = light_ptrs.lights[i]->power(scene_bound).mean();
+        }
+    }
+
+    pmf = AliasTable(powers);
+}
+
+void GPULightSystem::upload(uint32_t curr_frame_in_flight_index, VkCommandBuffer cb)
+{
+    {
+        vk::ParameterWriteArray write_array;
+        global_param_block[curr_frame_in_flight_index].write_buffer(
+            "uniforms",
+            VkDescriptorBufferInfo{
+                .buffer = uniforms_buf[curr_frame_in_flight_index]->dest.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
+            write_array);
+        global_param_block[curr_frame_in_flight_index].write_buffer(
+            "headers",
+            VkDescriptorBufferInfo{
+                .buffer = headers_buf[curr_frame_in_flight_index]->dest.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
+            write_array);
+        global_param_block[curr_frame_in_flight_index].write_buffer(
+            "pmf",
+            VkDescriptorBufferInfo{
+                .buffer = pmf_buf[curr_frame_in_flight_index]->dest.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
+            write_array);
+        vkUpdateDescriptorSets(device, write_array.writes.size(), write_array.writes.data(), 0, nullptr);
+    }
+
+    allocator->map(*uniforms_buf[curr_frame_in_flight_index], true, [&](std::byte *ptr) {
+        auto &dst = *reinterpret_cast<LightSystemUniforms *>(ptr);
+        dst = uniforms;
+    });
+    allocator->map(*headers_buf[curr_frame_in_flight_index], true, [&](std::byte *ptr) {
+        auto *dst = reinterpret_cast<LightHeader *>(ptr);
+        std::copy(headers.begin(), headers.end(), dst);
+    });
+    allocator->map(*pmf_buf[curr_frame_in_flight_index], true, [&](std::byte *ptr) {
+        auto *dst = reinterpret_cast<AliasTable::Bin *>(ptr);
+        std::copy(pmf.bins.begin(), pmf.bins.end(), dst);
+    });
+
+    uniforms_buf[curr_frame_in_flight_index]->upload(cb);
+    headers_buf[curr_frame_in_flight_index]->upload(cb);
+    pmf_buf[curr_frame_in_flight_index]->upload(cb);
 }
 
 } // namespace ks

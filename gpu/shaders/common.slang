@@ -834,6 +834,67 @@ public struct Quaternion
         w = 1;
         x = y = z = 0;
     }
+
+    public __init(float w_, float x_, float y_, float z_)
+    {
+        w = w_;
+        x = x_;
+        y = y_;
+        z = z_;
+    }
+
+    public __init(float3x3 R)
+    {
+        // Assume R is a proper rotation matrix.
+        float trace = R[0][0] + R[1][1] + R[2][2];
+        if (trace > 0) {
+            float s = 0.5f / sqrt(trace + 1.0f);
+            w = 0.25f / s;
+            x = (R[2][1] - R[1][2]) * s;
+            y = (R[0][2] - R[2][0]) * s;
+            z = (R[1][0] - R[0][1]) * s;
+        } else {
+            if (R[0][0] > R[1][1] && R[0][0] > R[2][2]) {
+                float s = 2.0f * sqrt(1.0f + R[0][0] - R[1][1] - R[2][2]);
+                w = (R[2][1] - R[1][2]) / s;
+                x = 0.25f * s;
+                y = (R[0][1] + R[1][0]) / s;
+                z = (R[0][2] + R[2][0]) / s;
+            } else if (R[1][1] > R[2][2]) {
+                float s = 2.0f * sqrt(1.0f + R[1][1] - R[0][0] - R[2][2]);
+                w = (R[0][2] - R[2][0]) / s;
+                x = (R[0][1] + R[1][0]) / s;
+                y = 0.25f * s;
+                z = (R[1][2] + R[2][1]) / s;
+            } else {
+                float s = 2.0f * sqrt(1.0f + R[2][2] - R[0][0] - R[1][1]);
+                w = (R[1][0] - R[0][1]) / s;
+                x = (R[0][2] + R[2][0]) / s;
+                y = (R[1][2] + R[2][1]) / s;
+                z = 0.25f * s;
+            }
+        }
+    }
+
+    public float3x3 to_matrix()
+    {
+        float x2 = x * x;
+        float y2 = y * y;
+        float z2 = z * z;
+        float xy = x * y;
+        float xz = x * z;
+        float yz = y * z;
+        float wx = w * x;
+        float wy = w * y;
+        float wz = w * z;
+        // clang-format off
+        return float3x3(
+            1 - 2 * y2 - 2 * z2,    2 * xy - 2 * wz,        2 * xz + 2 * wy,
+            2 * xy + 2 * wz,        1 - 2 * x2 - 2 * z2,    2 * yz - 2 * wx,
+            2 * xz - 2 * wy,        2 * yz + 2 * wx,        1 - 2 * x2 - 2 * y2);
+        // clang-format on
+    }
+
     float w;
     float x;
     float y;
