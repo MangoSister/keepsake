@@ -204,11 +204,11 @@ float3 sample_henyey_greenstein(float3 D, float g, float randu, float randv, out
 // TODO: In current implementation many terms can be cancelled/collapsed/shared/approximated.
 // maybe we should consider performance more seriously now on GPU...
 
-struct PrincipleBSDFClosure : IBSDFClosure
+public struct PrincipleBSDFClosure : IBSDFClosure
 {
     static const float diffuse_trans_strategy_switch = 0.05f;
 
-    float3 eval(float3 wo, float3 wi)
+    public float3 eval(float3 wo, float3 wi)
     {
         if (wo.z == 0.0 || wi.z == 0.0) {
             return float3(0.0, 0.0, 0.0);
@@ -505,7 +505,7 @@ struct PrincipleBSDFClosure : IBSDFClosure
         return pdf;
     }
 
-    BSDFSample sample(float3 wo, float u_lobe, float2 u_wi)
+    public BSDFSample sample(float3 wo, float u_lobe, float2 u_wi)
     {
         if (wo.z == 0.0f) {
             return BSDFSample();
@@ -574,7 +574,7 @@ struct PrincipleBSDFClosure : IBSDFClosure
         return s;
     }
 
-    float pdf(float3 wo, float3 wi)
+    public float pdf(float3 wo, float3 wi)
     {
         if (wo.z == 0.0f || wi.z == 0.0f) {
             return 0.0f;
@@ -602,16 +602,16 @@ struct PrincipleBSDFClosure : IBSDFClosure
         return dot(pdf_lobe, weights);
     }
 
-    float3 basecolor;
-    float roughness;
-    float ax;
-    float ay;
-    float metallic;
-    float ior;
-    float specular_r0_mul;
-    float specular_trans;
-    float diffuse_trans;
-    float diffuse_trans_fwd;
+    public float3 basecolor;
+    public float roughness;
+    public float ax;
+    public float ay;
+    public float metallic;
+    public float ior;
+    public float specular_r0_mul;
+    public float specular_trans;
+    public float diffuse_trans;
+    public float diffuse_trans_fwd;
 };
 
 public struct GPUMaterialPrincipledBSDFDataBlock : IMaterial, INormalMap, IOpacityMap
