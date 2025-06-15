@@ -91,11 +91,11 @@ struct PointLight : ILight
 
 public struct EqualAreaSkyLight : ILight
 {
-    public __init(uint tex_idx_)
+    public __init(uint tex_idx_, float strength_, Quaternion to_world_)
     {
         tex_idx = tex_idx_;
-        to_world = Quaternion();
-        strength = 1.0;
+        to_world = to_world_.to_matrix();
+        strength = strength_;
     }
 
     public bool delta_position() { return false; }
@@ -129,6 +129,8 @@ public struct EqualAreaSkyLight : ILight
         s.pdf_wi = a.pmf * sqr(map_res) / (4.0f * pi);
         s.wi = equal_area_square_to_sphere(p_square);
         // wi = to_world.direction(wi_local);
+        s.wi = mul(to_world, s.wi);
+
         s.wi_dist = float.maxValue;
         s.Le_beta = eval(p_square, system) / s.pdf_wi;
         return s;
@@ -141,6 +143,7 @@ public struct EqualAreaSkyLight : ILight
         uint map_res = get_map_res(map);
 
         // vec3 wi_local = to_world.inv_direction(wi);
+        wi = mul(transpose(to_world), wi);
         float2 p_square = equal_area_sphere_to_square(wi);
         int iy = clamp((int)floor(p_square.y * map_res), 0, map_res - 1);
         int ix = clamp((int)floor(p_square.x * map_res), 0, map_res - 1);
@@ -151,6 +154,7 @@ public struct EqualAreaSkyLight : ILight
     public float3 eval(float3 wi, LightSystem system)
     {
         // float3 wi_local = to_world.inv_direction(wi);
+        wi = mul(transpose(to_world), wi);
         float2 p_square = equal_area_sphere_to_square(wi);
         return eval(p_square, system);
     }
@@ -176,7 +180,7 @@ public struct EqualAreaSkyLight : ILight
     }
 
     // Equal-area parameterization
-    Quaternion to_world; // TODO
+    float3x3 to_world;
     float strength;
     uint tex_idx;
 }
@@ -262,7 +266,15 @@ public struct LightSystem
     public EqualAreaSkyLight get_skylight(int index)
     {
         LightHeader h = global.headers[index];
-        return EqualAreaSkyLight(h.ext);
+        // h.field1 = vec3(l.to_world.w(), l.to_world.x(), l.to_world.y());
+        // h.field2 = vec3(l.to_world.z(), l.strength, 0.0f);
+        float qw = h.field1[0];
+        float qx = h.field1[1];
+        float qy = h.field1[2];
+        float qz = h.field2[0];
+        Quaternion to_world = Quaternion(qw, qx, qy, qz);
+        float strength = h.field2[1];
+        return EqualAreaSkyLight(h.ext, strength, to_world);
     }
 
     public ILight sample(float u, out float pr)

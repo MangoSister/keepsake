@@ -78,6 +78,7 @@ struct EqualAreaSkyLight : public Light
         return 0.0f;
     }
 
+    color3 unit_power() const;
     color3 power(const AABB3 &scene_bound) const;
 
     quat to_world;
