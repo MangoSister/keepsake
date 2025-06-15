@@ -100,7 +100,7 @@ struct SmallNodeArray
 // TODO: by default thrust is blocking. Check: thrust::cuda::par_nosync or other ways to control thrust
 // synchronization https://github.com/NVIDIA/thrust/pull/1568
 
-struct CompactKdTreeNode
+struct CudaCompactKdTreeNode
 {
     CUDA_HOST_DEVICE void init_leaf(uint32_t n_prims)
     {
@@ -126,11 +126,11 @@ struct CompactKdTreeNode
     };
     uint32_t flags;
 };
-static_assert(sizeof(CompactKdTreeNode) == 8);
-static_assert(alignof(CompactKdTreeNode) == 4);
-CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CompactKdTreeNode) / sizeof(uint32_t);
+static_assert(sizeof(CudaCompactKdTreeNode) == 8);
+static_assert(alignof(CudaCompactKdTreeNode) == 4);
+CONSTEXPR_VAL uint32_t node_header_size_u32 = sizeof(CudaCompactKdTreeNode) / sizeof(uint32_t);
 
-struct ParallelKdTreeBuildStats
+struct CudaParallelKdTreeBuildStats
 {
 #ifdef CPP_CODE_ONLY
     std::string to_string() const;
@@ -145,7 +145,7 @@ struct ParallelKdTreeBuildStats
     uint32_t n_prim_refs;
 };
 
-struct ParallelKdTreeBuildInput
+struct CudaParallelKdTreeBuildInput
 {
     uint32_t num_prims;
     CudaShareableLowLevelMemory prim_bounds_storage;
@@ -153,21 +153,21 @@ struct ParallelKdTreeBuildInput
     uint32_t max_leaf_prims = 4;
     // Intersect cost is fixed to 1.
     float traversal_cost = 0.2f;
-    ParallelKdTreeBuildStats *stats = nullptr;
+    CudaParallelKdTreeBuildStats *stats = nullptr;
 };
 
-struct ParallelKdTree
+struct CudaParallelKdTree
 {
-    void build(const ParallelKdTreeBuildInput &input);
-    LargeNodeArray init_build(const ParallelKdTreeBuildInput &input);
-    LargeNodeArray large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes, uint8_t depth,
+    void build(const CudaParallelKdTreeBuildInput &input);
+    LargeNodeArray init_build(const CudaParallelKdTreeBuildInput &input);
+    LargeNodeArray large_node_step(const CudaParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes, uint8_t depth,
                                    SmallRootArray &small_roots);
-    void prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
-    SmallNodeArray small_node_step(const ParallelKdTreeBuildInput &input, SmallNodeArray &small_nodes,
+    void prepare_small_roots(const CudaParallelKdTreeBuildInput &input, SmallRootArray &small_roots);
+    SmallNodeArray small_node_step(const CudaParallelKdTreeBuildInput &input, SmallNodeArray &small_nodes,
                                    const SmallRootArray &small_roots, uint8_t depth,
                                    thrust::device_ptr<uint32_t> max_depth);
 
-    void compact(const ParallelKdTreeBuildInput &input, std::vector<LargeNodeArray> &upper_tree,
+    void compact(const CudaParallelKdTreeBuildInput &input, std::vector<LargeNodeArray> &upper_tree,
                  const SmallRootArray &small_roots, std::vector<SmallNodeArray> &lower_tree,
                  thrust::device_ptr<uint32_t> n_leaves, thrust::device_ptr<uint32_t> prim_ref_storage);
 

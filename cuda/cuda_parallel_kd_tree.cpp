@@ -1,10 +1,10 @@
-#include "parallel_kd_tree.h"
+#include "cuda_parallel_kd_tree.h"
 #include "../file_util.h"
 
 namespace ksc
 {
 
-std::string ParallelKdTreeBuildStats::to_string() const
+std::string CudaParallelKdTreeBuildStats::to_string() const
 {
     // Full binary tree.
     uint32_t n_interior = n_leaves - 1;

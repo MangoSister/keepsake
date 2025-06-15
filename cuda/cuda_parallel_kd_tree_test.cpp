@@ -2,7 +2,7 @@
 #include "../config.h"
 #include "../file_util.h"
 #include "../log_util.h"
-#include "parallel_kd_tree.h"
+#include "cuda_parallel_kd_tree.h"
 #include "rng.cuh"
 #include <thrust/host_vector.h>
 

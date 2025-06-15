@@ -1,6 +1,6 @@
 #include "api_error.h"
+#include "cuda_parallel_kd_tree.h"
 #include "device_util.cuh"
-#include "parallel_kd_tree.h"
 
 #include <thrust/device_free.h>
 #include <thrust/device_new.h>
@@ -24,7 +24,7 @@ namespace ksc
 
 CONSTEXPR_VAL uint32_t CHUNK_SIZE = 256;
 CONSTEXPR_VAL uint32_t LARGE_NODE_THRESHOLD = 64;
-CONSTEXPR_VAL float EMPTY_SPACE_RATIO = 0.125f;
+CONSTEXPR_VAL float EMPTY_SPACE_RATIO = 0.25f; // 1.0f;
 CONSTEXPR_VAL uint8_t BAD_SPLIT_TRYS = 3;
 CONSTEXPR_VAL uint8_t MAX_DEPTH = 64;
 
@@ -424,7 +424,7 @@ partition_prims_assign(uint32_t num_refs_chunked, const AABB3 *__restrict__ prim
     // }
 }
 
-void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
+void CudaParallelKdTree::build(const CudaParallelKdTreeBuildInput &input)
 {
     total_bound = ksc::cuda_alloc_device_low_level(sizeof(ksc::AABB3));
 
@@ -482,7 +482,7 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
         thrust::copy_n(prim_ref_storage, 1, &prim_ref_storage_cpu);
         thrust::copy_n(n_leaves, 1, &input.stats->n_leaves);
         input.stats->n_nodes =
-            (input.stats->compact_strorage_bytes - prim_ref_storage_cpu * sizeof(uint32_t)) / sizeof(CompactKdTreeNode);
+            (input.stats->compact_strorage_bytes - prim_ref_storage_cpu * sizeof(uint32_t)) / sizeof(CudaCompactKdTreeNode);
         input.stats->n_small_roots = (uint32_t)small_roots.node_loose_bounds.size();
         input.stats->n_prim_refs = input.stats->n_leaves + prim_ref_storage_cpu;
         thrust::device_free(max_depth);
@@ -492,7 +492,7 @@ void ParallelKdTree::build(const ParallelKdTreeBuildInput &input)
     return;
 }
 
-LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
+LargeNodeArray CudaParallelKdTree::init_build(const CudaParallelKdTreeBuildInput &input)
 {
     uint32_t num_prims = input.num_prims;
     LargeNodeArray large_nodes;
@@ -510,7 +510,7 @@ LargeNodeArray ParallelKdTree::init_build(const ParallelKdTreeBuildInput &input)
     return large_nodes;
 }
 
-LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
+LargeNodeArray CudaParallelKdTree::large_node_step(const CudaParallelKdTreeBuildInput &input, LargeNodeArray &large_nodes,
                                                uint8_t depth, SmallRootArray &small_roots)
 {
     bool record_depth = (input.stats != nullptr);
@@ -664,7 +664,30 @@ LargeNodeArray ParallelKdTree::large_node_step(const ParallelKdTreeBuildInput &i
                   next_node_prim_count_psum.data().get(), next_node_loose_bounds.data().get(),
                   //
                   small_flags.data().get(), small_flags_invert.data().get(), next_node_bad_flags.data().get());
+    {
+        // DEBUG
+        thrust::host_vector<uint8_t> bad_flags = large_nodes.bad_flags;
+        uint32_t bad_index = 0;
+        for (uint32_t i = 0; i < bad_flags.size(); ++i) {
+            if (bad_flags[i] != 0) {
+                bad_index = i;
+                break;
+            }
+        }
+        thrust::host_vector<uint32_t> node_prim_count_psum = large_nodes.node_prim_count_psum;
+        thrust::host_vector<uint32_t> prim_ids = large_nodes.prim_ids;
+        thrust::host_vector<AABB3> node_loose_bounds = large_nodes.node_loose_bounds;
+        float sah0 = node_prim_count_psum[bad_index + 1] - node_prim_count_psum[bad_index];
+        AABB3 b0 = node_loose_bounds[bad_index];
+        float area = b0.surface_area();
 
+        // compute SAH and compare to median split
+        for (int axis = 0; axis < 3; ++axis) {
+            for (uint32_t ref = node_prim_count_psum[bad_index]; ref < node_prim_count_psum[bad_index + 1]; ++ref) {
+                uint32_t prim_id = prim_ids[ref];
+            }
+        }
+    }
     thrust::device_vector<uint32_t> small_flags_copy = small_flags;
     thrust::device_vector<uint32_t> small_flags_invert_copy = small_flags_invert;
 
@@ -849,7 +872,7 @@ __global__ void prepare_small_roots_kernel(uint32_t num_candidates, uint32_t num
     sah_split_candidates[gid].split_pos = split_pos;
 }
 
-void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, SmallRootArray &small_roots)
+void CudaParallelKdTree::prepare_small_roots(const CudaParallelKdTreeBuildInput &input, SmallRootArray &small_roots)
 {
     const AABB3 *prim_bounds_ptr = reinterpret_cast<const AABB3 *>(input.prim_bounds_storage.dptr);
 
@@ -865,11 +888,15 @@ void ParallelKdTree::prepare_small_roots(const ParallelKdTreeBuildInput &input, 
     // cuda_check(cudaDeviceSynchronize());
     // cuda_check(cudaGetLastError());
     //{
-    //    thrust::host_vector<uint32_t> h = small_roots.prim_ids;
-    //    std::vector<uint32_t> v(h.begin(), h.end());
-    //    std::string md5 = Chocobo1::MD5().addData(v.data(), sizeof(uint32_t) * v.size()).finalize().toString();
-    //    printf("prim_ids: %s\n", md5.c_str());
-    //}
+    //    thrust::host_vector<uint8_t> h = small_roots.bad_flags;
+    //    std::vector<uint8_t> v(h.begin(), h.end());
+    //    int bad = 0;
+    //    for (int j = 0; j < v.size(); ++j) {
+    //        if (v[j] == BAD_SPLIT_TRYS) {
+    //            ++bad;
+    //        }
+    //    }
+    //    bad = bad;
     //{
     //    thrust::host_vector<uint32_t> h = small_roots.node_prim_count_psum;
     //    std::vector<uint32_t> v(h.begin(), h.end());
@@ -1080,7 +1107,7 @@ __global__ void assign_children_small_nodes(uint32_t num_nodes, const uint32_t *
     }
 }
 
-SmallNodeArray ParallelKdTree::small_node_step(const ParallelKdTreeBuildInput &input, SmallNodeArray &small_nodes,
+SmallNodeArray CudaParallelKdTree::small_node_step(const CudaParallelKdTreeBuildInput &input, SmallNodeArray &small_nodes,
                                                const SmallRootArray &small_roots, uint8_t depth,
                                                thrust::device_ptr<uint32_t> max_depth)
 {
@@ -1330,19 +1357,19 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const AABB3 *__res
     uint32_t addr = parent_addrs[parent_node_id];
     for (int axis = 0; axis < 3; ++axis) {
         if (non_empty_bound.min[axis] != loose_bound.min[axis]) {
-            CompactKdTreeNode *node = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[addr]);
+            CudaCompactKdTreeNode *node = reinterpret_cast<CudaCompactKdTreeNode *>(&compact_nodes_storage[addr]);
             node->init_interior(axis, addr + (2 * node_header_size_u32), non_empty_bound.min[axis]);
             uint32_t left_addr = addr + node_header_size_u32;
-            CompactKdTreeNode *left = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[left_addr]);
+            CudaCompactKdTreeNode *left = reinterpret_cast<CudaCompactKdTreeNode *>(&compact_nodes_storage[left_addr]);
             left->init_leaf(0);
             // go to right
             addr += 2 * node_header_size_u32;
         }
         if (non_empty_bound.max[axis] != loose_bound.max[axis]) {
-            CompactKdTreeNode *node = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[addr]);
+            CudaCompactKdTreeNode *node = reinterpret_cast<CudaCompactKdTreeNode *>(&compact_nodes_storage[addr]);
             node->init_interior(axis, addr + (2 * node_header_size_u32) + bulk_size, non_empty_bound.max[axis]);
             uint32_t right_addr = addr + (2 * node_header_size_u32) + bulk_size;
-            CompactKdTreeNode *right = reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[right_addr]);
+            CudaCompactKdTreeNode *right = reinterpret_cast<CudaCompactKdTreeNode *>(&compact_nodes_storage[right_addr]);
             right->init_leaf(0);
             // go to left
             addr += node_header_size_u32;
@@ -1364,7 +1391,7 @@ __global__ void compact_upper_tree(uint32_t parent_num_nodes, const AABB3 *__res
         small_root_addrs[info.children[1].index] = bulk_right_addr;
     }
 
-    CompactKdTreeNode &bulk_parent = *reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[addr]);
+    CudaCompactKdTreeNode &bulk_parent = *reinterpret_cast<CudaCompactKdTreeNode *>(&compact_nodes_storage[addr]);
 
     // uint32_t prim_count = parent_node_prim_count_psum[parent_node_id + 1] -
     // parent_node_prim_count_psum[parent_node_id];
@@ -1391,7 +1418,7 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
     uint32_t parent_addr = parent_addrs[parent_node_id];
     // CUDA_ASSERT(parent_addr + node_header_size_u32 <= 1459);
 
-    CompactKdTreeNode &compact_parent = *reinterpret_cast<CompactKdTreeNode *>(&compact_nodes_storage[parent_addr]);
+    CudaCompactKdTreeNode &compact_parent = *reinterpret_cast<CudaCompactKdTreeNode *>(&compact_nodes_storage[parent_addr]);
 
     uint32_t ch = child_offsets[parent_node_id];
     if (ch == (uint32_t)(~0)) {
@@ -1444,7 +1471,7 @@ __global__ void compact_lower_tree(uint32_t parent_num_nodes, const uint32_t *__
     }
 }
 
-void ParallelKdTree::compact(const ParallelKdTreeBuildInput &input, std::vector<LargeNodeArray> &upper_tree,
+void CudaParallelKdTree::compact(const CudaParallelKdTreeBuildInput &input, std::vector<LargeNodeArray> &upper_tree,
                              const SmallRootArray &small_roots, std::vector<SmallNodeArray> &lower_tree,
                              thrust::device_ptr<uint32_t> n_leaves, thrust::device_ptr<uint32_t> prim_ref_storage)
 {
@@ -1523,7 +1550,7 @@ void ParallelKdTree::compact(const ParallelKdTreeBuildInput &input, std::vector<
     }
 }
 
-AABB3 ParallelKdTree::get_total_bound() const
+AABB3 CudaParallelKdTree::get_total_bound() const
 {
     AABB3 b;
     cuda_check(
